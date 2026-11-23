@@ -1,0 +1,25 @@
+name: Manter o banco ativo
+on:
+  schedule:
+    - cron: '23 11 */3 * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Consultar o Supabase
+        run: |
+          URL=$(jq -r .url config.json)
+          KEY=$(jq -r .key config.json)
+          curl -fsS "$URL/rest/v1/pub?select=id&limit=1" -H "apikey: $KEY"
+      - name: Registrar atividade no repositório
+        run: |
+          date -u +%FT%TZ > ultima-verificacao.txt
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add ultima-verificacao.txt
+          git commit -m "manter ativo" || true
+          git push
