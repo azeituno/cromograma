@@ -4481,37 +4481,46 @@ Object.assign(ACT, {
 
 // ===== Meta: horas programadas e realizadas por técnico(a) responsável =====
 function tecHoras(ano, mes) {
-  const T = {};
+  const T = {}; const idx = mes ? [+mes - 1] : [...Array(12).keys()];
   for (const t of Object.values(S.turmas)) {
     if (isPlanAct(t) || !areaOk(t.area)) continue; const r = R[t.id]; if (!r) continue;
     const L = r.aulas.filter(a => a.ds.slice(0, 4) === String(ano) && (!mes || a.ds.slice(5, 7) === mes)); if (!L.length) continue;
     const k = (t.tec || '').trim() || '— sem técnico(a) —';
     const prog = L.reduce((s, a) => s + a.h, 0), real = L.filter(a => a.ds < HOJE).reduce((s, a) => s + a.h, 0);
-    const ha = {}; for (const [m] of MODS) { const p = prodTurma(t, ano, m); const idx = mes ? [+mes - 1] : [...Array(12).keys()]; ha[m] = { real: idx.reduce((s, i) => s + p.real[i], 0), prog: idx.reduce((s, i) => s + p.real[i] + p.prev[i], 0) }; }
+    const sems = [...new Set(L.map(a => +a.ds.slice(5, 7) <= 6 ? 1 : 2))];
+    const ha = {}, al = {};
+    for (const [m] of MODS) { const p = prodTurma(t, ano, m); ha[m] = { real: idx.reduce((s, i) => s + p.real[i], 0), prog: idx.reduce((s, i) => s + p.real[i] + p.prev[i], 0) }; al[m] = sems.map(x => p.cs[x] || 0); }
     const o = T[k] = T[k] || { tec: k, cursos: [], prog: 0, real: 0, ha: Object.fromEntries(MODS.map(([m]) => [m, { real: 0, prog: 0 }])) };
-    o.cursos.push({ t, prog, real, ha, n: L.length }); o.prog += prog; o.real += real; for (const [m] of MODS) { o.ha[m].real += ha[m].real; o.ha[m].prog += ha[m].prog; }
+    o.cursos.push({ t, prog, real, ha, al, n: L.length }); o.prog += prog; o.real += real; for (const [m] of MODS) { o.ha[m].real += ha[m].real; o.ha[m].prog += ha[m].prog; }
   }
   return Object.values(T).sort((a, b) => (a.tec.startsWith('—') ? 1 : 0) - (b.tec.startsWith('—') ? 1 : 0) || a.tec.localeCompare(b.tec));
 }
 const fh = v => (Math.round(v * 10) / 10).toLocaleString('pt-BR');
 const pctB = (r, p) => { const v = p ? Math.round(r / p * 100) : 0; return `<div class="pbar" title="${v}%"><i style="width:${Math.min(100, v)}%"></i></div><span class="small">${v}%</span>`; };
+const haTot = x => MODS.reduce((s, [m]) => s + x.ha[m].prog, 0), haReal = x => MODS.reduce((s, [m]) => s + x.ha[m].real, 0);
+const alTxt = L => { const u = [...new Set(L)]; return u.length === 1 ? String(u[0]) : L.join(' / '); };
 function metaTecHtml(ano) {
   const mes = V.mtMes || ''; const sel = V.mtTec || '';
   const all = tecHoras(ano, mes); const L = all.filter(x => !sel || x.tec === sel);
+  const per = mes ? MESN[+mes - 1] + '/' + ano : String(ano);
   let h = `<div class="bar filters" style="margin-top:8px"><label class="small">Técnico(a) <select data-in="mtTec"><option value="">Todos</option>${all.map(x => `<option ${sel === x.tec ? 'selected' : ''}>${esc(x.tec)}</option>`).join('')}</select></label>
-   ${areaMulti()}<label class="small">Mês <select data-in="mtMes"><option value="">Ano todo</option>${MESN.map((n, i) => { const k = String(i + 1).padStart(2, '0'); return `<option value="${k}" ${mes === k ? 'selected' : ''}>${n}/${ano}</option>`; }).join('')}</select></label>
+   ${areaMulti()}<label class="small">Período <select data-in="mtMes"><option value="">Ano todo</option>${MESN.map((n, i) => { const k = String(i + 1).padStart(2, '0'); return `<option value="${k}" ${mes === k ? 'selected' : ''}>${n}/${ano}</option>`; }).join('')}</select></label>
    <button data-act="mtXls">Baixar Excel</button></div>
-  <p class="small muted">Técnico(a) = responsável pela conferência, informado no cadastro do curso. <b>Programadas</b> = todas as aulas do período; <b>realizadas</b> = aulas até ontem. Horas-aluno = estudantes do semestre × horas de aula (mesma regra da meta).</p>`;
+  <p class="small muted"><b>Carga horária (horas-aluno)</b> = nº de alunos × horas de aula do curso no período (${per}). Alunos = matriculados do semestre (regra da meta). <b>Realizado</b> = aulas até ontem. Técnico(a) = responsável pela conferência no cadastro do curso.</p>`;
   if (!L.length) return h + '<div class="card empty">Nenhum curso com aulas nesse período e área.</div>';
-  const tot = L.reduce((s, x) => ({ prog: s.prog + x.prog, real: s.real + x.real }), { prog: 0, real: 0 });
-  h += `<div class="card"><div class="tw" style="max-height:none"><table class="mttab"><tr><th>Técnico(a)</th><th>Cursos</th><th>Horas de aula programadas</th><th>Realizadas</th><th>%</th>${MODS.map(([k, l]) => `<th>Horas-aluno ${l}<div class="small muted">realizadas / programadas</div></th>`).join('')}</tr>
-   ${L.map(x => `<tr data-act="mtAbre" data-tec="${esc(x.tec)}" style="cursor:pointer"><td><b>${esc(x.tec)}</b></td><td>${x.cursos.length}</td><td>${fh(x.prog)} h</td><td>${fh(x.real)} h</td><td class="nowrap">${pctB(x.real, x.prog)}</td>${MODS.map(([k]) => `<td class="small">${fh(x.ha[k].real)} / ${fh(x.ha[k].prog)}</td>`).join('')}</tr>`).join('')}
-   ${L.length > 1 ? `<tr class="cparea"><td><b>Total</b></td><td>${L.reduce((s, x) => s + x.cursos.length, 0)}</td><td><b>${fh(tot.prog)} h</b></td><td><b>${fh(tot.real)} h</b></td><td class="nowrap">${pctB(tot.real, tot.prog)}</td>${MODS.map(([k]) => `<td class="small"><b>${fh(L.reduce((s, x) => s + x.ha[k].real, 0))} / ${fh(L.reduce((s, x) => s + x.ha[k].prog, 0))}</b></td>`).join('')}</tr>` : ''}</table></div>
-   <p class="small muted">${sel ? '' : 'Clique num técnico(a) para ver os cursos dele(a).'}</p></div>`;
+  const S2 = (f) => L.reduce((s, x) => s + f(x), 0);
+  const tot = { n: S2(x => x.cursos.length), prog: S2(x => x.prog), t: S2(haTot), tr: S2(haReal), m: Object.fromEntries(MODS.map(([m]) => [m, S2(x => x.ha[m].prog)])), mr: Object.fromEntries(MODS.map(([m]) => [m, S2(x => x.ha[m].real)])) };
+  h += `<div class="kpis"><div class="kpi"><b>${tot.n}</b><span>cursos programados</span></div><div class="kpi"><b>${fh(tot.t)}</b><span>horas-aluno total · realizado ${fh(tot.tr)}</span></div>${MODS.map(([m, l]) => `<div class="kpi"><b>${fh(tot.m[m])}</b><span>horas-aluno ${l} · realizado ${fh(tot.mr[m])}</span></div>`).join('')}</div>`;
+  const cel = (p, r) => `<td><b>${fh(p)}</b><div class="small muted">realizado ${fh(r)}</div></td>`;
+  h += `<div class="card"><div class="tw" style="max-height:none"><table class="mttab"><tr><th>Técnico(a)</th><th>Cursos programados</th><th>Horas de aula</th><th>Total (horas-aluno)</th>${MODS.map(([k, l]) => `<th>Total ${l}</th>`).join('')}<th>% realizado</th></tr>
+   ${L.map(x => `<tr data-act="mtAbre" data-tec="${esc(x.tec)}" style="cursor:pointer"><td><b>${esc(x.tec)}</b></td><td>${x.cursos.length}</td><td>${fh(x.prog)} h</td>${cel(haTot(x), haReal(x))}${MODS.map(([k]) => cel(x.ha[k].prog, x.ha[k].real)).join('')}<td class="nowrap">${pctB(haReal(x), haTot(x))}</td></tr>`).join('')}
+   ${L.length > 1 ? `<tr class="cparea"><td><b>Total</b></td><td><b>${tot.n}</b></td><td><b>${fh(tot.prog)} h</b></td>${cel(tot.t, tot.tr)}${MODS.map(([k]) => cel(tot.m[k], tot.mr[k])).join('')}<td class="nowrap">${pctB(tot.tr, tot.t)}</td></tr>` : ''}</table></div>
+   <p class="small muted">${sel ? '' : 'Clique num técnico(a) para ver os cursos e o cálculo de cada um.'}</p></div>`;
   if (sel) {
     const x = L[0];
-    h += `<div class="card"><h2 style="margin-top:0">Cursos de ${esc(x.tec)}</h2><div class="tw" style="max-height:none"><table><tr><th>Curso</th><th>Área</th><th>Aulas</th><th>Programadas</th><th>Realizadas</th><th>%</th>${MODS.map(([k, l]) => `<th>H-aluno ${l}</th>`).join('')}</tr>
-     ${x.cursos.sort((a, b) => a.t.nome.localeCompare(b.t.nome)).map(c => `<tr data-open="${c.t.id}" style="cursor:pointer"><td><b>${esc(c.t.nome)}</b><div class="small muted">${br(R[c.t.id].inicio)} → ${R[c.t.id].fim ? br(R[c.t.id].fim) : '—'}</div></td><td class="small">${esc(c.t.area || '')}</td><td>${c.n}</td><td>${fh(c.prog)} h</td><td>${fh(c.real)} h</td><td class="nowrap">${pctB(c.real, c.prog)}</td>${MODS.map(([k]) => `<td class="small">${fh(c.ha[k].real)} / ${fh(c.ha[k].prog)}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
+    h += `<div class="card"><h2 style="margin-top:0">Cursos de ${esc(x.tec)} — ${per}</h2><div class="tw" style="max-height:none"><table><tr><th>Curso</th><th>Área</th><th>Horas de aula</th>${MODS.map(([k, l]) => `<th>Alunos ${l}</th>`).join('')}<th>Total (horas-aluno)</th>${MODS.map(([k, l]) => `<th>Total ${l}</th>`).join('')}</tr>
+     ${x.cursos.sort((a, b) => a.t.nome.localeCompare(b.t.nome)).map(c => { const tt = MODS.reduce((s, [m]) => s + c.ha[m].prog, 0), tr = MODS.reduce((s, [m]) => s + c.ha[m].real, 0); return `<tr data-open="${c.t.id}" style="cursor:pointer"><td><b>${esc(c.t.nome)}</b><div class="small muted">${br(R[c.t.id].inicio)} → ${R[c.t.id].fim ? br(R[c.t.id].fim) : '—'}</div></td><td class="small">${esc(c.t.area || '')}</td><td>${fh(c.prog)} h</td>${MODS.map(([k]) => `<td>${alTxt(c.al[k])}</td>`).join('')}${cel(tt, tr)}${MODS.map(([k]) => cel(c.ha[k].prog, c.ha[k].real)).join('')}</tr>`; }).join('')}</table></div>
+     <p class="small muted">Alunos com “/” = 1º / 2º semestre (o curso tem aulas nos dois). Curso sem alunos informados entra com 0 — informe vagas e matrículas no cadastro do curso.</p></div>`;
   }
   return h;
 }
@@ -4529,9 +4538,10 @@ Object.assign(ACT, {
   mtAbre: el => { V.mtTec = V.mtTec === el.dataset.tec ? '' : el.dataset.tec; refresh(); },
   mtXls: () => {
     const ano = +(V.mAno || S.cfg.ano || HOJE.slice(0, 4)); const L = tecHoras(ano, V.mtMes || '').filter(x => !V.mtTec || x.tec === V.mtTec);
-    const hd = ['Técnico(a)', 'Curso', 'Área', 'Aulas', 'Horas programadas', 'Horas realizadas', ...MODS.flatMap(([k, l]) => ['H-aluno ' + l + ' realizadas', 'H-aluno ' + l + ' programadas'])];
-    const rows = [hd]; for (const x of L) for (const c of x.cursos) rows.push([x.tec, c.t.nome, c.t.area || '', c.n, +c.prog.toFixed(1), +c.real.toFixed(1), ...MODS.flatMap(([k]) => [+c.ha[k].real.toFixed(1), +c.ha[k].prog.toFixed(1)])]);
-    xlsSave('Horas por tecnico ' + ano + (V.mtMes ? '-' + V.mtMes : '') + '.xlsx', [{ name: 'Por técnico', rows, widths: [26, 44, 22, 8, 12, 12, 14, 14, 14, 14] }]);
+    const hd = ['Técnico(a)', 'Curso', 'Área', 'Horas de aula', ...MODS.map(([k, l]) => 'Alunos ' + l), 'Total horas-aluno', ...MODS.map(([k, l]) => 'Total ' + l), 'Total realizado', ...MODS.map(([k, l]) => 'Realizado ' + l)];
+    const rows = [hd]; for (const x of L) for (const c of x.cursos) rows.push([x.tec, c.t.nome, c.t.area || '', +c.prog.toFixed(1), ...MODS.map(([k]) => alTxt(c.al[k])), +MODS.reduce((s, [m]) => s + c.ha[m].prog, 0).toFixed(1), ...MODS.map(([k]) => +c.ha[k].prog.toFixed(1)), +MODS.reduce((s, [m]) => s + c.ha[m].real, 0).toFixed(1), ...MODS.map(([k]) => +c.ha[k].real.toFixed(1))]);
+    const R2 = [['Técnico(a)', 'Cursos programados', 'Horas de aula', 'Total horas-aluno', ...MODS.map(([k, l]) => 'Total ' + l), 'Total realizado']].concat(L.map(x => [x.tec, x.cursos.length, +x.prog.toFixed(1), +haTot(x).toFixed(1), ...MODS.map(([k]) => +x.ha[k].prog.toFixed(1)), +haReal(x).toFixed(1)]));
+    xlsSave('Carga por tecnico ' + ano + (V.mtMes ? '-' + V.mtMes : '') + '.xlsx', [{ name: 'Resumo', rows: R2, widths: [28, 12, 12, 16, 14, 14, 14] }, { name: 'Por curso', rows, widths: [26, 44, 22, 12, 10, 10, 16, 14, 14, 14, 14, 14] }]);
   },
 });
 { const s = MANUAL.find(x => x.id === 'meta'); if (s) s.h += `<div class="mbox tip"><b>Por técnico(a) e área</b> Na aba <b>Por técnico(a) e área</b> da Meta, veja as horas de aula <b>programadas</b> e <b>realizadas</b> (e as horas-aluno PSG e Comercial) de cada técnico(a) responsável pela conferência. Filtre por técnico(a), área e mês; clique no nome para ver os cursos. O técnico(a) vem do campo “Técnico(a) responsável” no cadastro do curso.</div>`; }
