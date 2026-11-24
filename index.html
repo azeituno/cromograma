@@ -287,6 +287,8 @@ table.ucs label.chk{display:inline-flex;gap:4px;align-items:center;white-space:n
 .escver{background:#f8fafc;border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:8px 10px;margin:8px 0}
 .alck{width:28px;text-align:center}.albulk{align-items:center}button.alot,a.alot{margin-left:4px}
 select.desm{font-size:12px;padding:2px 4px}select.desm.total{background:#dcfce7;color:#166534}select.desm.parcial{background:#fef3c7;color:#92400e}select.desm.nao{background:#f3f4f6}select.desm.desmal{outline:2px solid var(--red)}.at.desm{background:#fce7f3;color:#9d174d}
+.livtab td{vertical-align:middle}.livtab input,.livtab select{font-size:13px}tr.livlate td{background:#fef2f2}.at.liv{background:#ede9fe;color:#5b21b6}
+.edutab td{vertical-align:middle}.edutab input,.edutab select{font-size:13px}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -831,7 +833,7 @@ function render() {
   if (!V.mes) V.mes = (new Date().getFullYear() === +S.cfg.ano ? new Date().toISOString().slice(0, 7) : S.cfg.ano + '-02');
   if (!V.area) { const ts = Object.values(S.turmas); V.area = S.cfg.areas.find(a => ts.some(t => t.area === a)) || S.cfg.areas[0] || ''; }
   V.ano = V.ano || S.cfg.ano;
-  const f = { cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
+  const f = { edu: viewEdu, livros: viewLivros, cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
   try { m.innerHTML = f(); } catch (e) { console.error(e); m.innerHTML = '<div class="card empty">Não foi possível mostrar esta tela.</div>'; }
   document.documentElement.style.setProperty('--hh', document.querySelector('header').offsetHeight + 'px');
   if (V.hl) { const el = document.getElementById('r-' + V.hl); if (el) { el.classList.add('hl'); el.scrollIntoView({ block: 'center' }); } V.hl = ''; }
@@ -1108,7 +1110,7 @@ function viewHoras() {
 
 // ---------- Alertas ----------
 function viewAlertas() {
-  const tps = ['ucc', 'enc', 'exc', 'conf', 'fer', 'comp', 'esc', 'sala', 'cad', 'uc', 'desm', 'cc', 'sit'];
+  const tps = ['ucc', 'enc', 'exc', 'conf', 'fer', 'comp', 'esc', 'sala', 'cad', 'uc', 'desm', 'liv', 'cc', 'sit'];
   const nOk = ALERTS.filter(a => a.ok).length, nPe = ALERTS.length - nOk;
   const AL = ALERTS.filter(a => V.alOk === 'ok' ? a.ok : V.alOk === 'all' ? true : !a.ok);
   const cnt = {}; for (const a of AL) cnt[a.tp] = (cnt[a.tp] || 0) + 1;
@@ -4736,6 +4738,264 @@ document.addEventListener('change', async e => {
   catch (err) { toast('Não consegui ler o arquivo: ' + ((err && err.message) || err)); }
 });
 { const s = MANUAL.find(x => x.id === 'cad-estoque'); if (s) s.h += `<div class="mbox tip"><b>Importar uma lista pronta</b> Em <b>Estoque de materiais</b>, clique em <b>⇪ Importar lista (Excel ou colar)</b>. Escolha o arquivo (.xlsx ou .csv) ou cole as linhas copiadas do Excel com as colunas <b>Material, Quantidade, Onde fica, Observação</b>. Confira a prévia (novos × atualizados) e clique em <b>Importar para o estoque</b>. O mesmo equipamento em lugares diferentes vira um item só, com a quantidade somada e os locais listados em “Onde fica”.</div>`; }
+
+// ===== Livros técnicos e brindes por curso =====
+const LIV_TIPOS = [['', 'Não recebe'], ['tec', 'Só livros técnicos'], ['brinde', 'Só brinde'], ['ambos', 'Livros técnicos e brinde']];
+const LIV_IT = { tec: 'Livro técnico', brinde: 'Brinde' };
+function livSit(x) { if (isDate(x.ent)) return ['Entregue', 'ok']; if (!isDate(x.prev)) return ['Sem data', '']; if (x.prev < HOJE) return ['Atrasado', 'bad']; return ['Programado', 'warn']; }
+function livUcIni(t, ucId) { const P = typeof ucPeriodos === 'function' ? ucPeriodos(t) : {}; return (P[ucId] || {}).ini || ''; }
+{ const ta = turmaAlunosCard; turmaAlunosCard = function (t) { return ta(t) + livrosCard(t); }; }
+Object.assign(ACT, {
+  livAdd: el => { const t = curT(); t.livros = t.livros || []; const tp = el.dataset.tp; const r = R[t.id]; t.livros.push({ id: uid('l'), tp, tit: '', uc: '', qtd: '', prev: (r && r.inicio) || '', ent: '', obs: '' }); saveT(t); refresh(); setTimeout(() => { const L = document.querySelectorAll('#livcard [data-livf=tit]'); const i = L[L.length - 1]; if (i) { i.focus(); i.scrollIntoView({ block: 'center' }); } }, 50); },
+  livDel: el => { const t = curT(); const x = t.livros[+el.dataset.i]; askConfirm(`Excluir <b>${esc(x.tit || LIV_IT[x.tp])}</b>?`, () => { t.livros.splice(+el.dataset.i, 1); if (!t.livros.length) delete t.livros; saveT(t); closeModal(); refresh(); }, 'Excluir'); },
+  livHoje: el => { const t = curT(); t.livros[+el.dataset.i].ent = HOJE; saveT(t); refresh(); toast('Entrega registrada'); },
+});
+// alertas: item programado sem entrega depois da data
+{ const ca = confAlerts; confAlerts = function () {
+  const out = ca.apply(this, arguments);
+  for (const t of Object.values(S.turmas)) {
+    if (!t.livTipo || t.enc) continue;
+    for (const x of t.livros || []) { if (isDate(x.ent) || !isDate(x.prev) || x.prev >= HOJE) continue;
+      ALERTS.push({ tp: 'liv', t, row: null, msg: (LIV_IT2[x.tp] || 'Item') + ' “' + (x.tit || (String(x.src||'').startsWith('k:') ? (eduKit(x.src.slice(2))||{}).nome : String(x.src||'').startsWith('i:') ? (eduIt(x.src.slice(2))||{}).nome : '') || 'sem título') + '”' + (x.qtd ? ' (' + x.qtd + ')' : '') + ' programado para ' + br(x.prev) + ' — não entregue' }); }
+  }
+  return out;
+}; }
+Object.assign(ALT, { liv: 'Livro/brinde' }); Object.assign(ALTL, { liv: 'Livro ou brinde não entregue na data programada' });
+FIX_NOME.liv = 'Livros/brindes'; FIX_DICA.liv = 'Livros ou brindes com data programada já passada e sem data de entrega. Preencha “Entregue em” no quadro Livros e brindes (destacado) ou ajuste a data programada.';
+{ const fc = fixCont; fixCont = function (t) { const c = fc(t); const n = ALERTS.filter(a => a.t === t && a.tp === 'liv' && !a.ok).length; if (n) c.liv = n; return c; }; }
+{ const fb = fixBar; fixBar = function (t) { const c = fixCont(t); let h = fb(t); if (!c.liv || h.includes('data-f="liv"')) return h; const f = V.tFix; const btn = `<button class="sm ${f === 'liv' ? 'on' : ''}" data-act="tFix" data-f="liv">${FIX_NOME.liv} <span class="pill">${c.liv}</span></button>`;
+  if (!h) return `<div class="card fixbar" id="fixbar"><div class="bar" style="margin:0;flex-wrap:wrap;gap:6px"><b style="margin-right:4px">⚠ Corrigir:</b>${btn}</div></div>`;
+  return h.replace('<b style="margin-right:4px">⚠ Corrigir:</b>', '<b style="margin-right:4px">⚠ Corrigir:</b>' + btn); }; }
+{ const fr = fixRowOk; fixRowOk = function (row, r) { if (V.tFix === 'liv') return true; return fr(row, r); }; }
+{ const ff = fixFoco; fixFoco = function () { ff(); if (V.tFix !== 'liv') return; setTimeout(() => { document.querySelectorAll('#livcard tr.livlate').forEach(r => r.classList.add('fixme')); const c = document.getElementById('livcard'); if (c) { c.classList.add('fixme'); c.scrollIntoView({ block: 'start' }); } }, 90); }; }
+// ===== Gestão: visão geral de livros e brindes =====
+function livTodos() {
+  const out = [];
+  for (const t of Object.values(S.turmas)) { if (isPlanAct(t) || !areaOk(t.area)) continue; for (const x of t.livros || []) out.push({ t, x, s: livSit(x) }); }
+  return out.sort((a, b) => (a.x.prev || '9').localeCompare(b.x.prev || '9') || a.t.nome.localeCompare(b.t.nome));
+}
+function viewLivros() {
+  const f = V.lvF || 'pend'; const A = livTodos();
+  const L = A.filter(o => f === 'all' ? true : f === 'ent' ? o.s[0] === 'Entregue' : f === 'late' ? o.s[0] === 'Atrasado' : o.s[0] !== 'Entregue');
+  const sem = Object.values(S.turmas).filter(t => !isPlanAct(t) && t.livTipo && !(t.livros || []).length && areaOk(t.area));
+  const cnt = k => A.filter(o => o.s[0] === k).length;
+  let h = `<div class="pagehead"><h1>Livros, kits e brindes</h1><p class="muted">Entregas programadas e realizadas de livros técnicos e brindes em todos os cursos. O tipo de cada curso e os itens são lançados na própria turma.</p></div>
+   <div class="kpis"><div class="kpi"><b style="color:var(--red)">${cnt('Atrasado')}</b><span>atrasados</span></div><div class="kpi"><b>${cnt('Programado')}</b><span>programados</span></div><div class="kpi"><b>${cnt('Entregue')}</b><span>entregues</span></div><div class="kpi"><b>${sem.length}</b><span>curso(s) que recebem sem item lançado</span></div></div>
+   <div class="bar filters"><div class="tabs" style="margin:0">${[['pend', 'A entregar'], ['late', 'Atrasados'], ['ent', 'Entregues'], ['all', 'Todos']].map(([k, l]) => `<button class="${f === k ? 'on' : ''}" data-set="lvF" data-v="${k}">${l}</button>`).join('')}</div>${areaMulti()}<button data-act="livXls">Baixar Excel</button></div>`;
+  if (sem.length) h += `<div class="banner">Cursos marcados para receber, sem item lançado: ${sem.map(t => `<a class="link" data-open="${t.id}">${esc(t.nome)}</a>`).join(', ')}.</div>`;
+  if (!L.length) return h + '<div class="card empty">Nada nesta lista.</div>';
+  h += `<div class="card"><div class="tw" style="max-height:none"><table><tr><th>Programado</th><th>Curso</th><th>Tipo</th><th>Título / item</th><th class="num">Qtd</th><th>Entregue em</th><th>Situação</th></tr>
+   ${L.map(o => `<tr data-open="${o.t.id}" style="cursor:pointer"><td class="nowrap">${o.x.prev ? br(o.x.prev) : '—'}</td><td><b>${esc(o.t.nome)}</b><div class="small muted">${esc(o.t.area || '')}</div></td><td class="small">${LIV_IT2[o.x.tp] || ''}</td><td>${esc(o.x.tit || (String(o.x.src||'').startsWith('k:') ? (eduKit(o.x.src.slice(2))||{}).nome : '') || '')}</td><td class="num">${o.x.qtd ?? ''}</td><td class="nowrap">${o.x.ent ? br(o.x.ent) : ''}</td><td><span class="pill ${o.s[1]}">${o.s[0]}</span></td></tr>`).join('')}</table></div></div>`;
+  return h;
+}
+ACT.livXls = () => {
+  const rows = [['Curso', 'Área', 'Recebe', 'Tipo', 'Título / item', 'Kit / item do estoque', 'UC', 'Quantidade', 'Entrega programada', 'Entregue em', 'Situação', 'Observação']];
+  for (const o of livTodos()) { const u = (o.t.ucs || []).find(u => String(u.id) === String(o.x.uc)); rows.push([o.t.nome, o.t.area || '', (LIV_TIPOS.find(x => x[0] === o.t.livTipo) || ['', ''])[1], LIV_IT2[o.x.tp] || '', o.x.tit || '', (String(o.x.src||'').startsWith('k:') ? (eduKit(o.x.src.slice(2))||{}).nome : String(o.x.src||'').startsWith('i:') ? (eduIt(o.x.src.slice(2))||{}).nome : '') || '', u ? u.nome : '', o.x.qtd ?? '', o.x.prev ? br(o.x.prev) : '', o.x.ent ? br(o.x.ent) : '', o.s[0], o.x.obs || '']); }
+  xlsSave('Livros e brindes.xlsx', [{ name: 'Livros e brindes', rows, widths: [44, 22, 22, 14, 36, 30, 10, 14, 14, 12, 30] }]);
+};
+{ const i = NAV_ADM.findIndex(x => x[0] === 'cursos') + 1; NAV_ADM.splice(i, 0, ['livros', 'Livros e brindes', '📚']); ADM_VIEWS.add('livros'); }
+MICON.livros = '📚';
+MANUAL.splice(MANUAL.findIndex(s => s.id === 'cursos') + 1, 0, { id: 'livros', g: 'Gestão', t: 'Livros técnicos e brindes', who: 'ed', h: `
+<ol class="msteps"><li>Abra a turma em <b>Turmas e UCs</b> e desça até <b>Livros e brindes</b>.</li>
+<li>Em <b>Este curso recebe</b>, escolha <b>Não recebe</b>, <b>Só livros técnicos</b>, <b>Só brinde</b> ou <b>Livros técnicos e brinde</b>.</li>
+<li>Clique em <b>+ Livro técnico</b> ou <b>+ Brinde</b>: título, UC (opcional — a data programada vira o início da UC), quantidade e <b>entrega programada</b>.</li>
+<li>Quando entregar, preencha <b>Entregue em</b> (ou clique em <b>Hoje</b>).</li></ol>
+${ref('<p>Item com data programada já passada e sem entrega gera o alerta <b>Livro/brinde</b> (clique para ir ao quadro da turma). A tela <b>Livros e brindes</b> (Gestão) mostra tudo o que está a entregar, atrasado e entregue, por área, com Excel.</p>')}` });
+
+// ===== Estoque educacional, kits (brinde / aluno) e baixa automática na entrega =====
+const EDU_CAT = [['kitb', 'Material do kit brinde'], ['kita', 'Material do kit aluno'], ['livro', 'Livro técnico'], ['brinde', 'Brinde'], ['outro', 'Outro material']];
+const LIV_IT2 = { tec: 'Livro técnico', brinde: 'Kit brinde', kita: 'Kit aluno' };
+function EDU() {
+  if (!S.cfg.edu) S.cfg.edu = {
+    itens: [{ id: 'e-saco', nome: 'Sacochila', cat: 'kitb', qtd: 0, min: 0 }, { id: 'e-eco', nome: 'Ecobag', cat: 'kitb', qtd: 0, min: 0 }, { id: 'e-can', nome: 'Caneta', cat: 'kitb', qtd: 0, min: 0 }],
+    kits: [{ id: 'k-saco', nome: 'Kit brinde — Sacochila', tipo: 'brinde', comp: [{ item: 'e-saco', q: 1 }, { item: 'e-can', q: 1 }] }, { id: 'k-eco', nome: 'Kit brinde — Ecobag', tipo: 'brinde', comp: [{ item: 'e-eco', q: 1 }, { item: 'e-can', q: 1 }] }, { id: 'k-aluno', nome: 'Kit aluno', tipo: 'aluno', comp: [] }],
+    movs: [],
+  };
+  const E = S.cfg.edu; E.itens = E.itens || []; E.kits = E.kits || []; E.movs = E.movs || []; return E;
+}
+const eduIt = id => EDU().itens.find(x => x.id === id);
+const eduKit = id => EDU().kits.find(x => x.id === id);
+const kitTxt = k => k && k.comp.length ? k.comp.map(c => (eduIt(c.item) || { nome: '?' }).nome + ' ' + c.q).join(' + ') : 'composição a definir';
+function eduMov(item, q, motivo, tid) {
+  const it = eduIt(item); if (!it || !q) return; it.qtd = (+it.qtd || 0) + q;
+  EDU().movs.unshift({ id: uid('mv'), data: HOJE, item, q, motivo, tid: tid || '', por: (typeof USER !== 'undefined' && USER) || '' });
+  if (EDU().movs.length > 3000) EDU().movs.length = 3000;
+}
+// o que um lançamento da turma tira do estoque
+function livNeeds(x) {
+  const n = +x.qtd || 0; if (!n || !x.src) return [];
+  const [k, id] = String(x.src).split(':');
+  if (k === 'k') { const kit = eduKit(id); return kit ? kit.comp.filter(c => eduIt(c.item)).map(c => ({ item: c.item, q: c.q * n })) : []; }
+  if (k === 'i' && eduIt(id)) return [{ item: id, q: n }];
+  return [];
+}
+// mantém a baixa do estoque igual ao que foi entregue (entrega, correção de quantidade, estorno)
+function livSync(t, x) {
+  const want = isDate(x.ent) ? livNeeds(x) : []; const cur = x.baixa || [];
+  const M = {}; for (const c of cur) M[c.item] = (M[c.item] || 0) - c.q; for (const c of want) M[c.item] = (M[c.item] || 0) + c.q;
+  const desc = (LIV_IT2[x.tp] || 'Entrega') + ' — ' + t.nome; let neg = [];
+  for (const [item, d] of Object.entries(M)) if (d) { eduMov(item, -d, (d > 0 ? 'Entrega: ' : 'Estorno: ') + desc, t.id); const it = eduIt(item); if (it && it.qtd < 0) neg.push(it.nome + ' (' + it.qtd + ')'); }
+  if (want.length) x.baixa = want; else delete x.baixa;
+  if (Object.values(M).some(Boolean)) saveCfg();
+  return neg;
+}
+function livSrcOpts(x) {
+  const E = EDU(); let o = '<option value="">— não baixar do estoque —</option>';
+  if (x.tp === 'brinde' || x.tp === 'kita') o += E.kits.filter(k => k.tipo === (x.tp === 'kita' ? 'aluno' : 'brinde')).map(k => `<option value="k:${k.id}" ${x.src === 'k:' + k.id ? 'selected' : ''}>${esc(k.nome)}</option>`).join('');
+  const cats = x.tp === 'tec' ? ['livro'] : x.tp === 'brinde' ? ['brinde'] : ['kita'];
+  const its = E.itens.filter(i => cats.includes(i.cat)); if (its.length) o += `<optgroup label="Itens">${its.map(i => `<option value="i:${i.id}" ${x.src === 'i:' + i.id ? 'selected' : ''}>${esc(i.nome)} (saldo ${i.qtd || 0})</option>`).join('')}</optgroup>`;
+  return o;
+}
+function livQtdPadrao(t) { const v = t.vagas || {}; const n = (+v.PSG || 0) + (+v.COM || 0); return n || ''; }
+function livrosCard(t) {
+  if (isPlanAct(t)) return '';
+  const tp = t.livTipo || ''; const L = t.livros || [];
+  const pode = k => tp === 'ambos' || tp === k;
+  let h = `<div class="card" id="livcard"><div class="bar"><h2 class="grow" style="margin:0">Livros, kits e brindes</h2>
+   <label class="small">Este curso recebe <select data-livtipo>${LIV_TIPOS.map(([v, l]) => `<option value="${v}" ${tp === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+   <label class="small chk"><input type="checkbox" data-kitaluno ${t.kitAluno ? 'checked' : ''}><span>Recebe kit aluno</span></label></div>`;
+  const btns = (pode('tec') ? '<button class="sm" data-act="livAdd" data-tp="tec">+ Livro técnico</button>' : '') + (pode('brinde') ? '<button class="sm" data-act="livAdd" data-tp="brinde">+ Kit brinde</button>' : '') + (t.kitAluno ? '<button class="sm" data-act="livAdd" data-tp="kita">+ Kit aluno</button>' : '');
+  if (!btns) return h + (L.length ? `<p class="small" style="color:var(--red)">Há ${L.length} item(ns) lançado(s), mas o curso está como “Não recebe”.</p>` : '<p class="small muted">Escolha acima o que o curso recebe.</p>') + '</div>';
+  h += `<div class="bar" style="gap:6px">${btns}<span class="small muted">Ao preencher <b>Entregue em</b>, o estoque educacional é baixado sozinho (apagar a data devolve ao estoque).</span></div>`;
+  if (!L.length) return h + '<p class="small muted">Nenhum item lançado.</p></div>';
+  const ucs = t.ucs || [];
+  h += `<div class="tw" style="max-height:none"><table class="livtab"><tr><th>Tipo</th><th>Do estoque / o que vai</th><th>Título</th><th>UC</th><th class="num">Qtd</th><th>Entrega programada</th><th>Entregue em</th><th>Situação</th><th>Obs.</th><th></th></tr>
+   ${L.map((x, i) => { const [s, c] = livSit(x); const nd = livNeeds(x); const kit = String(x.src || '').startsWith('k:') ? eduKit(x.src.slice(2)) : null;
+     const falta = !isDate(x.ent) ? nd.filter(n => (eduIt(n.item).qtd || 0) < n.q).map(n => eduIt(n.item).nome) : [];
+     return `<tr class="${c === 'bad' ? 'livlate' : ''}"><td class="small nowrap">${LIV_IT2[x.tp] || ''}</td>
+    <td><select data-livf="src" data-i="${i}" style="max-width:230px">${livSrcOpts(x)}</select>${kit ? `<div class="small muted">Kit: ${esc(kitTxt(kit))}</div>` : ''}${nd.length && +x.qtd ? `<div class="small ${falta.length ? '' : 'muted'}" ${falta.length ? 'style="color:var(--red)"' : ''}>${isDate(x.ent) ? 'Baixado' : 'Vai baixar'}: ${nd.map(n => esc(eduIt(n.item).nome) + ' ' + n.q).join(', ')}${falta.length ? ' — falta: ' + esc(falta.join(', ')) : ''}</div>` : ''}</td>
+    <td><input data-livf="tit" data-i="${i}" value="${esc(x.tit || '')}" placeholder="${x.tp === 'tec' ? 'Título do livro' : 'opcional'}" style="min-width:160px"></td>
+    <td><select data-livf="uc" data-i="${i}" style="max-width:170px"><option value="">— curso todo —</option>${ucs.map(u => `<option value="${esc(u.id)}" ${String(x.uc) === String(u.id) ? 'selected' : ''}>${esc((u.num ? u.num + ' · ' : '') + u.nome)}</option>`).join('')}</select></td>
+    <td class="num"><input type="number" min="0" data-livf="qtd" data-i="${i}" value="${esc(x.qtd ?? '')}" style="width:70px"></td>
+    <td><input type="date" data-livf="prev" data-i="${i}" value="${esc(x.prev || '')}"></td>
+    <td><input type="date" data-livf="ent" data-i="${i}" value="${esc(x.ent || '')}">${!isDate(x.ent) ? `<button class="sm" data-act="livHoje" data-i="${i}" title="Marcar entregue hoje e baixar o estoque">Entregar hoje</button>` : ''}</td>
+    <td><span class="pill ${c}">${s}</span></td>
+    <td><input data-livf="obs" data-i="${i}" value="${esc(x.obs || '')}" style="min-width:110px"></td>
+    <td><button class="sm dng" data-act="livDel" data-i="${i}" title="Excluir">✕</button></td></tr>`; }).join('')}</table></div></div>`;
+  return h;
+}
+Object.assign(ACT, {
+  livAdd: el => {
+    const t = curT(); t.livros = t.livros || []; const tp = el.dataset.tp; const r = R[t.id];
+    const k1 = EDU().kits.find(k => k.tipo === (tp === 'kita' ? 'aluno' : 'brinde'));
+    t.livros.push({ id: uid('l'), tp, tit: '', src: tp === 'tec' ? '' : (k1 ? 'k:' + k1.id : ''), uc: '', qtd: tp === 'tec' ? '' : livQtdPadrao(t), prev: (r && r.inicio) || '', ent: '', obs: '' });
+    saveT(t); refresh();
+  },
+  livDel: el => { const t = curT(); const x = t.livros[+el.dataset.i]; askConfirm(`Excluir <b>${esc(x.tit || LIV_IT2[x.tp])}</b>?${x.baixa ? ' O que foi baixado volta para o estoque.' : ''}`, () => { if (x.baixa) { x.ent = ''; livSync(t, x); } t.livros.splice(+el.dataset.i, 1); if (!t.livros.length) delete t.livros; saveT(t); closeModal(); refresh(); }, 'Excluir'); },
+  livHoje: el => { const t = curT(); const x = t.livros[+el.dataset.i]; x.ent = HOJE; const neg = livSync(t, x); saveT(t); refresh(); toast(neg.length ? 'Entregue, mas o estoque ficou negativo: ' + neg.join(', ') : 'Entrega registrada' + (x.baixa ? ' e estoque baixado' : '')); },
+});
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.matches) return;
+  if (el.matches('[data-livtipo]')) { const t = curT(); if (el.value) t.livTipo = el.value; else delete t.livTipo; saveT(t); refresh(); return; }
+  if (el.matches('[data-kitaluno]')) { const t = curT(); if (el.checked) t.kitAluno = true; else delete t.kitAluno; saveT(t); refresh(); return; }
+  if (el.matches('[data-livf]')) {
+    const t = curT(); const x = t.livros[+el.dataset.i]; const k = el.dataset.livf; let v = el.value;
+    if (k === 'qtd') v = v === '' ? '' : Math.max(0, parseInt(v) || 0); else if (typeof v === 'string') v = v.trim();
+    x[k] = v;
+    if (k === 'uc' && v && !x.prevManual) { const d = livUcIni(t, v); if (d) x.prev = d; }
+    if (k === 'prev') x.prevManual = true;
+    if (k === 'src' && !x.tit && v.startsWith('i:')) { const it = eduIt(v.slice(2)); if (it) x.tit = it.nome; }
+    const neg = ['ent', 'qtd', 'src'].includes(k) ? livSync(t, x) : [];
+    saveT(t); refresh();
+    if (k === 'ent') toast(isDate(v) ? (neg.length ? 'Estoque ficou negativo: ' + neg.join(', ') : 'Entrega registrada' + (x.baixa ? ' e estoque baixado' : '')) : 'Entrega desfeita — itens voltaram ao estoque');
+    else if (neg.length) toast('Estoque ficou negativo: ' + neg.join(', '));
+  }
+});
+// ----- Estoque: previsto a entregar e alerta de compra -----
+function eduPrevisto() { const P = {}; for (const t of Object.values(S.turmas)) for (const x of t.livros || []) if (!isDate(x.ent)) for (const n of livNeeds(x)) P[n.item] = (P[n.item] || 0) + n.q; return P; }
+function eduCompra() {
+  const P = eduPrevisto(); const out = [];
+  for (const it of EDU().itens) { const q = +it.qtd || 0, m = +it.min || 0, p = P[it.id] || 0;
+    if (q < 0 || (m > 0 && q <= m) || q - p < m || (p > 0 && q < p)) out.push({ it, q, m, p, motivo: q <= 0 && !m ? 'sem saldo' : q <= m && m ? 'abaixo do nível de segurança' : 'não dá para as entregas programadas' }); }
+  return out;
+}
+function eduSit(it, P) { const q = +it.qtd || 0, m = +it.min || 0, p = (P || {})[it.id] || 0; if (q < 0) return ['Negativo', 'bad']; if (m > 0 && q <= m) return ['Comprar', 'bad']; if (p > q || q - p < m) return ['Comprar (programado)', 'warn']; return ['OK', 'ok']; }
+function viewEdu() {
+  const E = EDU(); const tab = V.eduTab || 'itens'; const P = eduPrevisto(); const C = eduCompra();
+  let h = `<div class="pagehead"><h1>Estoque de materiais educacionais</h1><p class="muted">Kits, livros, brindes e outros materiais de consumo. As entregas lançadas nas turmas baixam o estoque sozinhas.</p></div>`;
+  if (C.length) h += `<div class="banner" style="background:#fef2f2;border-color:#fecaca">🛒 <b>${C.length} material(is) para comprar:</b> ${C.map(c => `${esc(c.it.nome)} (saldo ${c.q}${c.m ? ', mínimo ' + c.m : ''}${c.p ? ', a entregar ' + c.p : ''})`).join(' · ')}</div>`;
+  h += `<div class="tabs">${[['itens', 'Materiais'], ['kits', 'Kits'], ['movs', 'Movimentações']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-set="eduTab" data-v="${k}">${l}</button>`).join('')}</div>`;
+  if (tab === 'kits') return h + eduKitsHtml();
+  if (tab === 'movs') return h + eduMovsHtml();
+  const fc = V.eduCat || '';
+  h += `<div class="bar filters"><button class="pri" data-act="eduAdd">+ Material</button><select data-in="eduCat"><option value="">Todas as especificidades</option>${EDU_CAT.map(([k, l]) => `<option value="${k}" ${fc === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button data-act="eduXls">Baixar Excel</button>
+   <span class="small muted">Nível de segurança = quantidade mínima; abaixo dela (ou sem saldo para as entregas programadas) o sistema pede compra.</span></div>`;
+  const L = E.itens.filter(i => !fc || i.cat === fc);
+  if (!L.length) return h + '<div class="card empty">Nenhum material cadastrado.</div>';
+  h += `<div class="card"><div class="tw" style="max-height:none"><table class="edutab"><tr><th>Material</th><th>Especificidade</th><th class="num">Saldo</th><th class="num">Nível de segurança</th><th class="num">A entregar</th><th>Situação</th><th>Usado nos kits</th><th>Obs.</th><th></th></tr>
+   ${L.map(it => { const i = E.itens.indexOf(it); const [s, c] = eduSit(it, P); const ks = E.kits.filter(k => k.comp.some(x => x.item === it.id)).map(k => k.nome); return `<tr>
+    <td><input data-eduf="nome" data-i="${i}" value="${esc(it.nome)}" style="min-width:180px"></td>
+    <td><select data-eduf="cat" data-i="${i}">${EDU_CAT.map(([k, l]) => `<option value="${k}" ${it.cat === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+    <td class="num"><b style="font-size:16px">${it.qtd || 0}</b></td>
+    <td class="num"><input type="number" min="0" data-eduf="min" data-i="${i}" value="${esc(it.min ?? 0)}" style="width:80px"></td>
+    <td class="num">${P[it.id] || ''}</td>
+    <td><span class="pill ${c}">${s}</span></td>
+    <td class="small muted">${esc(ks.join(', '))}</td>
+    <td><input data-eduf="obs" data-i="${i}" value="${esc(it.obs || '')}" style="min-width:120px"></td>
+    <td class="nowrap"><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="in">+ Entrada</button><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="out">− Saída</button><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="set" title="Corrigir o saldo (inventário)">=</button><button class="sm dng" data-act="eduDel" data-i="${i}">✕</button></td></tr>`; }).join('')}</table></div></div>`;
+  return h;
+}
+function eduKitsHtml() {
+  const E = EDU();
+  let h = `<div class="bar filters"><button class="pri" data-act="eduKitAdd">+ Kit</button><span class="small muted">Monte cada kit com os materiais do estoque. Na turma, ao lançar um kit e marcar a entrega, cada material é baixado (quantidade do kit × número de kits).</span></div>`;
+  return h + `<div class="cmgrid">${E.kits.map((k, ki) => { const pode = k.comp.length ? Math.min(...k.comp.map(c => Math.floor(((eduIt(c.item) || {}).qtd || 0) / (c.q || 1)))) : 0; return `<div class="card">
+   <div class="bar" style="margin:0 0 6px"><input data-kitf="nome" data-k="${ki}" value="${esc(k.nome)}" style="flex:1;font-weight:700"><select data-kitf="tipo" data-k="${ki}"><option value="brinde" ${k.tipo === 'brinde' ? 'selected' : ''}>Kit brinde</option><option value="aluno" ${k.tipo === 'aluno' ? 'selected' : ''}>Kit aluno</option></select><button class="sm dng" data-act="eduKitDel" data-k="${ki}">✕</button></div>
+   <table class="plain">${k.comp.map((c, ci) => `<tr><td><select data-kitc="item" data-k="${ki}" data-c="${ci}">${E.itens.map(it => `<option value="${it.id}" ${c.item === it.id ? 'selected' : ''}>${esc(it.nome)}</option>`).join('')}</select></td><td class="num"><input type="number" min="1" data-kitc="q" data-k="${ki}" data-c="${ci}" value="${c.q}" style="width:64px"> por kit</td><td><button class="sm" data-act="eduKitCDel" data-k="${ki}" data-c="${ci}">✕</button></td></tr>`).join('') || '<tr><td class="small muted">Sem materiais — inclua abaixo.</td></tr>'}</table>
+   <div class="bar" style="margin-top:6px"><button class="sm" data-act="eduKitCAdd" data-k="${ki}">+ Material no kit</button><span class="grow"></span><span class="small ${pode ? 'muted' : ''}" ${pode ? '' : 'style="color:var(--red)"'}>Dá para montar <b>${pode}</b> kit(s) com o saldo</span></div></div>`; }).join('')}</div>`;
+}
+function eduMovsHtml() {
+  const E = EDU(); const fi = V.eduMi || ''; const L = E.movs.filter(m => !fi || m.item === fi).slice(0, 400);
+  let h = `<div class="bar filters"><select data-in="eduMi"><option value="">Todos os materiais</option>${E.itens.map(i => `<option value="${i.id}" ${fi === i.id ? 'selected' : ''}>${esc(i.nome)}</option>`).join('')}</select></div>`;
+  if (!L.length) return h + '<div class="card empty">Nenhuma movimentação.</div>';
+  return h + `<div class="card"><div class="tw" style="max-height:none"><table><tr><th>Data</th><th>Material</th><th class="num">Quantidade</th><th>Motivo</th><th>Por</th></tr>${L.map(m => `<tr ${m.tid && S.turmas[m.tid] ? `data-open="${m.tid}" style="cursor:pointer"` : ''}><td class="nowrap">${br(m.data)}</td><td>${esc((eduIt(m.item) || { nome: '(excluído)' }).nome)}</td><td class="num" style="color:${m.q < 0 ? 'var(--red)' : '#15803d'}"><b>${m.q > 0 ? '+' : ''}${m.q}</b></td><td class="small">${esc(m.motivo || '')}</td><td class="small muted">${esc(m.por || '')}</td></tr>`).join('')}</table></div></div>`;
+}
+Object.assign(ACT, {
+  eduAdd: () => { EDU().itens.push({ id: uid('e'), nome: 'Novo material', cat: V.eduCat || 'outro', qtd: 0, min: 0 }); saveCfg(); refresh(); },
+  eduDel: el => { const E = EDU(); const it = E.itens[+el.dataset.i]; const uso = E.kits.filter(k => k.comp.some(c => c.item === it.id)).map(k => k.nome); askConfirm(`Excluir <b>${esc(it.nome)}</b>?${uso.length ? ' Ele sai também dos kits: ' + esc(uso.join(', ')) + '.' : ''}`, () => { E.itens.splice(+el.dataset.i, 1); for (const k of E.kits) k.comp = k.comp.filter(c => c.item !== it.id); saveCfg(); closeModal(); refresh(); }, 'Excluir'); },
+  eduMovM: el => {
+    const it = eduIt(el.dataset.id); const d = el.dataset.d;
+    MCTX = { ok: () => { const q = parseInt($('#modal [data-mq]').value); if (isNaN(q) || q < 0) return toast('Informe a quantidade'); const mot = $('#modal [data-mm]').value.trim();
+      const delta = d === 'in' ? q : d === 'out' ? -q : q - (+it.qtd || 0); if (!delta) return closeModal();
+      eduMov(it.id, delta, (d === 'in' ? 'Entrada' : d === 'out' ? 'Saída' : 'Ajuste de inventário') + (mot ? ': ' + mot : ''), ''); saveCfg(); closeModal(); refresh(); toast(it.nome + ': saldo ' + it.qtd); } };
+    modal(`<h2>${d === 'in' ? 'Entrada' : d === 'out' ? 'Saída' : 'Corrigir saldo'} · ${esc(it.nome)}</h2><p class="small muted">Saldo atual: <b>${it.qtd || 0}</b></p>
+     <label class="f">${d === 'set' ? 'Saldo contado' : 'Quantidade'}<input type="number" min="0" data-mq></label>
+     <label class="f" style="margin-top:8px">Motivo / observação<input data-mm placeholder="${d === 'in' ? 'Ex.: compra NF 1234' : d === 'out' ? 'Ex.: evento de boas-vindas' : 'Ex.: inventário de dezembro'}"></label>
+     <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+    setTimeout(() => { const i = $('#modal [data-mq]'); if (i) i.focus(); }, 50);
+  },
+  eduKitAdd: () => { EDU().kits.push({ id: uid('k'), nome: 'Novo kit', tipo: 'brinde', comp: [] }); saveCfg(); refresh(); },
+  eduKitDel: el => { const E = EDU(); const k = E.kits[+el.dataset.k]; const uso = Object.values(S.turmas).filter(t => (t.livros || []).some(x => x.src === 'k:' + k.id)).length; askConfirm(`Excluir o kit <b>${esc(k.nome)}</b>?${uso ? ` Ele está lançado em ${uso} turma(s); essas entregas deixam de baixar o estoque.` : ''}`, () => { E.kits.splice(+el.dataset.k, 1); saveCfg(); closeModal(); refresh(); }, 'Excluir'); },
+  eduKitCAdd: el => { const E = EDU(); if (!E.itens.length) return toast('Cadastre os materiais primeiro'); E.kits[+el.dataset.k].comp.push({ item: E.itens[0].id, q: 1 }); saveCfg(); refresh(); },
+  eduKitCDel: el => { EDU().kits[+el.dataset.k].comp.splice(+el.dataset.c, 1); saveCfg(); refresh(); },
+  eduXls: () => { const P = eduPrevisto(); const rows = [['Material', 'Especificidade', 'Saldo', 'Nível de segurança', 'A entregar', 'Situação', 'Observação']].concat(EDU().itens.map(it => [it.nome, (EDU_CAT.find(c => c[0] === it.cat) || ['', ''])[1], it.qtd || 0, it.min || 0, P[it.id] || 0, eduSit(it, P)[0], it.obs || ''])); xlsSave('Estoque educacional.xlsx', [{ name: 'Estoque', rows, widths: [36, 24, 10, 14, 12, 18, 30] }]); },
+});
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.matches) return;
+  if (el.matches('[data-eduf]')) { const it = EDU().itens[+el.dataset.i]; const k = el.dataset.eduf; it[k] = k === 'min' ? Math.max(0, parseInt(el.value) || 0) : el.value.trim(); saveCfg(); refresh(); }
+  if (el.matches('[data-kitf]')) { const k = EDU().kits[+el.dataset.k]; k[el.dataset.kitf] = el.value.trim(); saveCfg(); refresh(); }
+  if (el.matches('[data-kitc]')) { const c = EDU().kits[+el.dataset.k].comp[+el.dataset.c]; if (el.dataset.kitc === 'q') c.q = Math.max(1, parseInt(el.value) || 1); else c.item = el.value; saveCfg(); refresh(); }
+});
+// menu, rota, avisos
+{ const i = NAV_ADM.findIndex(x => x[0] === 'livros') + 1; NAV_ADM.splice(i, 0, ['edu', 'Estoque educacional', '📦']); ADM_VIEWS.add('edu'); }
+MICON.edu = '📦';
+{ const rs = renderShell; if (typeof rs === 'function') renderShell = function () { const r = rs.apply(this, arguments); try { const n = canWrite() && S.cfg ? eduCompra().length : 0; const b = document.querySelector('#side [data-go="edu"]'); if (b && n && !b.querySelector('.badge')) b.insertAdjacentHTML('beforeend', `<span class="badge">${n}</span>`); } catch (e) { } return r; }; }
+{ const vi = viewInicio; viewInicio = function () { const h = vi(); if (!canWrite() || !S.cfg) return h; const C = eduCompra(); if (!C.length) return h; return `<div class="banner" style="background:#fef2f2;border-color:#fecaca">🛒 <b>Estoque educacional:</b> ${C.length} material(is) para comprar — ${C.slice(0, 4).map(c => esc(c.it.nome)).join(', ')}${C.length > 4 ? '…' : ''}. <a class="link" data-go="edu">Ver estoque ›</a></div>` + h; }; }
+{ const va = viewAlertas; viewAlertas = function () { const h = va(); const C = canWrite() && S.cfg ? eduCompra() : []; if (!C.length) return h; return h.replace('<h1>Alertas</h1>', `<h1>Alertas</h1><div class="card" style="border-left:4px solid var(--red)"><b>🛒 Comprar — estoque educacional (${C.length})</b><div class="small" style="margin-top:4px">${C.map(c => `${esc(c.it.nome)}: saldo ${c.q}${c.m ? ' · mínimo ' + c.m : ''}${c.p ? ' · a entregar ' + c.p : ''} <span class="muted">(${c.motivo})</span>`).join('<br>')}</div><a class="link small" data-go="edu">Abrir estoque educacional ›</a></div>`); }; }
+// público: o estoque educacional não vai para a consulta
+{ const pd = pubData; pubData = function () { const d = pd(); if (d && d.cfg) delete d.cfg.edu; if (d && d.turmas) for (const t of Object.values(d.turmas)) { delete t.livros; } return d; }; }
+// manual
+{ const s = MANUAL.find(x => x.id === 'livros'); if (s) { s.t = 'Livros, kits e brindes'; s.h = `
+<ol class="msteps"><li>Abra a turma em <b>Turmas e UCs</b> e desça até <b>Livros, kits e brindes</b>.</li>
+<li>Em <b>Este curso recebe</b>, escolha <b>Não recebe</b>, <b>Só livros técnicos</b>, <b>Só brinde</b> ou <b>Livros técnicos e brinde</b>. Marque <b>Recebe kit aluno</b> se a turma tiver kit aluno.</li>
+<li>Clique em <b>+ Livro técnico</b>, <b>+ Kit brinde</b> ou <b>+ Kit aluno</b>. Em <b>Do estoque / o que vai</b>, escolha o kit (ex.: Kit brinde — Sacochila ou Ecobag): o sistema mostra o que vai no kit e quanto será baixado. Informe quantidade e <b>entrega programada</b>.</li>
+<li>Na entrega, preencha <b>Entregue em</b> ou clique em <b>Entregar hoje</b>: o estoque educacional é baixado na hora. Apagar a data devolve os itens.</li></ol>
+${ref('<p>Item com data programada passada e sem entrega gera o alerta <b>Livro/brinde</b>. A tela <b>Livros e brindes</b> mostra todas as entregas; o <b>Estoque educacional</b> mostra o saldo e o que ainda está programado para sair.</p>')}` }; }
+MANUAL.splice(MANUAL.findIndex(s => s.id === 'livros') + 1, 0, { id: 'edu', g: 'Gestão', t: 'Estoque de materiais educacionais', who: 'ed', h: `
+<ol class="msteps"><li>Abra <b>Estoque educacional</b> (menu Gestão). Aba <b>Materiais</b>: <b>+ Material</b>, nome e <b>especificidade</b> (material do kit brinde, do kit aluno, livro técnico, brinde ou outro).</li>
+<li>Informe o <b>nível de segurança</b> (quantidade mínima). Use <b>+ Entrada</b> para compras, <b>− Saída</b> para retiradas avulsas e <b>=</b> para corrigir o saldo após inventário.</li>
+<li>Aba <b>Kits</b>: monte cada kit com os materiais e a quantidade por kit (já vêm Kit brinde — Sacochila, Kit brinde — Ecobag e Kit aluno). O quadro mostra quantos kits dá para montar com o saldo.</li>
+<li>Aba <b>Movimentações</b>: histórico de entradas, saídas e baixas das turmas.</li></ol>
+${ref('<p>As entregas marcadas nas turmas baixam o estoque sozinhas. Quando o saldo fica no nível de segurança ou abaixo — ou não dá para as entregas já programadas — aparece o aviso <b>🛒 Comprar</b> no Início, nos Alertas e no menu.</p>')}` });
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
