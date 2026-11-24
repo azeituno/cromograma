@@ -286,6 +286,7 @@ table.ucs label.chk{display:inline-flex;gap:4px;align-items:center;white-space:n
 .cparea td{background:var(--bg2,#f4f6f8)}.pbar{display:inline-block;width:70px;height:8px;background:#e5e7eb;border-radius:4px;vertical-align:middle;margin-right:6px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--acc)}.mttab td,.cptab td{vertical-align:middle}
 .escver{background:#f8fafc;border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:8px 10px;margin:8px 0}
 .alck{width:28px;text-align:center}.albulk{align-items:center}button.alot,a.alot{margin-left:4px}
+select.desm{font-size:12px;padding:2px 4px}select.desm.total{background:#dcfce7;color:#166534}select.desm.parcial{background:#fef3c7;color:#92400e}select.desm.nao{background:#f3f4f6}select.desm.desmal{outline:2px solid var(--red)}.at.desm{background:#fce7f3;color:#9d174d}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -910,7 +911,8 @@ function viewTurma() {
   h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Unidades curriculares</h2><button data-act="pasteUC">Colar lista</button><button class="pri" data-act="addUC">+ UC</button></div>`;
   if (!t.ucs || !t.ucs.length) h += `<p class="muted small">Sem UCs: o curso conta pelo “Total de aulas”. Cadastre UCs para a contagem automática por unidade.</p>`;
   else {
-    h += `<div class="tw" style="max-height:none"><table class="ucs"><tr><th></th><th>Nº</th><th>Unidade curricular</th><th class="num" title="Carga horária presencial da UC">CH presencial</th><th class="num" title="Carga horária EAD da UC: é dada nos dias de aula EAD da turma">CH EAD</th><th class="num" title="Horas por aula desta UC. Vazio = automático (horário da turma; estágio à noite = 3 h)">H/aula</th><th class="num">Aulas</th><th>Docentes de referência</th><th>Programadas</th><th></th></tr>`;
+    h += `<div class="tw" style="max-height:none"><table class="ucs"><tr><th></th><th>Nº</th><th>Unidade curricular</th><th class="num" title="Carga horária presencial da UC">CH presencial</th><th class="num" title="Carga horária EAD da UC: é dada nos dias de aula EAD da turma">CH EAD</th><th class="num" title="Horas por aula desta UC. Vazio = automático (horário da turma; estágio à noite = 3 h)">H/aula</th><th class="num">Aulas</th><th>Docentes de referência</th><th>Programadas</th><th>Início</th><th>Fim</th><th title="Desmembramento da UC no SS — preenchido pelos apoios">Desmembramento (SS)</th><th></th></tr>`;
+    const UP = ucPeriodos(t);
     t.ucs.forEach((u, i) => {
       const p = r.prog[i] || { n: 0, done: 0 };
       const st = p.done > p.n ? 'bad' : p.done < p.n ? 'warn' : 'ok';
@@ -918,6 +920,7 @@ function viewTurma() {
       <td class="num"><input class="ch" type="number" min="0" step="any" data-ucp="${i}" value="${esc(r2((+u.ch || 0) - (+u.chE || 0)))}"></td><td class="num"><input class="ch" type="number" min="0" step="any" data-uce="${i}" value="${esc(u.chE || '')}" placeholder="0" title="${!(+t.ead) ? 'Defina o dia fixo EAD da turma para usar a carga EAD' : 'Dada nos dias EAD'}">${+u.chE ? `<div class="small muted">total ${r2(+u.ch)} h</div>` : ''}${+u.chE || +t.ead ? `<label class="chk small" title="EAD síncrona: aula ao vivo, o docente precisa de sala"><input type="checkbox" data-ucsinc="${i}" ${u.sinc ? 'checked' : ''}><span>síncrona (sala)</span></label>` : ''}</td><td class="num"><input class="ch" style="width:62px" type="number" min="0" step="0.25" data-uf="h" data-i="${i}" value="${esc(u.h || '')}" placeholder="${r.units[i] ? r.units[i].hA : ''}" title="${r.units[i] && r.units[i].auto ? 'Automático: estágio no período da noite conta 3 h' : 'Vazio = horário da turma'}"></td><td class="num">${p.n}${r.split && p.nE ? `<div class="small muted">${p.nP} + ${p.nE} EAD${r.units[i] && r.units[i].hE !== r.units[i].hA ? ' (' + fmtH(r.units[i].hE) + ' h)' : ''}</div>` : ''}</td>
       <td><div class="docs" data-act="ucDocs" data-i="${i}" style="display:flex;gap:3px;flex-wrap:wrap;cursor:pointer;min-width:140px">${(u.doc || []).filter(Boolean).map(n => `<span class="dchip">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docente</span>'}</div></td>
       <td class="nowrap"><span class="pill ${st}">${p.done}/${p.n}</span>${r.split && p.nE ? `<div class="small muted">pres. ${p.dP}/${p.nP} · EAD ${p.dE}/${p.nE}</div>` : ''}</td>
+      ${ucPerCells(t, u, UP)}
       <td class="nowrap"><button class="sm" data-act="ucUp" data-i="${i}" title="Subir">↑</button><button class="sm" data-act="ucDn" data-i="${i}" title="Descer">↓</button><button class="sm dng" data-act="ucDel" data-i="${i}" title="Excluir">✕</button></td></tr>`;
     });
     h += `</table></div><p class="small muted">Aulas = CH ÷ horas por aula (${r.H || '?'} h pelo horário da turma; UCs de estágio no período da noite contam 3 h; dá para mudar na coluna H/aula), arredondado para cima. As UCs entram na ordem acima; a UC com <b>dias da semana definidos</b> (📅 abaixo do nome) ocupa só esses dias, com prioridade, enquanto as outras seguem a ordem nos demais dias. Mude a UC de qualquer dia no cronograma e o app recalcula o resto sozinho.</p>`;
@@ -1105,7 +1108,7 @@ function viewHoras() {
 
 // ---------- Alertas ----------
 function viewAlertas() {
-  const tps = ['ucc', 'enc', 'exc', 'conf', 'fer', 'comp', 'esc', 'sala', 'cad', 'uc', 'cc', 'sit'];
+  const tps = ['ucc', 'enc', 'exc', 'conf', 'fer', 'comp', 'esc', 'sala', 'cad', 'uc', 'desm', 'cc', 'sit'];
   const nOk = ALERTS.filter(a => a.ok).length, nPe = ALERTS.length - nOk;
   const AL = ALERTS.filter(a => V.alOk === 'ok' ? a.ok : V.alOk === 'all' ? true : !a.ok);
   const cnt = {}; for (const a of AL) cnt[a.tp] = (cnt[a.tp] || 0) + 1;
@@ -4634,6 +4637,56 @@ document.addEventListener('change', e => {
   return h.replace('<button class="sm" data-act="tFix" data-f="">✕ Mostrar tudo</button>', `<button class="sm pri" data-act="fixBulk">✓ Marcar os ${n} desta lista como analisados</button><button class="sm" data-act="tFix" data-f="">✕ Mostrar tudo</button>`);
 }; }
 { const s = MANUAL.find(x => x.id === 'alertas'); if (s) s.h += `<div class="mbox tip"><b>Analisar em bloco e ir à outra turma</b> Na tela Alertas, filtre por tipo e por <b>Turma</b>, marque as caixas (ou <b>Selecionar os N da lista</b>) e clique em <b>✓ Marcar como analisado(s)</b>. Dentro da turma, com um filtro da barra ⚠ Corrigir ativo, o botão <b>✓ Marcar os N desta lista como analisados</b> faz o mesmo. Em conflitos de docente ou de sala, o botão <b>Abrir [turma] ›</b> leva direto à outra turma, no mesmo dia, para você alterar lá.</div>`; }
+
+// ===== UCs: início/fim e desmembramento no SS =====
+const DESM = [['', 'Não desmembrada'], ['parcial', 'Parcialmente'], ['total', 'Desmembrada']];
+const DESM_DIAS = () => +((S.cfg && S.cfg.desmDias) || 15);
+function ucPeriodos(t) {
+  const r = R[t.id]; const P = {}; if (!r) return P;
+  for (const a of r.aulas) { const u = r.units[a.ui]; if (!u) continue; const p = P[u.id] = P[u.id] || { ini: a.ds, fim: a.ds }; if (a.ds < p.ini) p.ini = a.ds; if (a.ds > p.fim) p.fim = a.ds; }
+  return P;
+}
+function ucPerCells(t, u, UP) {
+  const p = UP[u.id] || {}; const st = u.desm || ''; const al = desmPendente(u, p);
+  return `<td class="nowrap small">${p.ini ? br(p.ini) : '<span class="muted">—</span>'}</td><td class="nowrap small">${p.fim ? br(p.fim) : '<span class="muted">—</span>'}</td>
+   <td class="nowrap"><select data-ucdesm="${esc(u.id)}" class="desm ${st || 'nao'}${al ? ' desmal' : ''}">${DESM.map(([v, l]) => `<option value="${v}" ${st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>${st === 'parcial' ? `<div class="small" style="margin-top:3px">até <input type="date" data-ucdesmate="${esc(u.id)}" value="${esc(u.desmAte || '')}" min="${esc(p.ini || '')}" max="${esc(p.fim || '')}" style="width:auto;font-size:12px;padding:1px 3px" title="Até que data a UC já está desmembrada no SS"></div>` : ''}${u.desmEm ? `<div class="small muted" title="${esc(u.desmPor || '')}">atualizado em ${br(u.desmEm)}</div>` : ''}${al ? '<div class="small" style="color:var(--red)">⚠ ' + desmMotivo(u, p) + '</div>' : ''}</td>`;
+}
+const dt = s => new Date(s + 'T12:00:00');
+// parcial com data: a UC está desmembrada até u.desmAte; o alerta volta quando faltam até N dias para essa data (e a UC continua depois dela)
+function desmRef(u, p) { return u.desm === 'parcial' && isDate(u.desmAte) ? addD(u.desmAte, 1) : p.ini; }
+function desmPendente(u, p) { if (!p || !p.ini || u.desm === 'total') return false; if (p.fim < HOJE) return false; if (u.desm === 'parcial' && isDate(u.desmAte) && u.desmAte >= p.fim) return false; return (dt(desmRef(u, p)) - dt(HOJE)) / 864e5 <= DESM_DIAS(); }
+function desmMotivo(u, p) { const ref = desmRef(u, p), d = Math.round((dt(ref) - dt(HOJE)) / 864e5); if (u.desm === 'parcial' && isDate(u.desmAte)) return u.desmAte < HOJE ? 'desmembrada só até ' + br(u.desmAte) : 'desmembrada até ' + br(u.desmAte) + ' (faltam ' + (d - 1 < 0 ? 0 : d - 1) + ' dia(s))'; return p.ini < HOJE ? 'já começou' : 'começa em ' + d + ' dia(s)'; }
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.matches && el.matches('[data-ucdesmate]')) { const t = curT(); const u = t && (t.ucs || []).find(x => String(x.id) === el.dataset.ucdesmate); if (!u) return; if (isDate(el.value)) u.desmAte = el.value; else delete u.desmAte; u.desmEm = HOJE; saveT(t); refresh(); toast(u.desmAte ? 'Desmembrada até ' + br(u.desmAte) : 'Data removida'); return; }
+  if (!(el.matches && el.matches('[data-ucdesm]'))) return;
+  const t = curT(); const u = t && (t.ucs || []).find(x => String(x.id) === el.dataset.ucdesm); if (!u) return;
+  u.desm = el.value || undefined; if (!u.desm) { delete u.desm; delete u.desmEm; delete u.desmPor; } else { u.desmEm = HOJE; u.desmPor = (typeof USER !== 'undefined' && USER) || ''; }
+  if (u.desm !== 'parcial') delete u.desmAte;
+  saveT(t); refresh(); toast('Desmembramento: ' + DESM.find(x => x[0] === el.value)[1]);
+});
+// alerta de desmembramento (UC que começa em até N dias, ou já começou, e não está desmembrada no SS)
+{ const ca = confAlerts; confAlerts = function () {
+  const out = ca.apply(this, arguments);
+  for (const t of Object.values(S.turmas)) {
+    if (isPlanAct(t) || t.enc) continue; const UP = ucPeriodos(t);
+    for (const u of t.ucs || []) { const p = UP[u.id]; if (!desmPendente(u, p)) continue;
+      ALERTS.push({ tp: 'desm', t, row: null, msg: 'UC "' + u.nome + '" (' + br(p.ini) + ' a ' + br(p.fim) + ') — ' + (u.desm === 'parcial' ? (isDate(u.desmAte) ? 'desmembrada no SS só até ' + br(u.desmAte) : 'desmembramento parcial no SS (sem data)') : 'não desmembrada no SS') }); }
+  }
+  return out;
+}; }
+Object.assign(ALT, { desm: 'Desmembramento' }); Object.assign(ALTL, { desm: 'UC próxima de começar sem desmembramento completo no SS' });
+FIX_NOME.desm = 'Desmembramento'; FIX_DICA.desm = 'UCs que começam em breve (ou já começaram) sem desmembramento completo no SS. Atualize a coluna Desmembramento (SS) na tabela de UCs, destacada em amarelo.';
+// barra ⚠ Corrigir: conta e destaca as UCs com desmembramento pendente
+{ const fc = fixCont; fixCont = function (t) { const c = fc(t); const n = ALERTS.filter(a => a.t === t && a.tp === 'desm' && !a.ok).length; if (n) c.desm = n; return c; }; }
+{ const fb = fixBar; fixBar = function (t) { const c = fixCont(t); let h = fb(t); if (!c.desm || h.includes('data-f="desm"')) return h; const f = V.tFix; const btn = `<button class="sm ${f === 'desm' ? 'on' : ''}" data-act="tFix" data-f="desm">${FIX_NOME.desm} <span class="pill">${c.desm}</span></button>`;
+  if (!h) return `<div class="card fixbar" id="fixbar"><div class="bar" style="margin:0;flex-wrap:wrap;gap:6px"><b style="margin-right:4px">⚠ Corrigir:</b>${btn}</div></div>`;
+  return h.replace('<b style="margin-right:4px">⚠ Corrigir:</b>', '<b style="margin-right:4px">⚠ Corrigir:</b>' + btn); }; }
+{ const fr = fixRowOk; fixRowOk = function (row, r) { if (V.tFix === 'desm') return true; return fr(row, r); }; }
+{ const ff = fixFoco; fixFoco = function () { ff(); if (V.tFix !== 'desm') return; setTimeout(() => { const L = [...document.querySelectorAll('#main select.desmal')]; L.forEach(s => s.closest('tr').classList.add('fixme')); if (L[0]) L[0].scrollIntoView({ block: 'center' }); }, 90); }; }
+{ const va = viewAlertas; viewAlertas = function () { return va().replace(/data-act="fixGo" data-t="([^"]+)" data-ds="" data-f="desm"/g, 'data-act="fixGo" data-t="$1" data-ds="" data-f="desm"'); }; }
+{ const s = MANUAL.find(x => x.id === 'cad-uc'); if (s) s.h += `<div class="mbox tip"><b>Início, fim e desmembramento da UC</b> A tabela de UCs mostra o <b>início</b> e o <b>fim</b> de cada UC (calculados pelo cronograma). Na coluna <b>Desmembramento (SS)</b>, os apoios escolhem <b>Não desmembrada</b>, <b>Parcialmente</b> ou <b>Desmembrada</b>; o sistema guarda a data. Em <b>Parcialmente</b>, informe <b>até</b> quando a UC já está desmembrada: o alerta volta 15 dias antes dessa data. UC que começa em até ${15} dias (ou já começou) sem desmembramento completo gera o alerta <b>Desmembramento</b> — clique nele para ir direto à UC.</div>`; }
+{ const s = MANUAL.find(x => x.id === 'alertas'); if (s) s.h += `<div class="mbox tip"><b>Alerta de desmembramento</b> Aparece quando uma UC começa em até 15 dias (ou já começou) e no SS não está “Desmembrada”. Some quando a coluna Desmembramento (SS) da UC é marcada como Desmembrada.</div>`; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
