@@ -285,6 +285,7 @@ table.ucs label.chk{display:inline-flex;gap:4px;align-items:center;white-space:n
 .pill.okv{background:#dbeafe;color:#1d4ed8}.at.okv{background:#dbeafe;color:#1d4ed8}.almsgs .alok{color:#2563eb}.almsgs .alpe{color:var(--red)}a.alv{cursor:pointer;color:var(--acc);text-decoration:underline;font-size:11px;margin-left:2px;white-space:nowrap}
 .cparea td{background:var(--bg2,#f4f6f8)}.pbar{display:inline-block;width:70px;height:8px;background:#e5e7eb;border-radius:4px;vertical-align:middle;margin-right:6px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--acc)}.mttab td,.cptab td{vertical-align:middle}
 .escver{background:#f8fafc;border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:8px 10px;margin:8px 0}
+.alck{width:28px;text-align:center}.albulk{align-items:center}button.alot,a.alot{margin-left:4px}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -543,7 +544,7 @@ function computeAll(S) {
   DOCMAP = {}; for (const d of S.docentes) DOCMAP[d.nome] = d;
   R = {}; IDX = {}; ALERTS = []; VSALA = {};
   for (const t of Object.values(S.turmas)) if (t.vinc && S.turmas[t.vinc]) VSALA[t.id] = S.turmas[t.vinc].sala || '';
-  const add = (row, tp, msg, t) => { row.al.push({ tp, msg }); ALERTS.push({ tp, msg, t, row }); };
+  const add = (row, tp, msg, t, ot) => { row.al.push({ tp, msg, ot }); ALERTS.push({ tp, msg, t, row, ot }); };
   const TT = Object.values(S.turmas); const ordem = TT.filter(t => !t.copia).concat(TT.filter(t => t.copia));
   for (const t of ordem) { const r = buildTurma(t); R[t.id] = r; }
   // cópias de cópias (raro): segunda passada
@@ -568,12 +569,12 @@ function computeAll(S) {
         if (!overlap(A.row.a, A.row.b, B.row.a, B.row.b)) continue;
         const vin = vinculadas(A.t, B.t);
         if (!vin) for (const nome of A.row.docs) if (B.row.docs.includes(nome)) {
-          add(A.row, 'conf', nome + ' também em ' + B.t.nome + ' (horas divididas no rateio)', A.t);
-          add(B.row, 'conf', nome + ' também em ' + A.t.nome + ' (horas divididas no rateio)', B.t);
+          add(A.row, 'conf', nome + ' também em ' + B.t.nome + ' (horas divididas no rateio)', A.t, B.t.id);
+          add(B.row, 'conf', nome + ' também em ' + A.t.nome + ' (horas divididas no rateio)', B.t, A.t.id);
         }
         if (!vin && A.row.sala && A.row.sala === B.row.sala && A.row.sala !== EAD_SALA && naSala(A.row) && naSala(B.row) && salaOvRows(A.row, B.row) > 0) {
-          add(A.row, 'sala', A.row.sala + ' também com ' + B.t.nome, A.t);
-          add(B.row, 'sala', B.row.sala + ' também com ' + A.t.nome, B.t);
+          add(A.row, 'sala', A.row.sala + ' também com ' + B.t.nome, A.t, B.t.id);
+          add(B.row, 'sala', B.row.sala + ' também com ' + A.t.nome, B.t, A.t.id);
         }
       }
     }
@@ -951,7 +952,7 @@ function viewTurma() {
      <div class="docs" data-act="rDocs" data-ds="${row.ds}">${docs}</div>
      ${row.extra ? '<span class="pill">extra</span>' : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
      <div class="al">${als}</div><button class="more" data-act="rMenu" data-ds="${row.ds}" title="Mais opções">⋯</button></div>`;
-    if (row.al.length) h += `<div class="small almsgs" style="margin:-2px 0 4px 72px;color:var(--mut)">${row.al.map((a, k) => `<span class="${a.ok ? 'alok' : 'alpe'}" title="${esc(a.ok ? alvInfo(a) : '')}">${a.ok ? '✓ ' : ''}${esc(a.msg)} <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="${k}">${a.ok ? '↺ pendente' : '✓ analisado'}</a></span>`).join(' · ')}${row.al.filter(a => !a.ok).length > 1 ? ` <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="all">✓ todos analisados</a>` : ''}</div>`;
+    if (row.al.length) h += `<div class="small almsgs" style="margin:-2px 0 4px 72px;color:var(--mut)">${row.al.map((a, k) => `<span class="${a.ok ? 'alok' : 'alpe'}" title="${esc(a.ok ? alvInfo(a) : '')}">${a.ok ? '✓ ' : ''}${esc(a.msg)}${a.ot && S.turmas[a.ot] ? ` <a class="alv alot" data-act="fixGo" data-t="${a.ot}" data-ds="${row.ds}" data-f="${a.tp}" title="Abrir a outra turma neste dia">abrir ${esc(S.turmas[a.ot].sigla || 'a outra turma')} ›</a>` : ''} <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="${k}">${a.ok ? '↺ pendente' : '✓ analisado'}</a></span>`).join(' · ')}${row.al.filter(a => !a.ok).length > 1 ? ` <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="all">✓ todos analisados</a>` : ''}</div>`;
   }
   return h + '</div>';
 }
@@ -1110,11 +1111,12 @@ function viewAlertas() {
   const cnt = {}; for (const a of AL) cnt[a.tp] = (cnt[a.tp] || 0) + 1;
   let h = `<h1>Alertas</h1><div class="tabs"><button class="${!V.alOk ? 'on' : ''}" data-set="alOk" data-v=""><span class="pill bad">${nPe}</span> Pendentes</button><button class="${V.alOk === 'ok' ? 'on' : ''}" data-set="alOk" data-v="ok"><span class="pill okv">${nOk}</span> Analisados</button><button class="${V.alOk === 'all' ? 'on' : ''}" data-set="alOk" data-v="all">Todos (${ALERTS.length})</button></div>
   <div class="tabs"><button class="${!V.alTp ? 'on' : ''}" data-set="alTp" data-v="">Todos os tipos (${AL.length})</button>${tps.filter(t => cnt[t]).map(t => `<button class="${V.alTp === t ? 'on' : ''}" data-set="alTp" data-v="${t}">${ALTL[t]} (${cnt[t]})</button>`).join('')}</div>`;
-  const L = AL.filter(a => !V.alTp || a.tp === V.alTp).sort((a, b) => ((a.row && a.row.ds) || '').localeCompare((b.row && b.row.ds) || ''));
+  const L = AL.filter(a => (!V.alTp || a.tp === V.alTp) && (!V.alT || a.t.id === V.alT)).sort((a, b) => ((a.row && a.row.ds) || '').localeCompare((b.row && b.row.ds) || ''));
   if (!L.length) return h + '<div class="card empty">Nenhum alerta. 🎉</div>';
-  h += `<div class="tw"><table><tr><th>Data</th><th>Tipo</th><th>Turma</th><th>Detalhe</th><th>Situação</th></tr>`;
-  for (const a of L.slice(0, 800)) h += `<tr ${CONF_TP.has(a.tp) ? `data-go="conferencia"` : `data-open="${a.t.id}"`} data-ds="${a.row ? a.row.ds : ''}" style="cursor:pointer"><td class="nowrap">${a.row ? brs(a.row.ds) + ' ' + WD[a.row.w] : ''}</td><td><span class="at ${a.tp}">${ALT[a.tp]}</span></td><td class="small">${esc(a.t.nome)}</td><td class="small">${a.ok ? '<span style="color:#2563eb">✓ </span>' : ''}${esc(a.msg)}</td><td class="nowrap">${CONF_TP.has(a.tp) ? '<span class="small muted">na Conferência</span>' : a.ok ? `<span class="pill okv" title="${esc(alvInfo(a))}">✓ analisado</span> <button class="sm" data-act="alOkG" data-i="${ALERTS.indexOf(a)}" title="Voltar para pendente">↺</button>` : `<button class="sm" data-act="alOkG" data-i="${ALERTS.indexOf(a)}">✓ Analisado</button>`}</td></tr>`;
-  if (L.length > 800) h += `<tr><td colspan="5" class="muted">… e mais ${L.length - 800}. Filtre por tipo.</td></tr>`;
+  h += alBulkBar(L);
+  h += `<div class="tw"><table><tr><th class="alck"><input type="checkbox" data-alall title="Selecionar todos da lista" onclick="event.stopPropagation()" ${L.length && L.slice(0, 800).filter(a => !CONF_TP.has(a.tp)).every(a => ALSEL.has(alSelK(a))) ? 'checked' : ''}></th><th>Data</th><th>Tipo</th><th>Turma</th><th>Detalhe</th><th>Situação</th></tr>`;
+  for (const a of L.slice(0, 800)) h += `<tr ${CONF_TP.has(a.tp) ? `data-go="conferencia"` : `data-open="${a.t.id}"`} data-ds="${a.row ? a.row.ds : ''}" style="cursor:pointer"><td class="alck" onclick="event.stopPropagation()">${CONF_TP.has(a.tp) ? '' : `<input type="checkbox" data-alsel="${esc(alSelK(a))}" ${ALSEL.has(alSelK(a)) ? 'checked' : ''}>`}</td><td class="nowrap">${a.row ? brs(a.row.ds) + ' ' + WD[a.row.w] : ''}</td><td><span class="at ${a.tp}">${ALT[a.tp]}</span></td><td class="small">${esc(a.t.nome)}</td><td class="small">${a.ok ? '<span style="color:#2563eb">✓ </span>' : ''}${esc(a.msg)}${a.ot && S.turmas[a.ot] ? ` <button class="sm alot" data-act="fixGo" data-t="${a.ot}" data-ds="${a.row ? a.row.ds : ''}" data-f="${a.tp}" title="Abrir ${esc(S.turmas[a.ot].nome)} neste dia">Abrir ${esc(S.turmas[a.ot].sigla || 'outra turma')} ›</button>` : ''}</td><td class="nowrap">${CONF_TP.has(a.tp) ? '<span class="small muted">na Conferência</span>' : a.ok ? `<span class="pill okv" title="${esc(alvInfo(a))}">✓ analisado</span> <button class="sm" data-act="alOkG" data-i="${ALERTS.indexOf(a)}" title="Voltar para pendente">↺</button>` : `<button class="sm" data-act="alOkG" data-i="${ALERTS.indexOf(a)}">✓ Analisado</button>`}</td></tr>`;
+  if (L.length > 800) h += `<tr><td colspan="6" class="muted">… e mais ${L.length - 800}. Filtre por tipo.</td></tr>`;
   return h + '</table></div>';
 }
 
@@ -4192,7 +4194,7 @@ function fixBar(t) {
 }; }
 // Tela Alertas: cada alerta abre a turma já filtrada no tipo
 { const va = viewAlertas; viewAlertas = function () {
-  return va().replace(/<tr data-open="([^"]+)" data-ds="([^"]*)"([^>]*)><td class="nowrap">([^<]*)<\/td><td><span class="at ([a-z]+)">/g, (m, id, ds, rest, dt, tp) => `<tr data-act="fixGo" data-t="${id}" data-ds="${ds}" data-f="${tp === 'uc' ? 'uc' : tp}"${rest} title="Abrir a turma mostrando só o que corrigir"><td class="nowrap">${dt}</td><td><span class="at ${tp}">`);
+  return va().replace(/<tr data-open="([^"]+)" data-ds="([^"]*)"([^>]*)>(<td class="alck"[^>]*>(?:<input[^>]*>)?<\/td>)<td class="nowrap">([^<]*)<\/td><td><span class="at ([a-z]+)">/g, (m, id, ds, rest, ck, dt, tp) => `<tr data-act="fixGo" data-t="${id}" data-ds="${ds}" data-f="${tp}"${rest} title="Abrir a turma mostrando só o que corrigir">${ck}<td class="nowrap">${dt}</td><td><span class="at ${tp}">`);
 }; }
 Object.assign(ACT, {
   tFix: el => { V.tFix = el.dataset.f || ''; refresh(); fixFoco(); },
@@ -4582,6 +4584,56 @@ function escMesNota(d) {
   return s;
 }
 { const s = MANUAL.find(x => x.id === 'cad-docente'); if (s) s.h += `<div class="mbox tip"><b>Escala mudou? Use a vigência</b> Ao alterar a escala de um docente, escolha <b>“É uma nova escala a partir de [data]”</b>. A escala anterior continua valendo até o dia anterior: os meses passados mantêm a carga, o 70×30, o rateio e os alertas calculados com a escala antiga. Escolha “Corrigir a escala atual” só para consertar um erro de digitação. O histórico aparece na janela do docente; ✕ apaga uma versão.</div>`; }
+
+// ===== Alertas: análise em bloco (seleção) =====
+const ALSEL = new Set();
+const alSelK = a => a.t.id + '§' + alKey(a);
+function alBulkBar(L) {
+  const tur = [...new Map(ALERTS.filter(a => !CONF_TP.has(a.tp)).map(a => [a.t.id, a.t])).values()].sort((x, y) => x.nome.localeCompare(y.nome));
+  const vis = L.filter(a => !CONF_TP.has(a.tp)); const nSel = ALERTS.filter(a => ALSEL.has(alSelK(a))).length;
+  return `<div class="bar filters albulk"><label class="small">Turma <select data-in="alT"><option value="">Todas</option>${tur.map(t => `<option value="${t.id}" ${V.alT === t.id ? 'selected' : ''}>${esc(t.nome)}</option>`).join('')}</select></label>
+   <span class="grow"></span><span class="small muted">${nSel ? `<b>${nSel}</b> selecionado(s)` : 'Marque as caixas para analisar em bloco'}</span>
+   <button class="sm" data-act="alSelTodos" ${vis.length ? '' : 'disabled'}>Selecionar os ${Math.min(vis.length, 800)} da lista</button>
+   ${nSel ? `<button class="sm pri" data-act="alBulk" data-on="1">✓ Marcar ${nSel} como analisado(s)</button><button class="sm" data-act="alBulk" data-on="">↺ Voltar ${nSel} para pendente</button><button class="sm" data-act="alSelLimpa">Limpar seleção</button>` : ''}</div>`;
+}
+function alvSetMany(itens, on) {
+  const por = new Map(); for (const a of itens) { if (CONF_TP.has(a.tp)) continue; const k = a.t.id; if (!por.has(k)) por.set(k, { t: a.t, keys: [] }); por.get(k).keys.push(alKey(a)); }
+  const quem = (typeof USER !== 'undefined' && USER) || '';
+  for (const { t, keys } of por.values()) {
+    t.alv = t.alv || {}; for (const k of keys) { if (on) t.alv[k] = { em: HOJE, por: quem }; else delete t.alv[k]; }
+    const vivos = new Set(ALERTS.filter(a => a.t === t).map(alKey)); for (const k of Object.keys(t.alv)) if (!vivos.has(k)) delete t.alv[k];
+    if (!Object.keys(t.alv).length) delete t.alv; saveT(t);
+  }
+  refresh(); return [...por.values()].reduce((s, x) => s + x.keys.length, 0);
+}
+function alListaAtual() {
+  const AL = ALERTS.filter(a => V.alOk === 'ok' ? a.ok : V.alOk === 'all' ? true : !a.ok);
+  return AL.filter(a => (!V.alTp || a.tp === V.alTp) && (!V.alT || a.t.id === V.alT) && !CONF_TP.has(a.tp)).slice(0, 800);
+}
+Object.assign(ACT, {
+  alSelTodos: () => { alListaAtual().forEach(a => ALSEL.add(alSelK(a))); refresh(); },
+  alSelLimpa: () => { ALSEL.clear(); refresh(); },
+  alBulk: el => { const on = !!el.dataset.on; const L = ALERTS.filter(a => ALSEL.has(alSelK(a))); const n = alvSetMany(L, on); ALSEL.clear(); refresh(); toast(n + (on ? ' alerta(s) marcados como analisados' : ' alerta(s) voltaram para pendente')); },
+  // turma: marca de uma vez os alertas pendentes da lista filtrada
+  fixBulk: () => {
+    const t = curT(); const r = R[t.id]; const f = V.tFix;
+    const L = ALERTS.filter(a => a.t === t && a.row && !a.ok && !CONF_TP.has(a.tp) && (f === 'al' || a.tp === f || ((f === 'uc' || f === 'falta') && false)));
+    if (!L.length) return toast('Nada pendente nesta lista');
+    askConfirm(`Marcar <b>${L.length}</b> alerta(s) ${f === 'al' ? '' : 'de <b>' + esc(FIX_NOME[f]) + '</b> '}desta turma como analisados?`, () => { closeModal(); const n = alvSetMany(L, true); toast(n + ' alerta(s) marcados como analisados'); }, 'Marcar');
+  },
+});
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.matches && el.matches('[data-alsel]')) { if (el.checked) ALSEL.add(el.dataset.alsel); else ALSEL.delete(el.dataset.alsel); render(); }
+  if (el.matches && el.matches('[data-alall]')) { const L = alListaAtual(); if (el.checked) L.forEach(a => ALSEL.add(alSelK(a))); else L.forEach(a => ALSEL.delete(alSelK(a))); render(); }
+});
+// barra ⚠ Corrigir da turma: botão para marcar todos da lista
+{ const fb = fixBar; fixBar = function (t) {
+  const h = fb(t); const f = V.tFix; if (!f || !(FIX_ROW.includes(f) || f === 'al')) return h;
+  const n = ALERTS.filter(a => a.t === t && a.row && !a.ok && !CONF_TP.has(a.tp) && (f === 'al' || a.tp === f)).length; if (!n) return h;
+  return h.replace('<button class="sm" data-act="tFix" data-f="">✕ Mostrar tudo</button>', `<button class="sm pri" data-act="fixBulk">✓ Marcar os ${n} desta lista como analisados</button><button class="sm" data-act="tFix" data-f="">✕ Mostrar tudo</button>`);
+}; }
+{ const s = MANUAL.find(x => x.id === 'alertas'); if (s) s.h += `<div class="mbox tip"><b>Analisar em bloco e ir à outra turma</b> Na tela Alertas, filtre por tipo e por <b>Turma</b>, marque as caixas (ou <b>Selecionar os N da lista</b>) e clique em <b>✓ Marcar como analisado(s)</b>. Dentro da turma, com um filtro da barra ⚠ Corrigir ativo, o botão <b>✓ Marcar os N desta lista como analisados</b> faz o mesmo. Em conflitos de docente ou de sala, o botão <b>Abrir [turma] ›</b> leva direto à outra turma, no mesmo dia, para você alterar lá.</div>`; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
