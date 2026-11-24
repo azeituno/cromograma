@@ -284,6 +284,7 @@ table.ucs label.chk{display:inline-flex;gap:4px;align-items:center;white-space:n
 .compbox{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}.pill.cmpp{background:#e0f2fe;color:#0369a1}
 .pill.okv{background:#dbeafe;color:#1d4ed8}.at.okv{background:#dbeafe;color:#1d4ed8}.almsgs .alok{color:#2563eb}.almsgs .alpe{color:var(--red)}a.alv{cursor:pointer;color:var(--acc);text-decoration:underline;font-size:11px;margin-left:2px;white-space:nowrap}
 .cparea td{background:var(--bg2,#f4f6f8)}.pbar{display:inline-block;width:70px;height:8px;background:#e5e7eb;border-radius:4px;vertical-align:middle;margin-right:6px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--acc)}.mttab td,.cptab td{vertical-align:middle}
+.escver{background:#f8fafc;border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:8px 10px;margin:8px 0}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -315,8 +316,11 @@ function ivs(str) {
   while ((m = re.exec(str))) { const a = tm(m[1]), b = tm(m[2]); if (b > a) out.push([a, b]); }
   return out;
 }
-function escIvs(d, w) { return [].concat(ivs(d.esc && d.esc[w + 'M']), ivs(d.esc && d.esc[w + 'T']), ivs(d.esc && d.esc[w + 'N'])); }
-function escHorasDia(d, w) { return escIvs(d, w).reduce((s, [a, b]) => s + (b - a), 0) / 60; }
+// escala com vigência: d.esc = escala mais recente (vale a partir de d.escDe); d.escH = [{de, esc}] escalas anteriores
+function escVers(d) { return [...(d.escH || []), { de: d.escDe || '', esc: d.esc || {} }].sort((x, y) => (x.de || '').localeCompare(y.de || '')); }
+function escOn(d, ds) { if (!ds || !(d.escH && d.escH.length) && !d.escDe) return d.esc; let e = null; for (const v of escVers(d)) if (!v.de || v.de <= ds) e = v.esc; return e || d.esc; }
+function escIvs(d, w, ds) { const E = escOn(d, ds); return [].concat(ivs(E && E[w + 'M']), ivs(E && E[w + 'T']), ivs(E && E[w + 'N'])); }
+function escHorasDia(d, w, ds) { return escIvs(d, w, ds).reduce((s, [a, b]) => s + (b - a), 0) / 60; }
 // aula que ocupa sala: presencial ou EAD síncrona (docente na sala)
 function naSala(row) { return !row.ead || !!row.sinc; }
 function overlap(a1, b1, a2, b2) { return Math.max(0, Math.min(b1, b2) - Math.max(a1, a2)); }
@@ -371,7 +375,7 @@ const calLbl = ds => calInfo(ds) || calParc(ds);
 // para uma aula das a às b: o dia tira a aula? (expediente parcial tira a aula se menos da metade dela cabe no horário de funcionamento)
 function calInfoAula(ds, a, b) { const ci = calInfo(ds); if (ci) return ci; const p = calParc(ds); if (p && (p.sa || (a != null && b > a && overlap(a, b, p.a, p.b) < (b - a) / 2))) return p; return null; }
 // escala do docente no dia, recortada pelo expediente parcial
-function escIvsDia(d, ds, per) { const w = wd(ds); const iv = per ? ivs(d.esc && d.esc[w + per]) : escIvs(d, w); const p = calParc(ds); if (!p) return iv; return iv.map(([x, y]) => [Math.max(x, p.a), Math.min(y, p.b)]).filter(([x, y]) => y > x); }
+function escIvsDia(d, ds, per) { const w = wd(ds); const E = escOn(d, ds); const iv = per ? ivs(E && E[w + per]) : escIvs(d, w, ds); const p = calParc(ds); if (!p) return iv; return iv.map(([x, y]) => [Math.max(x, p.a), Math.min(y, p.b)]).filter(([x, y]) => y > x); }
 
 // ---- Cronograma de uma turma ----
 function horasAula(t) { const a = tm(t.hi), b = tm(t.hf); return (a != null && b != null && b > a) ? (b - a) / 60 : 0; }
@@ -526,9 +530,9 @@ function vinculadas(A, B) { return !!A && !!B && A.id !== B.id && ((A.vinc && A.
 function compDe(d, ds, a, b) { return (d.comp || []).find(c => isDate(c.ini) && c.ini <= ds && ds <= (isDate(c.fim) ? c.fim : c.ini) && (a == null || !(tm(c.hi) != null && tm(c.hf) != null) || overlap(a, b, tm(c.hi), tm(c.hf)) > 0)); }
 const compTxt = c => (tm(c.hi) != null && tm(c.hf) != null ? c.hi + '–' + c.hf : 'dia todo');
 function inFerias(d, ds) { return (d.fer || []).find(f => isDate(f.ini) && isDate(f.fim) && f.ini <= ds && ds <= f.fim); }
-function escalaCheck(d, w, a, b) {
-  const iv = escIvs(d, w);
-  if (!d.esc || !Object.keys(d.esc).length) return null;
+function escalaCheck(d, w, a, b, ds) {
+  const iv = escIvs(d, w, ds); const E = escOn(d, ds);
+  if (!E || !Object.keys(E).length) return null;
   const cov = iv.reduce((s, [x, y]) => s + overlap(a, b, x, y), 0);
   if (cov <= 0) return 'fora';
   if (cov < (b - a) - 20) return 'parcial';
@@ -556,7 +560,7 @@ function computeAll(S) {
         const cp = !f && compDe(d, ds, A.row.a, A.row.b);
         if (cp) add(A.row, 'comp', nome + ' em compensação de horas (' + compTxt(cp) + ')', A.t);
         if (f) add(A.row, 'fer', nome + ' em ' + (f.tipo || 'férias').toLowerCase() + ' (' + brs(f.ini) + '–' + brs(f.fim) + ')', A.t);
-        const e = escalaCheck(d, A.row.w, A.row.a, A.row.b);
+        const e = escalaCheck(d, A.row.w, A.row.a, A.row.b, A.row.ds);
         if (e) add(A.row, 'esc', nome + (e === 'fora' ? ' fora da escala' : ' parcialmente fora da escala') + ' (' + WD[A.row.w] + ' ' + hm(A.row.a) + '–' + hm(A.row.b) + ')', A.t);
       }
       for (let j = i + 1; j < L.length; j++) {
@@ -636,7 +640,7 @@ function cargaDisponivel(d, ano) {
     const w = wd(ds);
     if (w !== 7) {
       const ci = calInfo(ds);
-      if (!(ci && !ci.carga) && !inFerias(d, ds)) m[+ds.slice(5, 7) - 1] += calParc(ds) ? escIvsDia(d, ds).reduce((s, [a, b]) => s + b - a, 0) / 60 : hw[w];
+      if (!(ci && !ci.carga) && !inFerias(d, ds)) m[+ds.slice(5, 7) - 1] += calParc(ds) ? escIvsDia(d, ds).reduce((s, [a, b]) => s + b - a, 0) / 60 : escHorasDia(d, w, ds);
     }
     ds = addD(ds, 1);
   }
@@ -1151,7 +1155,7 @@ function docOptions(sel, ds, a, b, tid) {
   const bi = ds ? busyInfo(ds, a, b, tid) : { doc: {} };
   return '<option value="">—</option>' + docNames().map(n => {
     let tag = '';
-    if (ds) { const d = DOCMAP[n]; if (bi.doc[n]) tag = ' · ocupado: ' + bi.doc[n]; else if (d && inFerias(d, ds)) tag = ' · férias/afast.'; else if (d && compDe(d, ds, a, b)) tag = ' · compensação de horas'; else if (d && escalaCheck(d, wd(ds), a, b)) tag = ' · fora da escala'; else tag = ' · livre'; }
+    if (ds) { const d = DOCMAP[n]; if (bi.doc[n]) tag = ' · ocupado: ' + bi.doc[n]; else if (d && inFerias(d, ds)) tag = ' · férias/afast.'; else if (d && compDe(d, ds, a, b)) tag = ' · compensação de horas'; else if (d && escalaCheck(d, wd(ds), a, b, ds)) tag = ' · fora da escala'; else tag = ' · livre'; }
     return `<option value="${esc(n)}" ${n === sel ? 'selected' : ''}>${esc(n + tag)}</option>`;
   }).join('') + (sel && !DOCMAP[sel] ? `<option selected value="${esc(sel)}">${esc(sel)} (sem cadastro)</option>` : '');
 }
@@ -1278,7 +1282,7 @@ function editDoc(id) {
   const draw = () => {
     modal(`<h2>Docente</h2><div class="grid"><label class="f w2">Nome<input data-dk="nome" value="${esc(w.nome)}"></label><label class="f w2">Função<input data-dk="funcao" value="${esc(w.funcao)}"></label><label class="f">Carga contratual (h/semana)<input type="number" data-dk="carga" value="${esc(w.carga ?? '')}"></label></div>
     <h3>Escala (horário de trabalho)</h3><p class="small muted">Ex.: 08:00–12:00 · dois turnos: 13:00–17:00 / 17:15–18:00 · “Compensado” = sem trabalho.</p>
-    <div class="tw" style="max-height:none"><table class="esc"><tr><th></th><th>Manhã</th><th>Tarde</th><th>Noite</th><th class="num">h</th></tr>${[1, 2, 3, 4, 5, 6].map(x => `<tr><td>${WD[x]}</td>${'MTN'.split('').map(p => `<td><input data-esc="${x}${p}" value="${esc((w.esc || {})[x + p] || '')}"></td>`).join('')}<td class="num">${r2(escHorasDia(w, x))}</td></tr>`).join('')}</table></div>
+    <div class="tw" style="max-height:none"><table class="esc"><tr><th></th><th>Manhã</th><th>Tarde</th><th>Noite</th><th class="num">h</th></tr>${[1, 2, 3, 4, 5, 6].map(x => `<tr><td>${WD[x]}</td>${'MTN'.split('').map(p => `<td><input data-esc="${x}${p}" value="${esc((w.esc || {})[x + p] || '')}"></td>`).join('')}<td class="num">${r2(escHorasDia(w, x))}</td></tr>`).join('')}</table></div>${escVerBlock(w)}
     <h3>Férias e afastamentos</h3>${(w.fer || []).map((f, i) => `<div class="bar"><select data-fk="tipo" data-i="${i}">${opt(['Férias', 'Afastamento', 'Licença', 'Outro'], f.tipo)}</select><input type="date" data-fk="ini" data-i="${i}" value="${esc(f.ini)}"><input type="date" data-fk="fim" data-i="${i}" value="${esc(f.fim)}"><button class="sm dng" data-m="ferDel" data-i="${i}">✕</button></div>`).join('')}
     <button class="sm" data-m="ferAdd">+ Período</button>
     <div class="mact"><button class="dng" data-m="docDel">Excluir docente</button><span class="grow"></span><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`, true);
@@ -1286,15 +1290,23 @@ function editDoc(id) {
   const read = () => {
     document.querySelectorAll('#modal [data-dk]').forEach(i => { w[i.dataset.dk] = i.dataset.dk === 'carga' ? (i.value === '' ? null : +i.value) : i.value.trim(); });
     w.esc = {}; document.querySelectorAll('#modal [data-esc]').forEach(i => { if (i.value.trim()) w.esc[i.dataset.esc] = i.value.trim(); });
+    const em = document.querySelector('#modal [data-escmodo]:checked'); if (em) { w.__modo = em.value; w.__de = (document.querySelector('#modal [data-escde]') || {}).value || ''; }
     document.querySelectorAll('#modal [data-fk]').forEach(i => { w.fer[+i.dataset.i][i.dataset.fk] = i.value; });
   };
   MCTX = { ok: () => {
     read(); const old = d.nome;
     if (w.nome !== old && S.docentes.some(x => x !== d && x.nome === w.nome)) return toast('Já existe um docente com esse nome');
-    Object.assign(d, w); saveDocs();
+    if (w.__modo === 'nova') {
+      if (!isDate(w.__de)) return toast('Informe a data a partir da qual vale a nova escala');
+      const vs = escVers(Object.assign({}, d, { escH: w.escH })).filter(v => (v.de || '') < w.__de);
+      w.escH = vs.map(v => ({ de: v.de || '', esc: v.esc })); w.escDe = w.__de;
+    }
+    delete w.__modo; delete w.__de; if (w.escH && !w.escH.length) delete w.escH;
+    Object.assign(d, w); if (!w.escH) delete d.escH; saveDocs();
     if (w.nome !== old) { for (const t of Object.values(S.turmas)) { let ch = false; const ren = a => a && a.map(n => { if (n === old) { ch = true; return w.nome; } return n; });
       for (const u of t.ucs || []) u.doc = ren(u.doc); t.docPad = ren(t.docPad); for (const o of Object.values(t.ov || {})) if (o.doc) o.doc = ren(o.doc); if (ch) saveT(t); } }
     closeModal(); refresh(); } };
+  MACT.escVerDel = el => { read(); w.escH.splice(+el.dataset.i, 1); draw(); };
   MACT.ferAdd = () => { read(); w.fer = w.fer || []; w.fer.push({ tipo: 'Férias', ini: '', fim: '' }); draw(); };
   MACT.ferDel = el => { read(); w.fer.splice(+el.dataset.i, 1); draw(); };
   MACT.docDel = () => { const ctx = MCTX; askConfirm('Excluir <b>' + esc(d.nome) + '</b> do cadastro? As aulas em que aparece passam a mostrar alerta de “sem cadastro”.', () => { S.docentes = S.docentes.filter(x => x !== d); saveDocs(); closeModal(); refresh(); }, 'Excluir'); };
@@ -1629,7 +1641,7 @@ function viewAgenda() {
   const disp = d ? cargaDisponivel(d, ano)[+V.mes.slice(5) - 1] : 0;
   h += `<div class="card"><div class="bar" style="margin:0 0 8px"><h3 class="grow" style="margin:0">2) ${MESESL[+V.mes.slice(5) - 1]} de ${ano}</h3><span class="pill">${r2(tot)} h em aula</span>${totAt ? `<span class="pill" style="background:#fff3d6">${r2(totAt)} h em atividades</span>` : ''}${d ? `<span class="pill">${disp} h de carga no mês</span><span class="pill ${disp && tot / disp > (+S.cfg.meta || .7) + (+S.cfg.tol || .05) ? 'bad' : 'ok'}">${disp ? Math.round(100 * tot / disp) : 0}% em aula</span>` : ''}</div>${cal}</div>`;
   // 3) escala
-  if (d) h += `<div class="card"><h3 style="margin-top:0">3) Escala de trabalho</h3><div class="tw" style="max-height:none"><table><tr><th></th>${[1, 2, 3, 4, 5, 6].map(w => `<th>${WD[w]}</th>`).join('')}</tr>${['M', 'T', 'N'].map(p => `<tr><td class="small muted">${{ M: 'Manhã', T: 'Tarde', N: 'Noite' }[p]}</td>${[1, 2, 3, 4, 5, 6].map(w => `<td class="small">${esc((d.esc || {})[w + p] || '')}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
+  if (d) h += `<div class="card"><h3 style="margin-top:0">3) Escala de trabalho</h3>${escMesNota(d)}<div class="tw" style="max-height:none"><table><tr><th></th>${[1, 2, 3, 4, 5, 6].map(w => `<th>${WD[w]}</th>`).join('')}</tr>${['M', 'T', 'N'].map(p => `<tr><td class="small muted">${{ M: 'Manhã', T: 'Tarde', N: 'Noite' }[p]}</td>${[1, 2, 3, 4, 5, 6].map(w => `<td class="small">${esc((escOn(d, escMesRef()) || {})[w + p] || '')}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
   return h;
 }
 
@@ -2066,7 +2078,7 @@ document.addEventListener('change', e => {
 // ---------- Versão pública (sem login) ----------
 function pubData() {
   const cfg = clone(S.cfg); cfg.cc = []; delete cfg.raj; delete cfg.metaCH;
-  return { eventos: clone(S.eventos || []), esp: clone(ESP()), mats: clone(MATS()), cfg, docentes: S.docentes.map(d => ({ id: d.id, nome: d.nome, funcao: d.funcao, esc: d.esc, fer: d.fer, comp: (d.comp || []).map(c => ({ ini: c.ini, fim: c.fim, hi: c.hi, hf: c.hf })) })), turmas: Object.fromEntries(Object.entries(S.turmas).map(([k, t]) => { const c = Object.assign(clone(t), { cc: '' }); delete c.conf; delete c.enc; delete c.alv; for (const o of Object.values(c.ov || {})) { delete o.matSt; delete o.obs; } return [k, c]; })) };
+  return { eventos: clone(S.eventos || []), esp: clone(ESP()), mats: clone(MATS()), cfg, docentes: S.docentes.map(d => ({ id: d.id, nome: d.nome, funcao: d.funcao, esc: d.esc, escDe: d.escDe, escH: d.escH, fer: d.fer, comp: (d.comp || []).map(c => ({ ini: c.ini, fim: c.fim, hi: c.hi, hf: c.hf })) })), turmas: Object.fromEntries(Object.entries(S.turmas).map(([k, t]) => { const c = Object.assign(clone(t), { cc: '' }); delete c.conf; delete c.enc; delete c.alv; for (const o of Object.values(c.ov || {})) { delete o.matSt; delete o.obs; } return [k, c]; })) };
 }
 function pubStatus() {
   if (!SNAP) return { ok: false, txt: 'Ainda não publicada' };
@@ -4548,6 +4560,28 @@ Object.assign(ACT, {
 MANUAL.splice(MANUAL.findIndex(s => s.id === 'turma') + 1, 0, { id: 'cursos', g: 'Gestão', t: 'Cursos programados', who: 'ed', h: `<p>Em <b>Cursos programados</b> (menu Gestão) está a lista de todos os cursos com <b>área, início e término</b> (calculados pelo cronograma), período, técnico(a) e situação.</p>
 <ol><li>Filtre por <b>área</b> (uma ou várias) e por <b>mês</b>: escolha o mês no campo ou clique nos atalhos jan…dez.</li><li>Escolha como o mês filtra: <b>Com aula no mês</b>, <b>Começam no mês</b> ou <b>Terminam no mês</b>.</li><li>Clique num curso para abrir. <b>Baixar Excel</b> gera a lista filtrada.</li></ol>` });
 MICON.cursos = '▤';
+
+// ===== Escala com vigência: bloco do editor do docente e nota na agenda =====
+const escSem = E => r2([1, 2, 3, 4, 5, 6].reduce((s, w) => s + [].concat(ivs(E && E[w + 'M']), ivs(E && E[w + 'T']), ivs(E && E[w + 'N'])).reduce((t, [a, b]) => t + b - a, 0) / 60, 0));
+function escVerBlock(w) {
+  const vs = escVers(w); const H = (w.escH || []).slice().sort((x, y) => (x.de || '').localeCompare(y.de || ''));
+  const fimDe = de => { const nx = vs.find(v => (v.de || '') > (de || '')); return nx ? br(addD(nx.de, -1)) : ''; };
+  return `<div class="escver"><b>Quando vale esta escala?</b>
+   <label class="small" style="display:block;margin-top:4px"><input type="radio" name="escmodo" data-escmodo value="corr" checked> Corrigir a escala ${w.escDe ? 'vigente desde ' + br(w.escDe) : 'atual'} (vale para todo o período dela)</label>
+   <label class="small" style="display:block"><input type="radio" name="escmodo" data-escmodo value="nova"> É uma <b>nova escala</b> a partir de <input type="date" data-escde style="width:auto" onfocus="this.closest('.escver').querySelector('[value=nova]').checked=true"> — a escala anterior continua valendo até o dia anterior</label>
+   ${H.length || w.escDe ? `<div class="small" style="margin-top:6px"><b>Histórico de escalas</b>${H.map(v => { const i = (w.escH || []).indexOf(v); return `<div class="bar" style="margin:2px 0;gap:6px">• ${v.de ? 'de ' + br(v.de) : 'desde o início'} até ${fimDe(v.de)} · ${escSem(v.esc)} h/sem <button class="sm" data-m="escVerDel" data-i="${i}" title="Apagar esta versão (a anterior passa a valer no período)">✕</button></div>`; }).join('')}<div>• <b>${w.escDe ? 'a partir de ' + br(w.escDe) : 'atual'}</b>: a escala da tabela acima (${escSem(w.esc)} h/sem)</div></div>` : ''}</div>`;
+}
+function escMesRef() { const m = V.mes || HOJE.slice(0, 7); return m + '-01'; }
+function escMesNota(d) {
+  const m = V.mes || HOJE.slice(0, 7); const vs = escVers(d).filter(v => v.de);
+  const dentro = vs.filter(v => v.de.slice(0, 7) === m && v.de > m + '-01');
+  const vig = [...escVers(d)].reverse().find(v => !v.de || v.de <= escMesRef());
+  let s = vig && vig.de ? `<p class="small muted" style="margin:-4px 0 6px">Escala vigente desde ${br(vig.de)}.</p>` : '';
+  if (dentro.length) s += `<p class="small" style="margin:-2px 0 6px;color:#b45309">⚠ A escala muda em ${dentro.map(v => br(v.de)).join(', ')} — a tabela mostra a do início do mês; o cálculo usa cada uma no seu período.</p>`;
+  const fut = vs.filter(v => v.de > HOJE && v.de.slice(0, 7) > m); if (fut.length) s += `<p class="small muted" style="margin:-2px 0 6px">Nova escala programada a partir de ${br(fut[0].de)}.</p>`;
+  return s;
+}
+{ const s = MANUAL.find(x => x.id === 'cad-docente'); if (s) s.h += `<div class="mbox tip"><b>Escala mudou? Use a vigência</b> Ao alterar a escala de um docente, escolha <b>“É uma nova escala a partir de [data]”</b>. A escala anterior continua valendo até o dia anterior: os meses passados mantêm a carga, o 70×30, o rateio e os alertas calculados com a escala antiga. Escolha “Corrigir a escala atual” só para consertar um erro de digitação. O histórico aparece na janela do docente; ✕ apaga uma versão.</div>`; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
