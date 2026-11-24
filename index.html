@@ -2404,8 +2404,8 @@ const itemName = id => (MATS().itens.find(i => i.id === id) || {}).nome || '(ite
 const matItensTxt = o => ((o && o.matItens) || []).map(it => it.q + ' ' + itemName(it.id)).join(', ');
 function viewEstoque() {
   const w = curWeek(); const days = [0, 1, 2, 3, 4, 5].map(i => addD(w, i));
-  let h = `<div class="bar filters"><button data-act="itAdd">+ Item</button><span class="small muted">Cadastre o que pode ser emprestado às salas e a quantidade total. Os pedidos nas aulas descontam do saldo do dia.</span></div>`;
-  h += `<div class="tw" style="max-height:none;margin-bottom:12px"><table><tr><th>Material</th><th class="num">Quantidade total</th><th>Observação</th><th></th></tr>${MATS().itens.map((it, i) => `<tr><td><input data-itf="nome" data-i="${i}" value="${esc(it.nome)}"></td><td class="num"><input type="number" min="0" data-itf="qtd" data-i="${i}" value="${it.qtd || 0}" style="width:90px"></td><td><input data-itf="obs" data-i="${i}" value="${esc(it.obs || '')}" style="width:100%;min-width:200px"></td><td><button class="sm dng" data-act="itDel" data-i="${i}">✕</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Nenhum item cadastrado.</td></tr>'}</table></div>`;
+  let h = `<div class="bar filters"><button data-act="itAdd">+ Item</button><button data-act="itImport">⇪ Importar lista (Excel ou colar)</button><span class="small muted">Cadastre o que pode ser emprestado às salas e a quantidade total. Os pedidos nas aulas descontam do saldo do dia.</span></div>`;
+  h += `<div class="tw" style="max-height:none;margin-bottom:12px"><table><tr><th>Material</th><th class="num">Quantidade total</th><th>Onde fica</th><th>Observação</th><th></th></tr>${MATS().itens.map((it, i) => `<tr><td><input data-itf="nome" data-i="${i}" value="${esc(it.nome)}"></td><td class="num"><input type="number" min="0" data-itf="qtd" data-i="${i}" value="${it.qtd || 0}" style="width:90px"></td><td><input data-itf="local" data-i="${i}" value="${esc(it.local || '')}" placeholder="sala, armário, carrinho…" style="min-width:180px"></td><td><input data-itf="obs" data-i="${i}" value="${esc(it.obs || '')}" style="width:100%;min-width:200px"></td><td><button class="sm dng" data-act="itDel" data-i="${i}">✕</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Nenhum item cadastrado.</td></tr>'}</table></div>`;
   if (!MATS().itens.length) return h;
   h += `<h2>Saldo por dia</h2><div class="bar filters wkbar">${weekNav()}</div><div class="tw"><table class="stock"><tr><th>Material</th>${days.map(d => `<th class="num">${WD[wd(d)]} ${brs(d)}</th>`).join('')}</tr>`;
   for (const it of MATS().itens) {
@@ -3436,11 +3436,11 @@ const MANUAL = [
   { id: 'visao', g: 'Começo', t: 'Visão geral e acessos', who: 'all', h: `
 <p>O sistema substitui a planilha de cronograma: gera o cronograma de cada turma a partir das UCs, dos dias de aula e do calendário letivo, e a partir dele calcula horas dos docentes, 70×30, rateio, ocupação de salas, meta e relatórios.</p>
 <h4>Dois modos</h4>
-<ul><li><b>Consulta</b> (qualquer pessoa com o link, sem login): vê <b>Cronograma</b>, <b>Agenda do docente</b>, <b>Eventos</b>, <b>Espaços</b> e este <b>Manual</b>. Não altera nada.</li>
-<li><b>Edição</b> (pessoas convidadas como “Pode editar”, com conta Claude): vê também o menu <b>Gestão</b> e pode alterar dados. Todas as alterações ficam salvas na nuvem e aparecem iguais no computador e no celular.</li></ul>
-<h4>Versão pública</h4>
-<p>Quem abre sem login vê uma <b>cópia</b> dos dados, que não se atualiza sozinha. Depois de mudanças importantes, um editor clica em <b>“Atualizar versão pública”</b> (em Início ou em Planilha e dados). Um aviso amarelo aparece quando há alterações ainda não publicadas.</p>
-<p>A versão pública não leva: materiais e estoque, observações internas, centros de custo, rateio, ajustes, metas, matrículas e conferências.</p>
+<ul><li><b>Consulta</b> (qualquer pessoa com o link, sem login): vê <b>Cronograma</b>, <b>Agenda do docente</b>, <b>Eventos</b>, <b>Comitês</b>, <b>Espaços</b>, <b>Mapa de salas</b> e o manual <b>Como consultar</b>. Não altera nada.</li>
+<li><b>Edição</b> (administradores): clique em <b>Entrar para editar</b> e use o e-mail e a senha cadastrados. Aparece o menu <b>Gestão</b> e é possível alterar dados. Tudo fica salvo na nuvem e aparece igual no computador e no celular.</li></ul>
+<h4>Versão de consulta</h4>
+<p>Quem abre sem login vê a <b>versão de consulta</b>, atualizada <b>sozinha</b> alguns segundos depois de cada alteração salva. Não é preciso publicar nada. No topo aparece “✓ Salvo e publicado” quando terminou.</p>
+<p>A versão de consulta não mostra: materiais e estoque, observações internas, centros de custo, rateio, ajustes, metas, matrículas e conferências.</p>
 ${dica('<p>O botão <b>“👁 Ver como consulta”</b>, no rodapé do menu, mostra o site exatamente como os leitores veem. Clique de novo para voltar à edição.</p>')}` },
   { id: 'rotina', g: 'Começo', t: 'Roteiro de uso: implantação e rotina', who: 'ed', h: `
 <h4>Implantação (uma vez)</h4>
@@ -3450,11 +3450,11 @@ ${dica('<p>O botão <b>“👁 Ver como consulta”</b>, no rodapé do menu, mos
 <li><b>Centros de custo</b>: códigos e descrições.</li>
 <li><b>Turmas e UCs</b>: para cada curso, dados da turma, UCs com carga horária e docente, sala padrão, centro de custo, técnico responsável, vagas PSG/Comercial.</li>
 <li><b>Meta PSG e Comercial</b>: metas anuais.</li>
-<li>Clique em <b>Atualizar versão pública</b> e compartilhe o link.</li></ol>
+<li>Compartilhe o link com a equipe: a consulta já está atualizada.</li></ol>
 <h4>Rotina sugerida</h4>
 <ul><li><b>Diariamente/semanalmente</b>: ajustes de aula (cancelar, mover, trocar docente, informação do dia, liberar sala, materiais); olhar <b>Alertas</b>; gerar <b>arquivos para imprimir</b> (materiais e cartaz de salas).</li>
 <li><b>Mensalmente</b>: <b>Alunos e evasão → Atualizar matrículas do mês</b>; conferir <b>70×30</b> e <b>Rateio</b> (com ajustes manuais); ler o painel da <b>Meta</b>; tratar a <b>Conferência de UCs</b>.</li>
-<li><b>Sempre que mudar algo que os leitores precisam ver</b>: Atualizar versão pública.</li></ul>` },
+<li><b>Uma vez por mês</b>: baixe a <b>Cópia de segurança (.json)</b> em Planilha e dados.</li></ul>` },
   { id: 'cron', g: 'Consulta', t: 'Cronograma de aulas', who: 'all', h: `
 <p>${caminho('Cronograma')}. Três formas de ver:</p>
 <ul><li><b>Semana</b>: cartões por dia e turno, com turma, UC, docente, sala e horário. Eventos institucionais e dias não letivos aparecem no topo de cada dia.</li>
@@ -3471,7 +3471,7 @@ ${lei('<ul><li>Selo <b>EAD</b> = aula a distância (sem sala).</li><li>Etiquetas
 <p>${caminho('Eventos')}: calendário do mês com eventos, avisos importantes e dias não letivos (feriado, emenda, sem aula, expediente parcial).</p>
 <h4>Para editores — cadastrar um evento</h4>
 <ol><li>Clique em <b>+ Evento</b> (ou num dia do calendário).</li><li>Preencha título, data (ou período), horário, tipo, local e descrição. Marque <b>Importante</b> para destacar.</li><li>Salve.</li></ol>
-${ref('<p>O evento aparece no calendário de Eventos e no topo do dia no Cronograma (Semana), também no modo consulta depois de atualizar a versão pública.</p>')}` },
+${ref('<p>O evento aparece no calendário de Eventos e no topo do dia no Cronograma (Semana), também no modo consulta.</p>')}` },
   { id: 'espacos', g: 'Consulta', t: 'Espaços (lousas, pátio…) e reservas', who: 'all', h: `
 <p>${caminho('Espaços')}. Abas:</p>
 <ul><li><b>Disponibilidade</b> (primeira tela): por <b>mês</b>, cada espaço tem três quadrinhos por dia — <b>M</b> (7h–12h30), <b>T</b> (12h30–18h), <b>N</b> (18h–23h). Verde = livre, laranja = reservado em parte, vermelho = reservado. Por <b>ano</b>: % livre de cada espaço por mês, ou o calendário do ano de um espaço escolhido no filtro.</li>
@@ -3584,9 +3584,9 @@ ${ref('<ul><li>Cada pendência gera alerta (Conferir UC, Encerrar turma, Excluir
 <li><b>Trazer dados de outra planilha</b>: importa abas Docentes, Dias não letivos, Turmas, UCs, Salas e Centros de Custo.</li>
 <li><b>Cópia de segurança (.json)</b>: guarda tudo, inclusive ajustes de cada aula. Use antes de mudanças grandes ou exclusões. “Restaurar cópia” volta ao estado salvo.</li>
 <li><b>Configurações</b>: ano de referência, meta e tolerância do 70×30, lista de áreas. <b>Desmembrar uma área em várias…</b>: escolha a área (ex.: Comunicação+DI+Foto+TI), digite as novas áreas (uma por linha) e confira a nova área de cada turma (o sistema sugere pelo nome do curso).</li>
-<li><b>Atualizar versão pública</b>: publica para os leitores o estado atual.</li></ul>` },
+</ul>` },
   { id: 'faq', g: 'Ajuda', t: 'Perguntas frequentes', who: 'all', h: `
-<h4>Fiz uma alteração e quem consulta não vê.</h4><p>Um editor precisa clicar em <b>Atualizar versão pública</b>.</p>
+<h4>Fiz uma alteração e quem consulta não vê.</h4><p>Espere aparecer “✓ Salvo e publicado” no topo; quem já está com a página aberta vê a mudança em até 1 minuto (ou ao apertar F5).</p>
 <h4>O término de um curso mudou sozinho.</h4><p>Algum dia não letivo, cancelamento, aula movida ou mudança de UC empurrou as aulas. Veja o cronograma da turma: dias cancelados aparecem com borda tracejada e o motivo.</p>
 <h4>O docente aparece com pouca carga num mês.</h4><p>Verifique férias/afastamentos, feriados, expediente parcial e se há ajuste manual de carga no Rateio.</p>
 <h4>A sala aparece ocupada, mas a turma está em visita.</h4><p>Na aula, em “A sala neste dia”, escolha “Sala livre a aula toda” ou o período livre.</p>
@@ -4306,7 +4306,7 @@ const P = (...l) => `<ol class="msteps">${l.map(x => `<li>${x}</li>`).join('')}<
 const ir = (id, t) => `<a class="link" data-act="manGo" data-id="${id}">${t}</a>`;
 const CAD = [
   { id: 'cad-indice', t: 'Onde cadastrar cada coisa', h: `
-<p>Use esta lista para achar o passo a passo de cada cadastro. Tudo o que é salvo aparece na hora para os editores; para quem consulta, ${HOSTED ? 'em poucos segundos (publicação automática)' : 'depois de clicar em <b>Atualizar versão pública</b>'}.</p>
+<p>Use esta lista para achar o passo a passo de cada cadastro. Tudo o que é salvo aparece na hora para os editores; para quem consulta, em poucos segundos (publicação automática).</p>
 <table class="plain mtab"><tr><th>Quero cadastrar…</th><th>Onde</th></tr>
 ${[['Uma nova turma (curso)', 'cad-turma', 'Turmas e UCs → + Nova turma'], ['UCs, carga horária e docentes de uma turma', 'cad-uc', 'Turmas e UCs → abrir a turma'], ['Uma aula extra ou reposição', 'cad-extra', 'Turma → + Aula extra'],
   ['Um docente, a escala e as férias', 'cad-docente', 'Docentes e escalas → + Docente'], ['Compensação de horas do docente', 'cad-comp', 'Agenda do docente → + Compensação'],
@@ -4428,11 +4428,10 @@ ${P(`Abra ${caminho('Planilha e dados')} e desça até <b>Configurações</b>.`,
  `Ajuste, se precisar, o <b>Ano de referência</b>, a <b>Meta de aula (70×30)</b> e a <b>Tolerância</b>.`)}
 ${dica('Antes de mudanças grandes, baixe a <b>Cópia de segurança (.json)</b> na mesma tela.')}` },
 
-  { id: 'cad-admin', t: 'Outro administrador', h: HOSTED ? `
-${P(`Entre no painel do <b>Supabase</b> do projeto.`, `Em <b>Authentication → Users → Add user → Create new user</b>, informe e-mail e senha e marque <b>Auto Confirm User</b>.`,
- `Em <b>SQL Editor</b>, rode: <code>insert into admins (email) values ('email@exemplo.com');</code>`, `A pessoa abre o site e clica em <b>Entrar para editar</b>.`)}
-<p class="small muted">Para tirar o acesso: <code>delete from admins where email = '…';</code> e exclua o usuário em Authentication → Users.</p>` : `
-${P(`No site, clique em <b>Compartilhar</b> (canto superior do Claude).`, `Convide a pessoa pelo e-mail com permissão <b>Pode editar</b>.`, `Ela precisa ter conta no Claude; ao abrir o link, entra em modo edição.`)}` },
+  { id: 'cad-admin', t: 'Outro administrador', h: `
+${P(`Quem administra o banco de dados (Supabase) entra no painel do projeto.`, `Em <b>Authentication → Users → Add user → Create new user</b>, informe e-mail e senha e marque <b>Auto Confirm User</b>.`,
+ `Em <b>SQL Editor</b>, rode: <code>insert into admins (email) values ('email@exemplo.com');</code>`, `A pessoa abre o site, clica em <b>Entrar para editar</b> e usa esse e-mail e senha.`)}
+<p class="small muted">Para tirar o acesso: <code>delete from admins where email = '…';</code> e exclua o usuário em Authentication → Users.</p>` },
 ];
 const FIG = { 'cad-turma': [['c-turmas', '1. Botão + Nova turma'], ['c-turma-wiz', '2. Curso e quando'], ['c-turma-wiz2', '3. UCs e prévia']], 'cad-uc': [['c-turma-ucs', 'Quadro de UCs'], ['c-uc-docs', 'Docentes da UC'], ['c-uc-dias', 'Dias da semana da UC']], 'cad-extra': [['c-aula-extra', 'Inserir aula extra']],
   'cad-docente': [['c-docentes', '1. Lista e + Docente'], ['c-docente-edit', '2. Escala e férias']], 'cad-comp': [['c-comp', 'Nova compensação']], 'cad-naolet': [['c-naoletivos', 'Dias não letivos'], ['c-letivo', 'Calendário letivo (resultado)']],
@@ -4687,6 +4686,56 @@ FIX_NOME.desm = 'Desmembramento'; FIX_DICA.desm = 'UCs que começam em breve (ou
 { const va = viewAlertas; viewAlertas = function () { return va().replace(/data-act="fixGo" data-t="([^"]+)" data-ds="" data-f="desm"/g, 'data-act="fixGo" data-t="$1" data-ds="" data-f="desm"'); }; }
 { const s = MANUAL.find(x => x.id === 'cad-uc'); if (s) s.h += `<div class="mbox tip"><b>Início, fim e desmembramento da UC</b> A tabela de UCs mostra o <b>início</b> e o <b>fim</b> de cada UC (calculados pelo cronograma). Na coluna <b>Desmembramento (SS)</b>, os apoios escolhem <b>Não desmembrada</b>, <b>Parcialmente</b> ou <b>Desmembrada</b>; o sistema guarda a data. Em <b>Parcialmente</b>, informe <b>até</b> quando a UC já está desmembrada: o alerta volta 15 dias antes dessa data. UC que começa em até ${15} dias (ou já começou) sem desmembramento completo gera o alerta <b>Desmembramento</b> — clique nele para ir direto à UC.</div>`; }
 { const s = MANUAL.find(x => x.id === 'alertas'); if (s) s.h += `<div class="mbox tip"><b>Alerta de desmembramento</b> Aparece quando uma UC começa em até 15 dias (ou já começou) e no SS não está “Desmembrada”. Some quando a coluna Desmembramento (SS) da UC é marcada como Desmembrada.</div>`; }
+
+// ===== Estoque: importar lista de equipamentos (Excel, CSV ou colar) =====
+const nk = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+function itParse(rows) {
+  rows = rows.map(r => r.map(c => String(c == null ? '' : c).trim())).filter(r => r.some(Boolean)); if (!rows.length) return [];
+  const H = rows[0].map(nk); const find = re => H.findIndex(h => re.test(h));
+  let cN = find(/^(material|equipamento|item|nome|descri)/), cQ = find(/^(qtd|quant|qtde|total|estoque)/), cL = find(/(local|onde|aloc|sala|setor|guardad)/), cO = find(/^(obs|observ|patrim|nota)/);
+  let body = rows;
+  if (cN >= 0 || cQ >= 0) body = rows.slice(1); else { cN = 0; cQ = 1; cL = rows[0].length > 2 ? 2 : -1; cO = rows[0].length > 3 ? 3 : -1; }
+  if (cN < 0) cN = 0;
+  return body.map(r => ({ nome: r[cN] || '', qtd: Math.max(0, parseInt(String(r[cQ] || '').replace(/\D/g, '')) || 0), local: cL >= 0 ? r[cL] || '' : '', obs: cO >= 0 ? r[cO] || '' : '' })).filter(x => x.nome);
+}
+function itAgrupa(L) {
+  const G = new Map();
+  for (const x of L) { const k = nk(x.nome); const g = G.get(k) || { nome: x.nome, qtd: 0, locs: [], obs: [] }; g.qtd += x.qtd; if (x.local) g.locs.push(x.local + (x.qtd ? ': ' + x.qtd : '')); if (x.obs && !g.obs.includes(x.obs)) g.obs.push(x.obs); G.set(k, g); }
+  return [...G.values()].map(g => ({ nome: g.nome, qtd: g.qtd, local: g.locs.length > 1 ? g.locs.join(' · ') : (g.locs[0] || '').replace(/: \d+$/, ''), obs: g.obs.join('; ') }));
+}
+let IT_IMP = [];
+function itPrev() {
+  const ex = new Map(MATS().itens.map(it => [nk(it.nome), it]));
+  const L = itAgrupa(IT_IMP); const el = $('#modal #itprev'); if (!el) return;
+  if (!L.length) { el.innerHTML = '<p class="small muted">Cole a lista ou escolha um arquivo para ver a prévia.</p>'; return; }
+  const nNovo = L.filter(x => !ex.has(nk(x.nome))).length;
+  el.innerHTML = `<p class="small"><b>${L.length}</b> item(ns): <b>${nNovo}</b> novo(s), <b>${L.length - nNovo}</b> já no estoque (serão atualizados).</p>
+   <div class="tw" style="max-height:300px"><table><tr><th>Material</th><th class="num">Qtd</th><th>Onde fica</th><th></th></tr>${L.map(x => { const e = ex.get(nk(x.nome)); return `<tr><td>${esc(x.nome)}</td><td class="num">${x.qtd}${e && e.qtd !== x.qtd ? ` <span class="small muted">(era ${e.qtd || 0})</span>` : ''}</td><td class="small">${esc(x.local)}</td><td>${e ? '<span class="pill">atualizar</span>' : '<span class="pill ok">novo</span>'}</td></tr>`; }).join('')}</table></div>`;
+}
+ACT.itImport = () => {
+  IT_IMP = [];
+  MCTX = { ok: () => {
+    const L = itAgrupa(IT_IMP); if (!L.length) return toast('Nada para importar');
+    const ex = new Map(MATS().itens.map(it => [nk(it.nome), it])); let nn = 0, na = 0;
+    for (const x of L) { const e = ex.get(nk(x.nome)); if (e) { e.qtd = x.qtd; if (x.local) e.local = x.local; if (x.obs) e.obs = x.obs; na++; } else { MATS().itens.push({ id: uid('m'), nome: x.nome, qtd: x.qtd, local: x.local, obs: x.obs }); nn++; } }
+    saveMats(); closeModal(); refresh(); toast(`${nn} item(ns) novo(s) e ${na} atualizado(s) no estoque`);
+  } };
+  modal(`<h2>Importar lista de materiais</h2>
+   <p class="small muted">Colunas aceitas (com ou sem cabeçalho, nesta ordem): <b>Material</b>, <b>Quantidade</b>, <b>Onde fica</b> (sala, armário…), <b>Observação</b>. Itens com o mesmo nome em lugares diferentes viram um só item com a quantidade somada e os locais listados. Itens que já existem têm a quantidade atualizada.</p>
+   <label class="f">Arquivo Excel ou CSV<input type="file" accept=".xlsx,.xls,.csv" data-itfile></label>
+   <label class="f" style="margin-top:8px">…ou cole aqui as linhas copiadas do Excel<textarea data-itpaste rows="6" placeholder="Material&#9;Quantidade&#9;Onde fica&#10;Notebook&#9;20&#9;Sala 3&#10;Projetor&#9;4&#9;Almoxarifado"></textarea></label>
+   <div id="itprev" style="margin-top:10px"></div>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Importar para o estoque</button></div>`, true);
+  itPrev();
+};
+document.addEventListener('input', e => { const el = e.target; if (!(el.matches && el.matches('[data-itpaste]'))) return; IT_IMP = itParse(el.value.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : /[;,]/))); itPrev(); });
+document.addEventListener('change', async e => {
+  const el = e.target; if (!(el.matches && el.matches('[data-itfile]')) || !el.files[0]) return;
+  const f = el.files[0]; if (/\.csv$/i.test(f.name)) { const tx = await f.text(); IT_IMP = itParse(tx.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : (l.split(';').length > l.split(',').length ? ';' : ',')))); itPrev(); toast(IT_IMP.length + ' linha(s) lidas'); return; }
+  try { const X = await loadXLSX(); const buf = await el.files[0].arrayBuffer(); const wb = X.read(buf, { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]]; IT_IMP = itParse(X.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false })); itPrev(); toast(IT_IMP.length + ' linha(s) lidas'); }
+  catch (err) { toast('Não consegui ler o arquivo: ' + ((err && err.message) || err)); }
+});
+{ const s = MANUAL.find(x => x.id === 'cad-estoque'); if (s) s.h += `<div class="mbox tip"><b>Importar uma lista pronta</b> Em <b>Estoque de materiais</b>, clique em <b>⇪ Importar lista (Excel ou colar)</b>. Escolha o arquivo (.xlsx ou .csv) ou cole as linhas copiadas do Excel com as colunas <b>Material, Quantidade, Onde fica, Observação</b>. Confira a prévia (novos × atualizados) e clique em <b>Importar para o estoque</b>. O mesmo equipamento em lugares diferentes vira um item só, com a quantidade somada e os locais listados em “Onde fica”.</div>`; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
