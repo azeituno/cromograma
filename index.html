@@ -283,6 +283,7 @@ table.ucs label.chk{display:inline-flex;gap:4px;align-items:center;white-space:n
 .at.comp{background:#e0f2fe;color:#0369a1}.dchip.comp{background:#e0f2fe;color:#0369a1}.mday.comp{background:#f0f9ff}.mot.cmpm{color:#0369a1;font-weight:600}
 .compbox{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}.pill.cmpp{background:#e0f2fe;color:#0369a1}
 .pill.okv{background:#dbeafe;color:#1d4ed8}.at.okv{background:#dbeafe;color:#1d4ed8}.almsgs .alok{color:#2563eb}.almsgs .alpe{color:var(--red)}a.alv{cursor:pointer;color:var(--acc);text-decoration:underline;font-size:11px;margin-left:2px;white-space:nowrap}
+.cparea td{background:var(--bg2,#f4f6f8)}.pbar{display:inline-block;width:70px;height:8px;background:#e5e7eb;border-radius:4px;vertical-align:middle;margin-right:6px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--acc)}.mttab td,.cptab td{vertical-align:middle}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -824,7 +825,7 @@ function render() {
   if (!V.mes) V.mes = (new Date().getFullYear() === +S.cfg.ano ? new Date().toISOString().slice(0, 7) : S.cfg.ano + '-02');
   if (!V.area) { const ts = Object.values(S.turmas); V.area = S.cfg.areas.find(a => ts.some(t => t.area === a)) || S.cfg.areas[0] || ''; }
   V.ano = V.ano || S.cfg.ano;
-  const f = { comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
+  const f = { cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
   try { m.innerHTML = f(); } catch (e) { console.error(e); m.innerHTML = '<div class="card empty">Não foi possível mostrar esta tela.</div>'; }
   document.documentElement.style.setProperty('--hh', document.querySelector('header').offsetHeight + 'px');
   if (V.hl) { const el = document.getElementById('r-' + V.hl); if (el) { el.classList.add('hl'); el.scrollIntoView({ block: 'center' }); } V.hl = ''; }
@@ -1348,7 +1349,7 @@ document.addEventListener('change', e => {
   if (el.dataset.act === 'rst' && el.files[0]) { const fr = new FileReader(); fr.onload = () => { try { const s = JSON.parse(fr.result); if (!s.cfg) throw 0; askConfirm('Substituir todos os dados do app pela cópia?', async () => { if (MODE === 'db' || MODE === 'gas' || MODE === 'sb') for (const id of Object.keys(S.turmas)) if (!s.turmas[id]) { delete S.turmas[id]; persist('turmas/' + id); } S.cfg = s.cfg; S.docentes = s.docentes || []; S.turmas = s.turmas || {}; S.eventos = s.eventos || []; S.esp = s.esp || { espacos: [], reservas: [] }; S.mats = s.mats || { itens: [] }; saveCfg(); saveDocs(); persist('cfg/eventos'); persist('cfg/espacos'); persist('cfg/materiais'); for (const t of Object.values(S.turmas)) saveT(t); persist(); refresh(); toast('Cópia restaurada'); }, 'Restaurar'); } catch (e) { toast('Arquivo inválido'); } }; fr.readAsText(el.files[0]); }
 });
 let qT = null;
-document.addEventListener('input', e => { const el = e.target; if (['q', 'qd', 'qs', 'qcc', 'cq', 'qcm'].includes(el.dataset.in)) { V[el.dataset.in] = el.value; clearTimeout(qT); qT = setTimeout(() => { const pos = el.selectionStart; render(); const n = document.querySelector(`[data-in=${el.dataset.in}]`); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 250); } });
+document.addEventListener('input', e => { const el = e.target; if (['q', 'qd', 'qs', 'qcc', 'cq', 'qcm', 'cpQ'].includes(el.dataset.in)) { V[el.dataset.in] = el.value; clearTimeout(qT); qT = setTimeout(() => { const pos = el.selectionStart; render(); const n = document.querySelector(`[data-in=${el.dataset.in}]`); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 250); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 // ---------- Excel ----------
@@ -4428,6 +4429,115 @@ MANUAL.splice(at, 0, ...CAD.map(s => Object.assign({ g: 'Cadastros passo a passo
 }
 // atalho no topo do manual completo
 { const mr = manualRender; manualRender = function (SRC, ed, titulo, sub) { const h = mr(SRC, ed, titulo, sub); return ed ? h.replace('<div class="mtiles">', `<div class="mtiles"><a class="mtile" data-act="manGo" data-id="cad-indice"><span>🗂️</span><b>Cadastros passo a passo</b></a>`) : h; }; }
+
+// ===== Gestão: Cursos programados (lista com filtro por mês e área) =====
+const MESN = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+function cursosLista() {
+  const m = V.cpMes || ''; const modo = V.cpModo || 'and'; const q = (V.cpQ || '').toLowerCase().trim();
+  const ini = m ? m + '-01' : '', fim = m ? addD(addD(m + '-28', 4).slice(0, 7) + '-01', -1) : '';
+  return Object.values(S.turmas).filter(t => {
+    const r = R[t.id]; if (!r || !r.inicio || isPlanAct(t) || !areaOk(t.area)) return false;
+    if (q && !(t.nome + ' ' + (t.sigla || '') + ' ' + (t.codigo || '') + ' ' + (t.tec || '')).toLowerCase().includes(q)) return false;
+    if (!m) return true; const f = r.fim || r.inicio;
+    return modo === 'ini' ? r.inicio.slice(0, 7) === m : modo === 'fim' ? f.slice(0, 7) === m : r.inicio <= fim && f >= ini;
+  }).sort((a, b) => (a.area || '').localeCompare(b.area || '') || R[a.id].inicio.localeCompare(R[b.id].inicio) || a.nome.localeCompare(b.nome));
+}
+function cpSit(t) { const r = R[t.id]; const f = r.fim || r.inicio; return r.inicio > HOJE ? ['Programado', 'warn'] : f < HOJE ? ['Encerrado', ''] : ['Em andamento', 'ok']; }
+function viewCursos() {
+  const L = cursosLista(); const m = V.cpMes || ''; const modo = V.cpModo || 'and';
+  const anoR = +(V.cpAno || S.cfg.ano || HOJE.slice(0, 4));
+  let h = `<div class="pagehead"><h1>Cursos programados</h1><p class="muted">Todos os cursos cadastrados, com área, início e término calculados pelo cronograma. Clique numa linha para abrir o curso.</p></div>
+  <div class="bar filters">
+   <input placeholder="Buscar curso, sigla, código ou técnico" value="${esc(V.cpQ || '')}" data-in="cpQ" style="flex:1 1 220px">
+   ${areaMulti()}
+   <select data-in="cpModo" title="Como o mês filtra"><option value="and" ${modo === 'and' ? 'selected' : ''}>Com aula no mês</option><option value="ini" ${modo === 'ini' ? 'selected' : ''}>Começam no mês</option><option value="fim" ${modo === 'fim' ? 'selected' : ''}>Terminam no mês</option></select>
+   <input type="month" data-in="cpMes" value="${esc(m)}" title="Mês">${m ? '<button class="sm" data-act="cpMesLimpa">✕ todos os meses</button>' : ''}
+   <button data-act="cpXls">Baixar Excel</button></div>
+  <div class="bar" style="flex-wrap:wrap;gap:4px;margin-top:-4px"><span class="small muted">Atalho ${anoR}:</span> <button class="sm" data-act="cpAno" data-d="-1">‹</button>${MESN.map((n, i) => { const k = anoR + '-' + String(i + 1).padStart(2, '0'); return `<button class="sm ${m === k ? 'on' : ''}" data-act="cpMesSet" data-m="${k}">${n}</button>`; }).join('')}<button class="sm" data-act="cpAno" data-d="1">›</button></div>`;
+  const nAnd = L.filter(t => cpSit(t)[0] === 'Em andamento').length, nProg = L.filter(t => cpSit(t)[0] === 'Programado').length;
+  h += `<div class="kpis"><div class="kpi"><b>${L.length}</b><span>curso(s)${m ? ' — ' + (modo === 'ini' ? 'começam' : modo === 'fim' ? 'terminam' : 'com aula') + ' em ' + MESN[+m.slice(5) - 1] + '/' + m.slice(0, 4) : ''}</span></div><div class="kpi"><b>${nAnd}</b><span>em andamento hoje</span></div><div class="kpi"><b>${nProg}</b><span>ainda vão começar</span></div></div>`;
+  if (!L.length) return h + '<div class="card empty">Nenhum curso com esses filtros.</div>';
+  h += `<div class="card"><div class="tw" style="max-height:none"><table class="cptab"><tr><th>Curso</th><th>Área</th><th>Início</th><th>Término</th><th>Período</th><th>Técnico(a)</th><th>Situação</th></tr>`;
+  let ar = null;
+  for (const t of L) {
+    const r = R[t.id]; const [sit, cl] = cpSit(t);
+    if (t.area !== ar) { ar = t.area; const n = L.filter(x => x.area === ar).length; h += `<tr class="cparea"><td colspan="7"><b>${esc(ar || 'Sem área')}</b> <span class="small muted">${n} curso(s)</span></td></tr>`; }
+    h += `<tr data-open="${t.id}" style="cursor:pointer"><td><b>${esc(t.nome)}</b>${t.sigla || t.codigo ? `<div class="small muted">${esc([t.sigla, t.codigo].filter(Boolean).join(' · '))}</div>` : ''}</td><td class="small">${esc(t.area || '')}</td>
+     <td class="nowrap">${br(r.inicio)}</td><td class="nowrap">${r.fim ? br(r.fim) : '<span class="muted">—</span>'}</td><td class="small">${esc(t.per || '')}${t.hi ? ' · ' + esc(t.hi) + '–' + esc(t.hf || '') : ''}</td><td class="small">${esc(t.tec || '')}</td><td><span class="pill ${cl}">${sit}</span></td></tr>`;
+  }
+  return h + `</table></div></div>`;
+}
+Object.assign(ACT, {
+  cpMesLimpa: () => { V.cpMes = ''; refresh(); },
+  cpMesSet: el => { V.cpMes = V.cpMes === el.dataset.m ? '' : el.dataset.m; refresh(); },
+  cpAno: el => { V.cpAno = +(V.cpAno || S.cfg.ano || HOJE.slice(0, 4)) + (+el.dataset.d); refresh(); },
+  cpXls: () => {
+    const L = cursosLista(); const rows = [['Curso', 'Sigla', 'Código', 'Área', 'Início', 'Término', 'Período', 'Horário', 'Técnico(a) responsável', 'Situação', 'Aulas']];
+    for (const t of L) { const r = R[t.id]; rows.push([t.nome, t.sigla || '', t.codigo || '', t.area || '', br(r.inicio), r.fim ? br(r.fim) : '', t.per || '', t.hi ? t.hi + '–' + (t.hf || '') : '', t.tec || '', cpSit(t)[0], r.aulas.length]); }
+    xlsSave('Cursos programados' + (V.cpMes ? ' ' + V.cpMes : '') + '.xlsx', [{ name: 'Cursos', rows, widths: [44, 12, 16, 24, 12, 12, 12, 14, 26, 14, 8] }]);
+  },
+});
+{ const i = NAV_ADM.findIndex(x => x[0] === 'turmas') + 1; NAV_ADM.splice(i, 0, ['cursos', 'Cursos programados', '▤']); ADM_VIEWS.add('cursos'); }
+
+// ===== Meta: horas programadas e realizadas por técnico(a) responsável =====
+function tecHoras(ano, mes) {
+  const T = {};
+  for (const t of Object.values(S.turmas)) {
+    if (isPlanAct(t) || !areaOk(t.area)) continue; const r = R[t.id]; if (!r) continue;
+    const L = r.aulas.filter(a => a.ds.slice(0, 4) === String(ano) && (!mes || a.ds.slice(5, 7) === mes)); if (!L.length) continue;
+    const k = (t.tec || '').trim() || '— sem técnico(a) —';
+    const prog = L.reduce((s, a) => s + a.h, 0), real = L.filter(a => a.ds < HOJE).reduce((s, a) => s + a.h, 0);
+    const ha = {}; for (const [m] of MODS) { const p = prodTurma(t, ano, m); const idx = mes ? [+mes - 1] : [...Array(12).keys()]; ha[m] = { real: idx.reduce((s, i) => s + p.real[i], 0), prog: idx.reduce((s, i) => s + p.real[i] + p.prev[i], 0) }; }
+    const o = T[k] = T[k] || { tec: k, cursos: [], prog: 0, real: 0, ha: Object.fromEntries(MODS.map(([m]) => [m, { real: 0, prog: 0 }])) };
+    o.cursos.push({ t, prog, real, ha, n: L.length }); o.prog += prog; o.real += real; for (const [m] of MODS) { o.ha[m].real += ha[m].real; o.ha[m].prog += ha[m].prog; }
+  }
+  return Object.values(T).sort((a, b) => (a.tec.startsWith('—') ? 1 : 0) - (b.tec.startsWith('—') ? 1 : 0) || a.tec.localeCompare(b.tec));
+}
+const fh = v => (Math.round(v * 10) / 10).toLocaleString('pt-BR');
+const pctB = (r, p) => { const v = p ? Math.round(r / p * 100) : 0; return `<div class="pbar" title="${v}%"><i style="width:${Math.min(100, v)}%"></i></div><span class="small">${v}%</span>`; };
+function metaTecHtml(ano) {
+  const mes = V.mtMes || ''; const sel = V.mtTec || '';
+  const all = tecHoras(ano, mes); const L = all.filter(x => !sel || x.tec === sel);
+  let h = `<div class="bar filters" style="margin-top:8px"><label class="small">Técnico(a) <select data-in="mtTec"><option value="">Todos</option>${all.map(x => `<option ${sel === x.tec ? 'selected' : ''}>${esc(x.tec)}</option>`).join('')}</select></label>
+   ${areaMulti()}<label class="small">Mês <select data-in="mtMes"><option value="">Ano todo</option>${MESN.map((n, i) => { const k = String(i + 1).padStart(2, '0'); return `<option value="${k}" ${mes === k ? 'selected' : ''}>${n}/${ano}</option>`; }).join('')}</select></label>
+   <button data-act="mtXls">Baixar Excel</button></div>
+  <p class="small muted">Técnico(a) = responsável pela conferência, informado no cadastro do curso. <b>Programadas</b> = todas as aulas do período; <b>realizadas</b> = aulas até ontem. Horas-aluno = estudantes do semestre × horas de aula (mesma regra da meta).</p>`;
+  if (!L.length) return h + '<div class="card empty">Nenhum curso com aulas nesse período e área.</div>';
+  const tot = L.reduce((s, x) => ({ prog: s.prog + x.prog, real: s.real + x.real }), { prog: 0, real: 0 });
+  h += `<div class="card"><div class="tw" style="max-height:none"><table class="mttab"><tr><th>Técnico(a)</th><th>Cursos</th><th>Horas de aula programadas</th><th>Realizadas</th><th>%</th>${MODS.map(([k, l]) => `<th>Horas-aluno ${l}<div class="small muted">realizadas / programadas</div></th>`).join('')}</tr>
+   ${L.map(x => `<tr data-act="mtAbre" data-tec="${esc(x.tec)}" style="cursor:pointer"><td><b>${esc(x.tec)}</b></td><td>${x.cursos.length}</td><td>${fh(x.prog)} h</td><td>${fh(x.real)} h</td><td class="nowrap">${pctB(x.real, x.prog)}</td>${MODS.map(([k]) => `<td class="small">${fh(x.ha[k].real)} / ${fh(x.ha[k].prog)}</td>`).join('')}</tr>`).join('')}
+   ${L.length > 1 ? `<tr class="cparea"><td><b>Total</b></td><td>${L.reduce((s, x) => s + x.cursos.length, 0)}</td><td><b>${fh(tot.prog)} h</b></td><td><b>${fh(tot.real)} h</b></td><td class="nowrap">${pctB(tot.real, tot.prog)}</td>${MODS.map(([k]) => `<td class="small"><b>${fh(L.reduce((s, x) => s + x.ha[k].real, 0))} / ${fh(L.reduce((s, x) => s + x.ha[k].prog, 0))}</b></td>`).join('')}</tr>` : ''}</table></div>
+   <p class="small muted">${sel ? '' : 'Clique num técnico(a) para ver os cursos dele(a).'}</p></div>`;
+  if (sel) {
+    const x = L[0];
+    h += `<div class="card"><h2 style="margin-top:0">Cursos de ${esc(x.tec)}</h2><div class="tw" style="max-height:none"><table><tr><th>Curso</th><th>Área</th><th>Aulas</th><th>Programadas</th><th>Realizadas</th><th>%</th>${MODS.map(([k, l]) => `<th>H-aluno ${l}</th>`).join('')}</tr>
+     ${x.cursos.sort((a, b) => a.t.nome.localeCompare(b.t.nome)).map(c => `<tr data-open="${c.t.id}" style="cursor:pointer"><td><b>${esc(c.t.nome)}</b><div class="small muted">${br(R[c.t.id].inicio)} → ${R[c.t.id].fim ? br(R[c.t.id].fim) : '—'}</div></td><td class="small">${esc(c.t.area || '')}</td><td>${c.n}</td><td>${fh(c.prog)} h</td><td>${fh(c.real)} h</td><td class="nowrap">${pctB(c.real, c.prog)}</td>${MODS.map(([k]) => `<td class="small">${fh(c.ha[k].real)} / ${fh(c.ha[k].prog)}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
+  }
+  return h;
+}
+{ const vm = viewMeta; viewMeta = function () {
+  const tecTab = V.metaTab === 'tec'; if (tecTab) V.metaTab = 'painel';
+  let h; try { h = vm(); } finally { if (tecTab) V.metaTab = 'tec'; }
+  h = h.replace(/(<div class="tabs">[\s\S]*?)(<\/div>)/, (m0, a, b) => (tecTab ? a.replace('class="on" data-set="metaTab" data-v="painel"', 'class="" data-set="metaTab" data-v="painel"') : a) + `<button class="${tecTab ? 'on' : ''}" data-set="metaTab" data-v="tec">Por técnico(a) e área</button>` + b);
+  if (!tecTab) return h;
+  const ano = +(V.mAno || S.cfg.ano || HOJE.slice(0, 4));
+  const k = h.indexOf('<div class="tabs">'); const e = h.indexOf('</div>', k) + 6;
+  const head = h.slice(0, e); const ban = (h.slice(e).match(/^\s*<div class="banner">[\s\S]*?<\/div>/) || [''])[0];
+  return head + ban + metaTecHtml(ano);
+}; }
+Object.assign(ACT, {
+  mtAbre: el => { V.mtTec = V.mtTec === el.dataset.tec ? '' : el.dataset.tec; refresh(); },
+  mtXls: () => {
+    const ano = +(V.mAno || S.cfg.ano || HOJE.slice(0, 4)); const L = tecHoras(ano, V.mtMes || '').filter(x => !V.mtTec || x.tec === V.mtTec);
+    const hd = ['Técnico(a)', 'Curso', 'Área', 'Aulas', 'Horas programadas', 'Horas realizadas', ...MODS.flatMap(([k, l]) => ['H-aluno ' + l + ' realizadas', 'H-aluno ' + l + ' programadas'])];
+    const rows = [hd]; for (const x of L) for (const c of x.cursos) rows.push([x.tec, c.t.nome, c.t.area || '', c.n, +c.prog.toFixed(1), +c.real.toFixed(1), ...MODS.flatMap(([k]) => [+c.ha[k].real.toFixed(1), +c.ha[k].prog.toFixed(1)])]);
+    xlsSave('Horas por tecnico ' + ano + (V.mtMes ? '-' + V.mtMes : '') + '.xlsx', [{ name: 'Por técnico', rows, widths: [26, 44, 22, 8, 12, 12, 14, 14, 14, 14] }]);
+  },
+});
+{ const s = MANUAL.find(x => x.id === 'meta'); if (s) s.h += `<div class="mbox tip"><b>Por técnico(a) e área</b> Na aba <b>Por técnico(a) e área</b> da Meta, veja as horas de aula <b>programadas</b> e <b>realizadas</b> (e as horas-aluno PSG e Comercial) de cada técnico(a) responsável pela conferência. Filtre por técnico(a), área e mês; clique no nome para ver os cursos. O técnico(a) vem do campo “Técnico(a) responsável” no cadastro do curso.</div>`; }
+MANUAL.splice(MANUAL.findIndex(s => s.id === 'turma') + 1, 0, { id: 'cursos', g: 'Gestão', t: 'Cursos programados', who: 'ed', h: `<p>Em <b>Cursos programados</b> (menu Gestão) está a lista de todos os cursos com <b>área, início e término</b> (calculados pelo cronograma), período, técnico(a) e situação.</p>
+<ol><li>Filtre por <b>área</b> (uma ou várias) e por <b>mês</b>: escolha o mês no campo ou clique nos atalhos jan…dez.</li><li>Escolha como o mês filtra: <b>Com aula no mês</b>, <b>Começam no mês</b> ou <b>Terminam no mês</b>.</li><li>Clique num curso para abrir. <b>Baixar Excel</b> gera a lista filtrada.</li></ol>` });
+MICON.cursos = '▤';
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
