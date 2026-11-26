@@ -393,7 +393,7 @@ function hAulaUC(t, u, H) { if (+u.h > 0) return Math.min(+u.h, H || +u.h); if (
 function unitsOf(t) {
   const H = horasAula(t);
   if (t.ucs && t.ucs.length) return t.ucs.map(u => { const hA = hAulaUC(t, u, H); const ch = +u.ch || 0, chE = Math.min(ch, Math.max(0, +u.chE || 0)); const hE = +t.hEad > 0 ? +t.hEad : hA; const nE = hE ? Math.max(0, Math.ceil(chE / hE - 1e-9)) : 0, nP = hA ? Math.max(0, Math.ceil((ch - chE) / hA - 1e-9)) : 0; return { id: u.id, num: u.num, nome: u.nome, ch, chE, doc: u.doc || [], wd: (u.wd || []).map(Number), wdDe: u.wdDe || '', hA, hE, auto: !(+u.h > 0) && hA !== H, n: chE ? nP + nE : (hA ? Math.max(0, Math.ceil(ch / hA - 1e-9)) : 0), nP, nE }; });
-  if (+t.aulasTot > 0) return [{ id: '_', num: '', nome: t.nome || 'Curso', ch: r2((+t.aulasTot) * H), doc: t.docPad || [], hA: H, n: +t.aulasTot, solo: true }];
+  if (+t.aulasTot > 0) return [{ id: '_', num: '', nome: t.nome || 'Curso', ch: r2((+t.aulasTot) * H), doc: t.docPad || [], wd: [], wdDe: '', hA: H, n: +t.aulasTot, solo: true }];
   return [];
 }
 function situacao(t) {
@@ -406,6 +406,15 @@ function situacao(t) {
 }
 
 const knTxt = row => row.mod ? (row.mod === 'EAD' ? 'EAD ' : 'Pres. ') + row.kM + '/' + row.nM : row.k + '/' + row.n;
+// dias de aula da turma numa data: períodos com dias diferentes (t.diasPer) substituem os dias normais
+function diasTurma(t, ds) { for (const p of t.diasPer || []) if (isDate(p.de) && ds >= p.de && (!isDate(p.ate) || ds <= p.ate)) return (p.dias || []).map(Number); return (t.dias || []).map(Number); }
+// recesso próprio da turma e dias não letivos que a turma desconsidera
+function recTurma(t, ds) { for (const r of t.recT || []) if (isDate(r.de) && ds >= r.de && ds <= (isDate(r.ate) ? r.ate : r.de)) return r; return null; }
+function calIgn(t, ds, ci) { return !!ci && ((t.calIgn || []).includes(ds) || (t.calIgnSem && ci.kind === 'sem') || (t.calIgnFer && ci.kind === 'fer')); }
+function calTurma(t, ds, a, b) {
+  const r = recTurma(t, ds); if (r) return { carga: true, mot: 'Recesso da turma' + (r.mot ? ': ' + r.mot : ''), kind: 'rect' };
+  const ci = calInfoAula(ds, a, b); return calIgn(t, ds, ci) ? null : ci;
+}
 function buildTurma(t) {
   if (t.copia && t.copia.src && R[t.copia.src] && R[t.copia.src].aulas) return buildCopia(t);
   const H = horasAula(t);
@@ -414,6 +423,7 @@ function buildTurma(t) {
   if (res.sit !== 'OK') return res;
   // modo dividido: alguma UC com carga EAD → dias EAD consomem a carga EAD, os demais a presencial
   const dias0 = new Set((t.dias || []).map(Number));
+  for (const p of t.diasPer || []) for (const x of p.dias || []) dias0.add(+x);
   const temDiaEad = (t.ead !== '' && t.ead != null && dias0.has(+t.ead)) || Object.values(t.ov || {}).some(o => o && o.ead);
   const split = temDiaEad && units.some(u => u.chE > 0);
   res.split = split;
@@ -436,7 +446,7 @@ function buildTurma(t) {
     const o = ov[ds] || {};
     if (o.skip) return false;
     if (o.extra) return true;
-    return dias.has(wd(ds)) && !calInfoAula(ds, tm(t.hi), tm(t.hf));
+    return diasTurma(t, ds).includes(wd(ds)) && !calTurma(t, ds, tm(t.hi), tm(t.hf));
   };
   // aulas fixadas (UC escolhida à mão) ainda à frente
   const lkP = units.map(() => 0), lkE = units.map(() => 0);
@@ -455,9 +465,9 @@ function buildTurma(t) {
     if (allDone() && ds > lastFixed) break;
     if (vazios > 120) break;
     const w = wd(ds), o = ov[ds] || {};
-    const pattern = dias.has(w);
+    const pattern = (t.diasPer && t.diasPer.length) ? diasTurma(t, ds).includes(w) : dias.has(w);
     if (pattern || o.extra) {
-      const ci = calInfoAula(ds, tm(t.hi), tm(t.hf));
+      const ci = calTurma(t, ds, tm(t.hi), tm(t.hf));
       if (ci && !o.extra) { if (!allDone()) res.rows.push({ ds, w, type: 'off', mot: ci.mot, kind: ci.kind }); }
       else if (o.skip) { res.rows.push({ ds, w, type: 'skip', o }); }
       else {
@@ -916,6 +926,7 @@ function viewTurma() {
   </div><datalist id="ccl">${(S.cfg.cc || []).map(c => `<option value="${esc(c.cod)}">${esc(c.desc)}</option>`).join('')}</datalist>
   <div class="bar small" style="margin:10px 0 0">${r.sit === 'OK' ? `<span class="pill ok">${r.total} aulas · ${r2(r.ch)} h · ${r.H} h por aula${r.units.some(u => u.hA !== r.H) ? ' (algumas UCs com hora diferente)' : ''}</span>${isPlanAct(t) ? '<span class="pill warn">conta no planejamento (30%)</span>' : ''}<span class="pill">Término previsto: <b>${br(r.fim)}</b></span>${nal ? `<span class="pill bad">${nal} alerta(s)</span>` : '<span class="pill ok">sem alertas</span>'}` : `<span class="pill warn">${esc(r.sit)}</span>`}</div></div>`;
   h += copiaCard(t);
+  if (!t.copia) h += diasEspCard(t);
   h += turmaAlunosCard(t);
   // UCs
   h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Unidades curriculares</h2><button data-act="pasteUC">Colar lista</button><button class="pri" data-act="addUC">+ UC</button></div>`;
@@ -2044,7 +2055,7 @@ function viewOcupacao() {
       if (!off && !(wd(d) === 6 && k === 'N')) avail++;
       const L = occ[s + '|' + d + '|' + k] || []; if (L.length) used++;
       const conf = L.length > 1 && s !== EAD_SALA && s !== '—';
-      cells += `<td class="oc ${off ? 'off' : ''} ${conf ? 'conf' : ''} ${one ? 'wide' : ''}" ${canWrite() && s !== EAD_SALA ? `data-occ-cell="${esc(s)}|${d}|${k}" title="Clique para reservar, trocar sala ou ver a aula"` : ''}>${L.map(({ t, row }) => `<span class="ochip" style="background:${areaColor(t.area)}" ${canWrite() ? `data-act="aulaInfo" data-tid="${t.id}"` : `data-open="${t.id}"`} data-ds="${d}" title="${esc(t.nome + ' · ' + hm(row.a) + '–' + hm(row.b) + (row.docs.length ? '\n' + row.docs.join(', ') : '') + (temMat(row.o) ? '\nMateriais: ' + matTxt(row.o) : '') + (infoTxt(row.o) ? '\n' + infoTxt(row.o) : ''))}">${temMat(row.o) ? '📦 ' : ''}${esc(one ? short2(tName(t)) : tSig(t))}</span>${one && row.docs.length ? `<div class="small muted">${esc(short(row.docs[0]))}</div>` : ''}`).join('')}</td>`;
+      cells += `<td class="oc ${off ? 'off' : ''} ${conf ? 'conf' : ''} ${one ? 'wide' : ''}" ${canWrite() && s !== EAD_SALA ? `data-occ-cell="${esc(s)}|${d}|${k}" title="Clique para reservar, trocar sala ou ver a aula"` : ''}>${L.map(({ t, row }) => `<span class="ochip" style="background:${areaColor(t.area)}" ${canWrite() ? `data-act="aulaInfo" data-tid="${t.id}"${String(t.id).startsWith('av:') ? '' : ' data-dgchip'}` : `data-open="${t.id}"`} data-ds="${d}" title="${esc(t.nome + ' · ' + hm(row.a) + '–' + hm(row.b) + (row.docs.length ? '\n' + row.docs.join(', ') : '') + (temMat(row.o) ? '\nMateriais: ' + matTxt(row.o) : '') + (infoTxt(row.o) ? '\n' + infoTxt(row.o) : ''))}">${temMat(row.o) ? '📦 ' : ''}${esc(one ? short2(tName(t)) : tSig(t))}</span>${one && row.docs.length ? `<div class="small muted">${esc(short(row.docs[0]))}</div>` : ''}`).join('')}</td>`;
     } }
     const p = avail ? Math.round(100 * used / avail) : 0;
     return `<tr><td class="stk"><b>${esc(label)}</b>${info ? `<div class="small muted">${esc(info)}</div>` : ''}</td>${cells}<td class="num"><div class="obar"><i style="width:${Math.min(100, p)}%"></i></div><span class="small">${p}%</span></td></tr>`;
@@ -4356,6 +4367,14 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-diasesp', t: 'Dias especiais, recessos e dias não letivos da turma', h: `
+${P(`Abra a turma em ${caminho('Turmas e UCs')} e clique em <b>📆 Dias especiais e recessos desta turma…</b>.`, `<b>Período com outros dias</b>: informe as datas (ou escolha uma UC para usar as datas dela) e marque os dias de aula desse período. Ex.: curso só de segunda que, durante uma UC, tem aula de segunda a sexta.`, `<b>Recesso da turma</b>: informe de/até e o motivo. As aulas desses dias passam para a frente só nesta turma.`, `<b>Dias não letivos da unidade</b>: marque os dias em que esta turma terá aula mesmo assim, ou desconsidere de uma vez todos os “Sem aula”/recessos ou todos os feriados e emendas.`)}
+${dica('Quando a turma ganha ou perde dias, as datas das UCs mudam. Confira o cronograma depois de salvar.')}` },
+
+  { id: 'cad-arrsala', t: 'Arrastar turma para outra sala (Mapa de salas)', h: `
+${P(`Abra ${caminho('Mapa de salas')} → <b>Ocupação</b> → <b>Semana</b>.`, `Segure a etiqueta da turma e arraste até a sala desejada, <b>no mesmo dia</b> (no celular, toque e segure até a etiqueta "soltar" do dedo).`, `Se a sala estiver livre, clique em <b>Mover</b>. Se estiver ocupada, escolha <b>⇄ Trocar as salas</b> (a outra turma vai para a sala de origem) ou <b>Colocar as duas turmas</b> na mesma sala — nesse caso o alerta de sala ocupada continua aparecendo.`, `Marque <b>Repetir nas próximas…</b> para aplicar nas próximas semanas, ou use <b>Escolher outras datas…</b>.`)}
+${dica('O alerta de duas turmas na mesma sala pode ser marcado como analisado em Alertas, se a junção for proposital.')}` },
+
   { id: 'cad-eadconv', t: 'Transformar aula presencial em EAD', h: `
 ${P(`Abra a turma em ${caminho('Turmas e UCs')} e localize a aula no <b>Cronograma de aulas</b>.`, `Clique no botão <b>Presencial</b> da aula.`, `Escolha <b>Contar na carga EAD desta UC</b> (a aula consome uma das aulas EAD da UC; o dia fixo EAD que sobrar fica livre) ou <b>Só mudar para EAD</b> (continua contando como presencial).`, `Clique em <b>Transformar</b>. A aula fica com 📌 e a etiqueta <b>→ EAD</b>.`)}
 ${dica('Para desfazer, clique em <b>EAD</b> na mesma aula: ela volta a ser presencial e a sequência é recalculada.')}` },
@@ -5119,6 +5138,191 @@ body.dragging{cursor:grabbing!important;user-select:none}`;
   document.addEventListener('pointerup', fim);
   document.addEventListener('pointercancel', () => { limpa(); D = null; });
 })();
+
+// ---------- Mapa de salas: arrastar turma para outra sala (mover, trocar ou juntar) ----------
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `.ochip[data-dgchip]{cursor:grab}
+td.oc.dgover{outline:2px dashed #0f766e;outline-offset:-2px;background:#e9f6f4!important}
+td.oc.dgbad{outline:2px dashed #b42318;outline-offset:-2px}
+.ochip.dgsrc{opacity:.4}`;
+  document.head.appendChild(st);
+  let D = null, ignoraClick = false;
+  const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest('td[data-occ-cell]'); };
+  const limpa = () => { document.querySelectorAll('td.dgover,td.dgbad,.ochip.dgsrc').forEach(e => e.classList.remove('dgover', 'dgbad', 'dgsrc')); if (D && D.g) D.g.remove(); document.body.classList.remove('dragging'); };
+  const inicia = () => {
+    D.on = true; document.body.classList.add('dragging'); D.chip.classList.add('dgsrc');
+    const g = D.g = document.createElement('div'); g.className = 'dgghost'; g.style.background = D.chip.style.background;
+    g.textContent = (S.turmas[D.tid] ? tName(S.turmas[D.tid]) : '') + ' · ' + (D.de === '—' ? 'sem sala' : D.de);
+    document.body.appendChild(g); g.style.left = (D.x + 14) + 'px'; g.style.top = (D.y + 10) + 'px';
+  };
+  document.addEventListener('pointerdown', e => {
+    const chip = e.target.closest('.ochip[data-dgchip]'); if (!chip || !canWrite() || e.button > 0) return;
+    const td = chip.closest('td[data-occ-cell]'); if (!td) return;
+    const [de, ds, k] = td.dataset.occCell.split('|');
+    D = { chip, tid: chip.dataset.tid, ds, k, de, td, x: e.clientX, y: e.clientY, on: false, over: null, touch: e.pointerType === 'touch' };
+    if (D.touch) D.timer = setTimeout(() => { if (D && !D.on) { inicia(); if (navigator.vibrate) navigator.vibrate(20); } }, 350);
+  });
+  document.addEventListener('touchmove', e => { if (D && D.on) e.preventDefault(); }, { passive: false });
+  document.addEventListener('pointermove', e => {
+    if (!D) return;
+    const dist = Math.abs(e.clientX - D.x) + Math.abs(e.clientY - D.y);
+    if (!D.on) { if (D.touch) { if (dist > 10) { clearTimeout(D.timer); D = null; } return; } if (dist < 6) return; inicia(); }
+    e.preventDefault();
+    D.g.style.left = (e.clientX + 14) + 'px'; D.g.style.top = (e.clientY + 10) + 'px';
+    const c = cellAt(e.clientX, e.clientY);
+    if (c !== D.over) {
+      if (D.over) D.over.classList.remove('dgover', 'dgbad');
+      D.over = c && c !== D.td ? c : null;
+      if (D.over) { const [s, ds] = D.over.dataset.occCell.split('|'); D.over.classList.add(s !== '—' && ds === D.ds ? 'dgover' : 'dgbad'); }
+    }
+    const w = document.querySelector('.occw'); if (w) { const r = w.getBoundingClientRect(); if (e.clientX > r.right - 50) w.scrollLeft += 14; else if (e.clientX < r.left + 170) w.scrollLeft -= 14; }
+    const dy = e.clientY < 60 ? -14 : e.clientY > innerHeight - 60 ? 14 : 0; if (dy) { const m = document.querySelector('#main'); if (m && m.scrollHeight > m.clientHeight) m.scrollTop += dy; else document.scrollingElement.scrollTop += dy; }
+  }, { passive: false });
+  document.addEventListener('pointerup', () => {
+    if (!D) return; clearTimeout(D.timer); const d = D; const over = d.over; limpa(); D = null;
+    if (!d.on) return;
+    ignoraClick = true; setTimeout(() => ignoraClick = false, 50);
+    if (!over) return;
+    const [para, ds] = over.dataset.occCell.split('|');
+    if (para === '—') return toast('Solte numa sala');
+    if (ds !== d.ds) return toast('Solte no mesmo dia: para mudar a data, use o cronograma da turma');
+    if (para === d.de) return;
+    arrastaSalaModal(S.turmas[d.tid], d.ds, d.de, para);
+  });
+  document.addEventListener('pointercancel', () => { if (D) clearTimeout(D.timer); limpa(); D = null; });
+  document.addEventListener('click', e => { if (ignoraClick) { e.preventDefault(); e.stopPropagation(); ignoraClick = false; } }, true);
+})();
+function arrastaSalaModal(t, ds, de, para) {
+  const r = R[t.id]; const row = r && r.aulas.find(x => x.ds === ds); if (!row) return;
+  const ocup = (IDX[ds] || []).concat(avItems(ds)).filter(({ t: o, row: x }) => o.id !== t.id && naSala(x) && x.sala === para && salaOv(x, row.a, row.b) > 0);
+  const outro = ocup.length === 1 && !String(ocup[0].t.id).startsWith('av:') ? ocup[0] : null;
+  const dw = WDL[wd(ds)].toLowerCase();
+  const nomeDe = de === '—' ? 'sem sala' : de;
+  let h = `<h2>${esc(tName(t))}: ${esc(nomeDe)} → ${esc(para)}</h2><p class="small muted" style="margin-top:-6px">${WDL[wd(ds)]}, ${br(ds)} · ${hm(row.a)}–${hm(row.b)} · ${esc(t.nome)}</p>`;
+  if (ocup.length) h += `<div class="banner" style="margin:8px 0">${esc(para)} já está ocupada neste horário por <b>${ocup.map(o => esc(o.t.nome)).join(', ')}</b>.</div>`;
+  else h += `<p class="small" style="color:var(--grn)">✓ ${esc(para)} está livre neste horário.</p>`;
+  h += `<label class="chk" style="margin:8px 0"><input type="checkbox" data-asrep><span>Repetir nas próximas ${dw}s desta turma${outro ? ' (e da outra, na troca)' : ''} em que a sala for a mesma</span></label>`;
+  h += `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">`;
+  if (outro) h += `<button class="pri" data-m="asTroca">⇄ Trocar as salas: ${esc(tName(t))} vai para ${esc(para)} e ${esc(tName(outro.t))} vai para ${esc(nomeDe)}</button>`;
+  h += `<button class="${outro ? '' : 'pri'}" data-m="asMove">${ocup.length ? `Colocar as duas turmas em ${esc(para)} (fica o alerta de sala ocupada)` : `Mover para ${esc(para)}`}</button>`;
+  h += `<button data-m="asMais">Escolher outras datas…</button></div>${syncChk(t, ds)}<div class="mact"><button data-m="close">Cancelar</button></div>`;
+  MCTX = { t, ds, de, para, outro };
+  modal(h);
+}
+function asDatas(tt, ds, sala) {
+  // aulas da turma no mesmo dia da semana, a partir de ds, que estão na sala indicada
+  const rep = !!($('#modal [data-asrep]') || {}).checked;
+  return R[tt.id].aulas.filter(x => naSala(x) && (x.ds === ds || (rep && x.ds > ds && wd(x.ds) === wd(ds))) && (x.sala || '—') === sala);
+}
+function asSet(tt, ds, sala) { setOv(tt, ds, { sala: sala === tt.sala ? undefined : sala, semSala: undefined }); }
+Object.assign(MACT, {
+  asMove: () => {
+    const { t, ds, de, para } = MCTX; const L = asDatas(t, ds, de);
+    for (const x of L) asSet(t, x.ds, para);
+    saveT(t); closeModal(); refresh(); toast(`${L.length} aula(s) de ${tName(t)} em ${para}`);
+  },
+  asTroca: () => {
+    const { t, ds, de, para, outro } = MCTX; const o = outro.t;
+    const L = asDatas(t, ds, de); const Ld = new Set(L.map(x => x.ds));
+    const M = asDatas(o, ds, para).filter(x => Ld.has(x.ds)); const Md = new Set(M.map(x => x.ds));
+    let n = 0;
+    for (const x of L) if (x.ds === ds || Md.has(x.ds)) { asSet(t, x.ds, para); n++; }
+    for (const x of M) { if (de === '—') setOv(o, x.ds, { sala: undefined, semSala: true }); else asSet(o, x.ds, de); }
+    saveT(t); saveT(o); closeModal(); refresh(); toast(`Salas trocadas em ${n} dia(s)`);
+  },
+  asMais: () => { const { t, ds, para } = MCTX; trocaSalaModal(t, ds, para); },
+});
+
+// ---------- Turma: dias diferentes por período, recessos próprios e dias não letivos desconsiderados ----------
+const WDSEL = [1, 2, 3, 4, 5, 6];
+function diasEspResumo(t) {
+  const n = (t.diasPer || []).length, m = (t.recT || []).length, k = (t.calIgn || []).length + (t.calIgnSem ? 1 : 0) + (t.calIgnFer ? 1 : 0);
+  return [n ? n + ' período(s) com dias diferentes' : '', m ? m + ' recesso(s) da turma' : '', k ? 'dias não letivos desconsiderados' : ''].filter(Boolean).join(' · ');
+}
+function naoLetivosDaTurma(t) {
+  // dias não letivos (da unidade) que cairiam em dia de aula da turma, do início ao fim (+60 dias)
+  const r = R[t.id]; if (!isDate(t.ini)) return [];
+  const fim = addD(isDate(r && r.fim) ? r.fim : addD(t.ini, 365), 60); const out = [];
+  let d = t.ini, g = 0;
+  while (d <= fim && g++ < 1500) {
+    if (diasTurma(t, d).includes(wd(d)) && !recTurma(t, d)) { const ci = calInfoAula(d, tm(t.hi), tm(t.hf)); if (ci) out.push([d, ci]); }
+    d = addD(d, 1);
+  }
+  return out;
+}
+function diasEspCard(t) {
+  const aberto = V.deOpen === t.id || (t.diasPer || []).length || (t.recT || []).length || (t.calIgn || []).length || t.calIgnSem || t.calIgnFer;
+  if (!aberto) return `<div class="bar" style="margin:-4px 0 10px"><button class="sm" data-act="deAbrir">📆 Dias especiais e recessos desta turma…</button><span class="small muted">aulas em outros dias num período, recessos próprios ou ter aula em dia não letivo</span></div>`;
+  const UP = typeof ucPeriodos === 'function' ? ucPeriodos(t) : {};
+  const per = (t.diasPer || []).map((p, i) => `<tr><td class="nowrap">${br(p.de)}</td><td class="nowrap">${isDate(p.ate) ? br(p.ate) : '<span class="muted">sem fim</span>'}</td><td>${(p.dias || []).map(Number).sort().map(x => `<span class="pill">${WD[x]}</span>`).join(' ') || '<span class="muted">nenhum dia (sem aula)</span>'}</td><td class="small muted">${esc(p.obs || '')}</td><td class="nowrap"><button class="sm" data-act="dePer" data-i="${i}">✎</button><button class="sm dng" data-act="dePerDel" data-i="${i}">✕</button></td></tr>`).join('');
+  const rec = (t.recT || []).map((x, i) => `<tr><td class="nowrap">${br(x.de)}</td><td class="nowrap">${br(isDate(x.ate) ? x.ate : x.de)}</td><td>${esc(x.mot || '')}</td><td class="nowrap"><button class="sm" data-act="deRec" data-i="${i}">✎</button><button class="sm dng" data-act="deRecDel" data-i="${i}">✕</button></td></tr>`).join('');
+  const NL = naoLetivosDaTurma(t);
+  const ign = new Set(t.calIgn || []);
+  const tipo = ci => ci.kind === 'parc' ? 'Expediente parcial' : ci.kind === 'sem' ? 'Sem aula / recesso' : /^Emenda/.test(ci.mot) ? 'Emenda' : 'Feriado';
+  const nl = NL.map(([d, ci]) => { const auto = (t.calIgnSem && ci.kind === 'sem') || (t.calIgnFer && ci.kind === 'fer'); return `<label class="tsd" style="min-width:230px" title="${esc(ci.mot)}"><input type="checkbox" data-deign="${d}" ${ign.has(d) || auto ? 'checked' : ''} ${auto ? 'disabled' : ''}><span>${WD[wd(d)]} ${br(d)} · <span class="small muted">${esc(tipo(ci))}: ${esc(ci.mot.replace(/^Sem aula: /, '').slice(0, 30))}</span></span></label>`; }).join('');
+  return `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">📆 Dias especiais e recessos desta turma</h2></div>
+   <h3 style="margin:6px 0">Períodos com dias de aula diferentes</h3>
+   <p class="small muted" style="margin-top:0">Entre as datas, a turma tem aula nos dias marcados no lugar dos dias normais (${(t.dias || []).map(d => WD[d]).join(' ') || '—'}). Ex.: curso só de segunda que, durante uma UC, tem aula todos os dias.</p>
+   ${per ? `<table class="plain"><tr><th>De</th><th>Até</th><th>Dias de aula</th><th>Obs.</th><th></th></tr>${per}</table>` : ''}
+   <div class="bar" style="margin:6px 0 12px"><button class="sm" data-act="dePer">+ Período com outros dias</button></div>
+   <h3 style="margin:6px 0">Recessos só desta turma</h3>
+   ${rec ? `<table class="plain"><tr><th>De</th><th>Até</th><th>Motivo</th><th></th></tr>${rec}</table>` : '<p class="small muted" style="margin:0">Nenhum. As aulas desses dias passam para a frente.</p>'}
+   <div class="bar" style="margin:6px 0 12px"><button class="sm" data-act="deRec">+ Recesso da turma</button></div>
+   <h3 style="margin:6px 0">Dias não letivos da unidade</h3>
+   <p class="small muted" style="margin-top:0">Marque para esta turma <b>ter aula mesmo assim</b> nesses dias.</p>
+   <div class="bar" style="margin:0 0 6px;flex-wrap:wrap"><label class="chk"><input type="checkbox" data-detg="calIgnSem" ${t.calIgnSem ? 'checked' : ''}><span>Desconsiderar todos os dias <b>“Sem aula” / recessos</b></span></label><label class="chk"><input type="checkbox" data-detg="calIgnFer" ${t.calIgnFer ? 'checked' : ''}><span>Desconsiderar todos os <b>feriados e emendas</b></span></label></div>
+   ${NL.length ? `<div class="tsdates" style="max-height:220px">${nl}</div>` : '<p class="small muted">Nenhum dia não letivo cai em dia de aula desta turma.</p>'}
+   </div>`;
+}
+function dePerModal(t, i) {
+  const p = i != null ? t.diasPer[i] : { de: '', ate: '', dias: [...WDSEL.slice(0, 5)], obs: '' };
+  const UP = ucPeriodos(t); const ucs = (t.ucs || []).filter(u => UP[u.id]);
+  MCTX = { ok: () => {
+    const de = $('#modal [data-dp=de]').value, ate = $('#modal [data-dp=ate]').value;
+    if (!isDate(de)) return toast('Informe a data inicial');
+    if (isDate(ate) && ate < de) return toast('A data final é antes da inicial');
+    const dias = [...document.querySelectorAll('#modal [data-dpw]:checked')].map(e => +e.dataset.dpw);
+    const np = { de, ate: isDate(ate) ? ate : '', dias, obs: $('#modal [data-dp=obs]').value.trim() };
+    t.diasPer = t.diasPer || []; if (i != null) t.diasPer[i] = np; else t.diasPer.push(np);
+    t.diasPer.sort((a, b) => a.de.localeCompare(b.de)); saveT(t); closeModal(); refresh(); toast('Período salvo: cronograma recalculado');
+  } };
+  modal(`<h2>Período com outros dias de aula</h2>
+   ${ucs.length ? `<label class="f">Usar as datas de uma UC (opcional)<select data-dp="uc"><option value="">—</option>${ucs.map(u => `<option value="${esc(u.id)}" data-de="${UP[u.id].ini}" data-ate="${UP[u.id].fim}">${esc((u.num ? 'UC ' + u.num + ' · ' : '') + u.nome)} (${brs(UP[u.id].ini)} a ${brs(UP[u.id].fim)})</option>`).join('')}</select></label>` : ''}
+   <div class="bar" style="margin:6px 0"><label class="f">De<input type="date" data-dp="de" value="${esc(p.de)}"></label><label class="f">Até<input type="date" data-dp="ate" value="${esc(p.ate)}"></label></div>
+   <div class="small muted">Dias de aula nesse período</div>
+   <div class="bar" style="margin:4px 0 8px">${WDSEL.map(w => `<label class="chk"><input type="checkbox" data-dpw="${w}" ${(p.dias || []).map(Number).includes(w) ? 'checked' : ''}><span>${WD[w]}</span></label>`).join('')}</div>
+   <label class="f">Observação<input data-dp="obs" value="${esc(p.obs || '')}" placeholder="ex.: intensivo da UC 3"></label>
+   <p class="small muted">Feriados e dias não letivos continuam valendo (a não ser que você os desconsidere para esta turma). Lembre: as datas da UC mudam quando a turma ganha dias, então confira o cronograma depois.</p>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+}
+function deRecModal(t, i) {
+  const x = i != null ? t.recT[i] : { de: '', ate: '', mot: '' };
+  MCTX = { ok: () => {
+    const de = $('#modal [data-dr=de]').value, ate = $('#modal [data-dr=ate]').value || de;
+    if (!isDate(de)) return toast('Informe a data inicial'); if (ate < de) return toast('A data final é antes da inicial');
+    const nx = { de, ate, mot: $('#modal [data-dr=mot]').value.trim() };
+    t.recT = t.recT || []; if (i != null) t.recT[i] = nx; else t.recT.push(nx);
+    t.recT.sort((a, b) => a.de.localeCompare(b.de)); saveT(t); closeModal(); refresh(); toast('Recesso salvo: aulas desses dias passaram para a frente');
+  } };
+  modal(`<h2>Recesso só desta turma</h2>
+   <div class="bar" style="margin:6px 0"><label class="f">De<input type="date" data-dr="de" value="${esc(x.de)}"></label><label class="f">Até<input type="date" data-dr="ate" value="${esc(x.ate)}"></label></div>
+   <label class="f">Motivo<input data-dr="mot" value="${esc(x.mot || '')}" placeholder="ex.: recesso de julho do curso"></label>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+}
+Object.assign(ACT, {
+  deAbrir: () => { V.deOpen = curT().id; refresh(); },
+  dePer: el => dePerModal(curT(), el.dataset.i != null ? +el.dataset.i : null),
+  dePerDel: el => { const t = curT(); t.diasPer.splice(+el.dataset.i, 1); if (!t.diasPer.length) delete t.diasPer; saveT(t); refresh(); },
+  deRec: el => deRecModal(curT(), el.dataset.i != null ? +el.dataset.i : null),
+  deRecDel: el => { const t = curT(); t.recT.splice(+el.dataset.i, 1); if (!t.recT.length) delete t.recT; saveT(t); refresh(); },
+});
+document.addEventListener('change', e => {
+  const el = e.target; const t = curT(); if (!t) return;
+  if (el.dataset.dp === 'uc') { const o = el.selectedOptions[0]; if (o && o.dataset.de) { $('#modal [data-dp=de]').value = o.dataset.de; $('#modal [data-dp=ate]').value = o.dataset.ate; } return; }
+  if (el.dataset.detg) { if (el.checked) t[el.dataset.detg] = true; else delete t[el.dataset.detg]; saveT(t); V.deOpen = t.id; return refresh(); }
+  if (el.dataset.deign) { const s = new Set(t.calIgn || []); if (el.checked) s.add(el.dataset.deign); else s.delete(el.dataset.deign); t.calIgn = [...s].sort(); if (!t.calIgn.length) delete t.calIgn; saveT(t); V.deOpen = t.id; return refresh(); }
+});
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
