@@ -289,6 +289,7 @@ table.ucs label.chk{display:inline-flex;gap:4px;align-items:center;white-space:n
 select.desm{font-size:12px;padding:2px 4px}select.desm.total{background:#dcfce7;color:#166534}select.desm.parcial{background:#fef3c7;color:#92400e}select.desm.nao{background:#f3f4f6}select.desm.desmal{outline:2px solid var(--red)}.at.desm{background:#fce7f3;color:#9d174d}
 .livtab td{vertical-align:middle}.livtab input,.livtab select{font-size:13px}tr.livlate td{background:#fef2f2}.at.liv{background:#ede9fe;color:#5b21b6}
 .edutab td{vertical-align:middle}.edutab input,.edutab select{font-size:13px}
+tr.dimrow td{opacity:.6}.livrec{background:#f1f5f9;border-radius:999px;padding:3px 10px}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -533,6 +534,10 @@ function vinculadas(A, B) { return !!A && !!B && A.id !== B.id && ((A.vinc && A.
 // compensação de horas: d.comp = [{ini, fim, hi, hf, obs, desc}] (hi/hf vazios = dia todo)
 function compDe(d, ds, a, b) { return (d.comp || []).find(c => isDate(c.ini) && c.ini <= ds && ds <= (isDate(c.fim) ? c.fim : c.ini) && (a == null || !(tm(c.hi) != null && tm(c.hf) != null) || overlap(a, b, tm(c.hi), tm(c.hf)) > 0)); }
 const compTxt = c => (tm(c.hi) != null && tm(c.hf) != null ? c.hi + '–' + c.hf : 'dia todo');
+const ATV_TIPOS = ['Compensação', 'Educor', 'Deslocamento', 'Grupo de trabalho', 'Outros'];
+const compTipo = c => (c.tipo === 'Outros' && c.outro) ? c.outro : (c.tipo || 'Compensação');
+// desligamento: docente inativo a partir de d.desl
+const deslDe = (d, ds) => !!(d && isDate(d.desl) && ds >= d.desl);
 function inFerias(d, ds) { return (d.fer || []).find(f => isDate(f.ini) && isDate(f.fim) && f.ini <= ds && ds <= f.fim); }
 function escalaCheck(d, w, a, b, ds) {
   const iv = escIvs(d, w, ds); const E = escOn(d, ds);
@@ -562,7 +567,8 @@ function computeAll(S) {
         if (!d) { add(A.row, 'cad', nome + ' não está no cadastro de docentes', A.t); continue; }
         const f = inFerias(d, ds);
         const cp = !f && compDe(d, ds, A.row.a, A.row.b);
-        if (cp) add(A.row, 'comp', nome + ' em compensação de horas (' + compTxt(cp) + ')', A.t);
+        if (cp) add(A.row, 'comp', nome + ' em ' + compTipo(cp) + (compTipo(cp) === 'Compensação' ? ' de horas' : '') + ' (' + compTxt(cp) + ')', A.t);
+        if (deslDe(d, ds)) add(A.row, 'desl', nome + ' desligado(a) desde ' + br(d.desl), A.t);
         if (f) add(A.row, 'fer', nome + ' em ' + (f.tipo || 'férias').toLowerCase() + ' (' + brs(f.ini) + '–' + brs(f.fim) + ')', A.t);
         const e = escalaCheck(d, A.row.w, A.row.a, A.row.b, A.row.ds);
         if (e) add(A.row, 'esc', nome + (e === 'fora' ? ' fora da escala' : ' parcialmente fora da escala') + ' (' + WD[A.row.w] + ' ' + hm(A.row.a) + '–' + hm(A.row.b) + ')', A.t);
@@ -644,7 +650,7 @@ function cargaDisponivel(d, ano) {
     const w = wd(ds);
     if (w !== 7) {
       const ci = calInfo(ds);
-      if (!(ci && !ci.carga) && !inFerias(d, ds)) m[+ds.slice(5, 7) - 1] += calParc(ds) ? escIvsDia(d, ds).reduce((s, [a, b]) => s + b - a, 0) / 60 : escHorasDia(d, w, ds);
+      if (!(ci && !ci.carga) && !inFerias(d, ds) && !deslDe(d, ds)) m[+ds.slice(5, 7) - 1] += calParc(ds) ? escIvsDia(d, ds).reduce((s, [a, b]) => s + b - a, 0) / 60 : escHorasDia(d, w, ds);
     }
     ds = addD(ds, 1);
   }
@@ -668,7 +674,7 @@ function rateio(S, ano) {
   const MAN = rajOf(S).man.filter(e => e.doc && String(e.mes || '').slice(0, 4) === String(ano) && +e.h);
   for (const e of MAN) if (!H[e.doc]) H[e.doc] = { m: Array(12).fill(0), pl: Array(12).fill(0), t: {} };
   for (const [nome, o] of Object.entries(H)) {
-    const d = DOCMAP[nome]; const C = d ? cargaDisponivel(d, ano) : Array(12).fill(0);
+    const d = DOCMAP[nome]; if (d && d.convite) continue; const C = d ? cargaDisponivel(d, ano) : Array(12).fill(0);
     const byA = {}, byP = {}, manK = {};
     for (const e of MAN) if (e.doc === nome) { const i = +e.mes.slice(5, 7) - 1; const cc = String(e.cc || '').trim(); const tgt = e.tipo === '4060' ? byP : byA; (tgt[cc] = tgt[cc] || Array(12).fill(0))[i] += +e.h; manK[cc + '|' + i] = 1; }
     for (const [tid, m] of Object.entries(o.t)) { const t = S.turmas[tid] || {}; const cc = String(t.cc || '').trim(); const tgt = isPlanAct(t) ? byP : byA; const a = tgt[cc] = tgt[cc] || Array(12).fill(0); m.forEach((x, i) => a[i] += x); }
@@ -706,8 +712,8 @@ const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(
 const COLORS = ['#0b7a83', '#d4622b', '#5a32c8', '#2f8f3a', '#c2185b', '#b08600', '#1f6fd1', '#7b5e3c', '#0f9d8a', '#8e44ad', '#e0457b', '#557a00'];
 const ucColor = i => COLORS[i % COLORS.length];
 const short = n => { const p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : p[0] || ''; };
-const ALT = { ucc: 'Conferir UC', enc: 'Encerrar turma', exc: 'Excluir turma', conf: 'Conflito', fer: 'Férias/afast.', comp: 'Compensação', esc: 'Fora da escala', sala: 'Sala ocupada', cad: 'Sem cadastro', uc: 'UC', sit: 'Cadastro', cc: 'Sem centro de custo' };
-const ALTL = { ucc: 'UC terminada para conferir', enc: 'Turma terminada para encerrar', exc: 'Turma terminada há mais de 50 dias', conf: 'Docente em duas turmas ao mesmo tempo', fer: 'Docente em férias ou afastamento', comp: 'Docente em compensação de horas', esc: 'Docente fora da escala', sala: 'Sala com duas turmas ao mesmo tempo', cad: 'Docente não cadastrado', uc: 'UC com aulas a mais', sit: 'Turma com cadastro incompleto', cc: 'Turma sem centro de custo' };
+const ALT = { ucc: 'Conferir UC', enc: 'Encerrar turma', exc: 'Excluir turma', conf: 'Conflito', fer: 'Férias/afast.', comp: 'Fora de sala', desl: 'Desligado', esc: 'Fora da escala', sala: 'Sala ocupada', cad: 'Sem cadastro', uc: 'UC', sit: 'Cadastro', cc: 'Sem centro de custo' };
+const ALTL = { ucc: 'UC terminada para conferir', enc: 'Turma terminada para encerrar', exc: 'Turma terminada há mais de 50 dias', conf: 'Docente em duas turmas ao mesmo tempo', fer: 'Docente em férias ou afastamento', comp: 'Docente em compensação, Educor, deslocamento ou outra atividade fora de sala', desl: 'Docente desligado alocado em aula', esc: 'Docente fora da escala', sala: 'Sala com duas turmas ao mesmo tempo', cad: 'Docente não cadastrado', uc: 'UC com aulas a mais', sit: 'Turma com cadastro incompleto', cc: 'Turma sem centro de custo' };
 const HOJE = new Date().toISOString().slice(0, 10);
 const PER_ORD = { 'Manhã': 0, 'Tarde': 1, 'Noite': 2, 'Sábado': 3 };
 
@@ -946,7 +952,7 @@ function viewTurma() {
     if (row.type === 'skip') { h += `<div class="row skip" id="r-${row.ds}">${dt}<span class="grow">Aula cancelada neste dia${row.o.moved ? ' (movida para ' + brs(row.o.moved) + ')' : ''}</span><button class="sm" data-act="unskip" data-ds="${row.ds}">Restaurar</button></div>`; continue; }
     if (row.ui < 0) { h += `<div class="row livre" id="r-${row.ds}">${dt}<span class="no">—</span><select class="uc" data-act="rUC" data-ds="${row.ds}">${ucOpts(-1, false)}</select><span class="small muted grow">Dia livre: as UCs já fecharam antes de uma aula fixada mais à frente. Escolha uma UC ou cancele o dia.</span><button class="more" data-act="rMenu" data-ds="${row.ds}">⋯</button></div>`; continue; }
     const u = r.units[row.ui];
-    const PRI = { conf: 4, fer: 3, comp: 3, esc: 2, cad: 1 }; const dst = {}; for (const n of row.docs) for (const a of row.al) if (a.msg.startsWith(n) && PRI[a.tp] && (!dst[n] || PRI[a.tp] > PRI[dst[n]])) dst[n] = a.tp;
+    const PRI = { conf: 4, desl: 4, fer: 3, comp: 3, esc: 2, cad: 1 }; const dst = {}; for (const n of row.docs) for (const a of row.al) if (a.msg.startsWith(n) && PRI[a.tp] && (!dst[n] || PRI[a.tp] > PRI[dst[n]])) dst[n] = a.tp;
     const docs = row.docs.map(n => `<span class="dchip ${dst[n] || ''}">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docentes</span>';
     const salaSel = !naSala(row) ? `<span style="width:150px"></span>` : `<select class="sala" data-act="rSala" data-ds="${row.ds}">${opt(salaNames(), row.sala, '— sala —')}</select>`;
     const als = [...new Set(row.al.map(a => a.tp))].map(tp => { const okT = row.al.filter(a => a.tp === tp).every(a => a.ok); return `<span class="at ${okT ? 'okv' : tp}" title="${esc(row.al.filter(a => a.tp === tp).map(a => (a.ok ? '✓ ' : '') + a.msg).join('\n'))}">${okT ? '✓ ' : ''}${ALT[tp]}</span>`; }).join('');
@@ -1001,7 +1007,7 @@ function viewDocentes() {
     const disp = V.mes.slice(0, 4) == ano ? cargaDisponivel(d, ano)[m] : '';
     const aula = r2(((H[d.nome] || {}).m || [])[m] || 0);
     const diff = d.carga && Math.abs(sem - d.carga) > 0.01;
-    h += `<tr><td><b>${esc(d.nome)}</b></td><td class="small">${esc(d.funcao)}</td><td class="num">${d.carga ?? ''}</td><td class="num ${diff ? '' : ''}">${sem}${diff ? ' <span class="pill warn" title="Escala diferente da carga contratual">≠</span>' : ''}</td>
+    h += `<tr class="${d.desl && d.desl <= HOJE ? 'dimrow' : ''}"><td><b>${esc(d.nome)}</b>${d.convite ? ' <span class="pill" title="Não entra no rateio">carta convite</span>' : ''}${d.desl ? ` <span class="pill ${d.desl <= HOJE ? 'bad' : 'warn'}">${d.desl <= HOJE ? 'desligado(a)' : 'desliga'} em ${br(d.desl)}</span>` : ''}</td><td class="small">${esc(d.funcao)}</td><td class="num">${d.carga ?? ''}</td><td class="num ${diff ? '' : ''}">${sem}${diff ? ' <span class="pill warn" title="Escala diferente da carga contratual">≠</span>' : ''}</td>
       <td class="num">${disp}</td><td class="num">${aula}</td><td class="small">${(d.fer || []).map(f => `${esc(f.tipo)} ${brs(f.ini)}–${brs(f.fim)}`).join('<br>')}</td>
       <td class="nowrap"><button class="sm" data-act="editD" data-id="${d.id}">Editar</button> <button class="sm" data-act="agD" data-n="${esc(d.nome)}">Agenda</button></td></tr>`;
   });
@@ -1110,7 +1116,7 @@ function viewHoras() {
 
 // ---------- Alertas ----------
 function viewAlertas() {
-  const tps = ['ucc', 'enc', 'exc', 'conf', 'fer', 'comp', 'esc', 'sala', 'cad', 'uc', 'desm', 'liv', 'cc', 'sit'];
+  const tps = ['ucc', 'enc', 'exc', 'conf', 'fer', 'comp', 'desl', 'esc', 'sala', 'cad', 'uc', 'desm', 'liv', 'cc', 'sit'];
   const nOk = ALERTS.filter(a => a.ok).length, nPe = ALERTS.length - nOk;
   const AL = ALERTS.filter(a => V.alOk === 'ok' ? a.ok : V.alOk === 'all' ? true : !a.ok);
   const cnt = {}; for (const a of AL) cnt[a.tp] = (cnt[a.tp] || 0) + 1;
@@ -1162,7 +1168,7 @@ function docOptions(sel, ds, a, b, tid) {
   const bi = ds ? busyInfo(ds, a, b, tid) : { doc: {} };
   return '<option value="">—</option>' + docNames().map(n => {
     let tag = '';
-    if (ds) { const d = DOCMAP[n]; if (bi.doc[n]) tag = ' · ocupado: ' + bi.doc[n]; else if (d && inFerias(d, ds)) tag = ' · férias/afast.'; else if (d && compDe(d, ds, a, b)) tag = ' · compensação de horas'; else if (d && escalaCheck(d, wd(ds), a, b, ds)) tag = ' · fora da escala'; else tag = ' · livre'; }
+    if (ds) { const d = DOCMAP[n]; if (bi.doc[n]) tag = ' · ocupado: ' + bi.doc[n]; else if (d && inFerias(d, ds)) tag = ' · férias/afast.'; else if (d && deslDe(d, ds)) tag = ' · desligado(a)'; else if (d && compDe(d, ds, a, b)) tag = ' · compensação de horas'; else if (d && escalaCheck(d, wd(ds), a, b, ds)) tag = ' · fora da escala'; else tag = ' · livre'; }
     return `<option value="${esc(n)}" ${n === sel ? 'selected' : ''}>${esc(n + tag)}</option>`;
   }).join('') + (sel && !DOCMAP[sel] ? `<option selected value="${esc(sel)}">${esc(sel)} (sem cadastro)</option>` : '');
 }
@@ -1288,6 +1294,8 @@ function editDoc(id) {
   const w = clone(d);
   const draw = () => {
     modal(`<h2>Docente</h2><div class="grid"><label class="f w2">Nome<input data-dk="nome" value="${esc(w.nome)}"></label><label class="f w2">Função<input data-dk="funcao" value="${esc(w.funcao)}"></label><label class="f">Carga contratual (h/semana)<input type="number" data-dk="carga" value="${esc(w.carga ?? '')}"></label></div>
+    <div class="escver" style="margin-top:8px"><label class="chk"><input type="checkbox" data-dconv ${w.convite ? 'checked' : ''}><span><b>Carta convite</b> — não entra no rateio</span></label>
+     <div class="bar" style="margin-top:6px;gap:8px"><span class="small"><b>Desligamento:</b> a partir de</span><input type="date" data-ddesl value="${esc(w.desl || '')}" style="width:auto"><span class="small muted">Deixa de contar carga, sai das escolhas e aulas depois dessa data geram alerta. Tudo antes continua registrado.</span>${w.desl ? '<button class="sm" data-m="deslLimpa">Reativar</button>' : ''}</div></div>
     <h3>Escala (horário de trabalho)</h3><p class="small muted">Ex.: 08:00–12:00 · dois turnos: 13:00–17:00 / 17:15–18:00 · “Compensado” = sem trabalho.</p>
     <div class="tw" style="max-height:none"><table class="esc"><tr><th></th><th>Manhã</th><th>Tarde</th><th>Noite</th><th class="num">h</th></tr>${[1, 2, 3, 4, 5, 6].map(x => `<tr><td>${WD[x]}</td>${'MTN'.split('').map(p => `<td><input data-esc="${x}${p}" value="${esc((w.esc || {})[x + p] || '')}"></td>`).join('')}<td class="num">${r2(escHorasDia(w, x))}</td></tr>`).join('')}</table></div>${escVerBlock(w)}
     <h3>Férias e afastamentos</h3>${(w.fer || []).map((f, i) => `<div class="bar"><select data-fk="tipo" data-i="${i}">${opt(['Férias', 'Afastamento', 'Licença', 'Outro'], f.tipo)}</select><input type="date" data-fk="ini" data-i="${i}" value="${esc(f.ini)}"><input type="date" data-fk="fim" data-i="${i}" value="${esc(f.fim)}"><button class="sm dng" data-m="ferDel" data-i="${i}">✕</button></div>`).join('')}
@@ -1296,6 +1304,7 @@ function editDoc(id) {
   };
   const read = () => {
     document.querySelectorAll('#modal [data-dk]').forEach(i => { w[i.dataset.dk] = i.dataset.dk === 'carga' ? (i.value === '' ? null : +i.value) : i.value.trim(); });
+    { const cv = document.querySelector('#modal [data-dconv]'); if (cv) { if (cv.checked) w.convite = true; else delete w.convite; } const dl = document.querySelector('#modal [data-ddesl]'); if (dl) { if (isDate(dl.value)) w.desl = dl.value; else delete w.desl; } }
     w.esc = {}; document.querySelectorAll('#modal [data-esc]').forEach(i => { if (i.value.trim()) w.esc[i.dataset.esc] = i.value.trim(); });
     const em = document.querySelector('#modal [data-escmodo]:checked'); if (em) { w.__modo = em.value; w.__de = (document.querySelector('#modal [data-escde]') || {}).value || ''; }
     document.querySelectorAll('#modal [data-fk]').forEach(i => { w.fer[+i.dataset.i][i.dataset.fk] = i.value; });
@@ -1309,10 +1318,11 @@ function editDoc(id) {
       w.escH = vs.map(v => ({ de: v.de || '', esc: v.esc })); w.escDe = w.__de;
     }
     delete w.__modo; delete w.__de; if (w.escH && !w.escH.length) delete w.escH;
-    Object.assign(d, w); if (!w.escH) delete d.escH; saveDocs();
+    Object.assign(d, w); if (!w.escH) delete d.escH; if (!w.convite) delete d.convite; if (!w.desl) delete d.desl; saveDocs();
     if (w.nome !== old) { for (const t of Object.values(S.turmas)) { let ch = false; const ren = a => a && a.map(n => { if (n === old) { ch = true; return w.nome; } return n; });
       for (const u of t.ucs || []) u.doc = ren(u.doc); t.docPad = ren(t.docPad); for (const o of Object.values(t.ov || {})) if (o.doc) o.doc = ren(o.doc); if (ch) saveT(t); } }
     closeModal(); refresh(); } };
+  MACT.deslLimpa = () => { read(); delete w.desl; draw(); };
   MACT.escVerDel = el => { read(); w.escH.splice(+el.dataset.i, 1); draw(); };
   MACT.ferAdd = () => { read(); w.fer = w.fer || []; w.fer.push({ tipo: 'Férias', ini: '', fim: '' }); draw(); };
   MACT.ferDel = el => { read(); w.fer.splice(+el.dataset.i, 1); draw(); };
@@ -1640,7 +1650,7 @@ function viewAgenda() {
     if (x.slice(0, 7) > V.mes && wd(x) === 1) break;
     const inM = x.slice(0, 7) === V.mes; const ci = calInfo(x); const fer = d && inFerias(d, x); const cpx = d && !fer && compDe(d, x);
     const items = (byDay[x] || []).sort((p, q) => p.a.a - q.a.a);
-    cal += `<div class="mday ${inM ? '' : 'out'} ${ci ? 'nl' : ''} ${fer ? 'fer' : ''} ${cpx ? 'comp' : ''} ${x === HOJE ? 'today' : ''}"><div class="dn">${+x.slice(8)}</div>${cpx && inM ? `<div class="mot cmpm" ${canWrite() ? `data-act="compEd" data-k="${(d.comp || []).indexOf(cpx)}" style="cursor:pointer"` : ''}>Compensação · ${esc(compTxt(cpx))}</div>` : ''}${ci && inM ? `<div class="mot">${esc(ci.mot)}</div>` : ''}${fer && inM ? `<div class="mot">${esc(fer.tipo)}</div>` : ''}
+    cal += `<div class="mday ${inM ? '' : 'out'} ${ci ? 'nl' : ''} ${fer ? 'fer' : ''} ${cpx ? 'comp' : ''} ${x === HOJE ? 'today' : ''}"><div class="dn">${+x.slice(8)}</div>${cpx && inM ? `<div class="mot cmpm" ${canWrite() ? `data-act="compEd" data-k="${(d.comp || []).indexOf(cpx)}" style="cursor:pointer"` : ''}>${esc(compTipo(cpx))} · ${esc(compTxt(cpx))}</div>` : ''}${ci && inM ? `<div class="mot">${esc(ci.mot)}</div>` : ''}${fer && inM ? `<div class="mot">${esc(fer.tipo)}</div>` : ''}
       ${inM ? items.map(({ t, a }) => ({ s: a.a, h: (() => { const atv = isPlanAct(t); if (atv) totAt += a.h; else tot += a.h; const u = R[t.id].units[a.ui]; const cls = canWrite() ? docClass(a, dn) : ''; return `<div class="ev ${a.ead ? 'evead' : ''} ${atv ? 'evatv' : ''} ${cls ? 'ev-' + cls : ''}" data-open="${t.id}" data-ds="${x}" title="${esc(t.nome + ' · ' + u.nome)}"><b>${hm(a.a)}–${hm(a.b)}</b> ${esc(t.sigla || t.nome.slice(0, 22))}<div>${atv ? 'atividade (planejamento)' : (a.ead ? 'EAD' : esc(a.sala || 'sem sala')) + ' · ' + esc(u.num ? 'UC ' + u.num : '') + ' ' + a.k + '/' + a.n}</div>${infoTxt(a.o) ? `<div>${infoBadge(a.o, true)}</div>` : ''}</div>`; })() })).concat(planBlocks(x, items.map(i => ({ a: i.a })))).sort((p, q) => p.s - q.s).map(o => o.h).join('') : ''}</div>`;
     x = addD(x, 1);
   }
@@ -4135,12 +4145,13 @@ ACT.ucDias = el => {
 { const s = MANUAL.find(x => x.id === 'turma'); if (s) s.h += `<div class="mbox tip"><b>Dica — UC em dias específicos</b> Clique em <b>📅 Todos os dias da turma</b>, abaixo do nome da UC, e marque os dias em que ela acontece (opcional: “a partir de”). Nesses dias a UC tem prioridade e corre em paralelo; as outras UCs seguem a ordem nos demais dias. Desmarque tudo para voltar ao normal.</div>`; }
 
 // ===== Alertas clicáveis: abrem a turma filtrando só o que precisa corrigir (V.tFix) =====
-const FIX_ROW = ['conf', 'fer', 'comp', 'esc', 'sala', 'cad'];
+const FIX_ROW = ['conf', 'desl', 'fer', 'comp', 'esc', 'sala', 'cad'];
 const FIX_DICA = {
   al: 'Aulas com algum alerta. Corrija docente, sala ou dia em cada linha; a lista some quando tudo estiver certo.',
   conf: 'Docente em duas turmas no mesmo horário. Clique nos docentes da linha para trocar, ou vincule as turmas se for QP / mesma aula.',
   fer: 'Docente em férias ou afastamento. Clique nos docentes da linha e escolha um substituto (dá para repetir em dias da semana de um período).',
-  comp: 'Docente em compensação de horas nesse dia. Troque o docente da aula (clique nos docentes da linha) ou mude a data da compensação na Agenda do docente.',
+  comp: 'Docente em atividade fora de sala nesse dia (compensação, Educor, deslocamento, grupo de trabalho…). Troque o docente da aula ou mude a data da atividade na Agenda do docente.',
+  desl: 'Docente desligado(a) alocado(a) depois da data de desligamento. Troque o docente dessas aulas (dá para repetir em dias da semana de um período).',
   esc: 'Docente fora da escala neste horário. Troque o docente ou ajuste a escala dele em Docentes e escalas.',
   sala: 'Sala com duas turmas ao mesmo tempo. Troque a sala na linha (ou libere a sala, se for visita/EAD).',
   cad: 'Docente digitado que não está no cadastro. Cadastre em Docentes e escalas ou escolha um nome da lista.',
@@ -4150,7 +4161,7 @@ const FIX_DICA = {
   cc: 'Turma sem centro de custo: preencha o campo destacado para entrar no rateio por CC.',
   okv: 'Alertas já analisados (em azul). Clique em “↺ pendente” para voltar um alerta para a lista vermelha.',
 };
-const FIX_NOME = { al: 'Todos os alertas', conf: 'Conflito', fer: 'Férias/afast.', comp: 'Compensação', esc: 'Fora da escala', sala: 'Sala ocupada', cad: 'Sem cadastro', uc: 'UC com aulas a mais', falta: 'UC incompleta', sit: 'Cadastro', cc: 'Sem centro de custo', okv: '✓ Analisados' };
+const FIX_NOME = { al: 'Todos os alertas', conf: 'Conflito', fer: 'Férias/afast.', comp: 'Fora de sala', desl: 'Desligado', esc: 'Fora da escala', sala: 'Sala ocupada', cad: 'Sem cadastro', uc: 'UC com aulas a mais', falta: 'UC incompleta', sit: 'Cadastro', cc: 'Sem centro de custo', okv: '✓ Analisados' };
 function fixCont(t) {
   const r = R[t.id]; const c = {}; if (!r) return c;
   for (const a of r.aulas) for (const tp of new Set(a.al.filter(x => !x.ok).map(x => x.tp))) c[tp] = (c[tp] || 0) + 1;
@@ -4234,8 +4245,8 @@ function fixFoco() {
   const fut = L.filter(x => (x.c.fim || x.c.ini) >= HOJE), pas = L.length - fut.length;
   const choques = c => { let n = 0; for (const t of Object.values(S.turmas)) for (const a of R[t.id].aulas) if (a.docs.includes(dn) && a.al.some(z => z.tp === 'comp') && a.ds >= c.ini && a.ds <= (c.fim || c.ini)) n++; return n; };
   if (!L.length && !canWrite()) return h;
-  const box = `<div class="compbox"><span class="small"><b>Compensação de horas:</b></span> ${fut.map(({ c, k }) => { const n = canWrite() ? choques(c) : 0; return `<span class="pill cmpp" ${canWrite() ? `data-act="compEd" data-k="${k}" style="cursor:pointer" title="${esc(c.obs || 'Editar')}"` : ''}>${br(c.ini)}${c.fim && c.fim !== c.ini ? ' a ' + br(c.fim) : ''} · ${esc(compTxt(c))}${n ? ` · <b style="color:var(--red)">${n} aula(s)</b>` : ''}</span>`; }).join(' ') || '<span class="small muted">nenhuma programada</span>'}${pas ? ` <span class="small muted">(+${pas} já passada${pas > 1 ? 's' : ''})</span>` : ''}
-    ${canWrite() ? '<button class="sm" data-act="compEd" data-k="">+ Compensação</button>' : ''}</div>`;
+  const box = `<div class="compbox"><span class="small"><b>Fora de sala</b> (compensação, Educor, deslocamento…):</span> ${fut.map(({ c, k }) => { const n = canWrite() ? choques(c) : 0; return `<span class="pill cmpp" ${canWrite() ? `data-act="compEd" data-k="${k}" style="cursor:pointer" title="${esc(c.obs || 'Editar')}"` : ''}><b>${esc(compTipo(c))}</b> · ${br(c.ini)}${c.fim && c.fim !== c.ini ? ' a ' + br(c.fim) : ''} · ${esc(compTxt(c))}${n ? ` · <b style="color:var(--red)">${n} aula(s)</b>` : ''}</span>`; }).join(' ') || '<span class="small muted">nenhuma programada</span>'}${pas ? ` <span class="small muted">(+${pas} já passada${pas > 1 ? 's' : ''})</span>` : ''}
+    ${canWrite() ? '<button class="sm" data-act="compEd" data-k="">+ Atividade fora de sala</button>' : ''}</div>`;
   const k = '<h3>1) Cursos'; return h.includes(k) ? h.replace(k, box + k) : h;
 }; }
 ACT.compEd = el => {
@@ -4246,13 +4257,15 @@ ACT.compEd = el => {
     const q = s => $('#modal [data-cp=' + s + ']'); const ini = q('ini').value, fim = q('fim').value; const td = q('td').checked;
     if (!isDate(ini)) return toast('Informe a data'); if (fim && fim < ini) return toast('A data final é antes da inicial');
     const hi = td ? '' : q('hi').value, hf = td ? '' : q('hf').value; if (!td && !(tm(hi) != null && tm(hf) != null && tm(hf) > tm(hi))) return toast('Informe o horário (de/até)');
-    const c = { ini, fim: fim && fim !== ini ? fim : '', hi, hf, obs: q('obs').value.trim(), desc: q('desc').checked };
+    const tipo = q('tipo').value, outro = tipo === 'Outros' ? q('outro').value.trim() : ''; if (tipo === 'Outros' && !outro) return toast('Descreva a atividade em “Qual?”');
+    const c = { tipo, outro, ini, fim: fim && fim !== ini ? fim : '', hi, hf, obs: q('obs').value.trim(), desc: q('desc').checked };
     d.comp = d.comp || []; if (k >= 0) d.comp[k] = c; else d.comp.push(c);
     saveDocs(); closeModal(); refresh();
     const n = Object.values(S.turmas).reduce((s, t) => s + R[t.id].aulas.filter(a => a.docs.includes(dn) && a.al.some(z => z.tp === 'comp' && z.msg.startsWith(dn))).length, 0);
-    toast(n ? `Compensação salva. Atenção: ${n} aula(s) com o docente nesse período — veja os alertas “Compensação”.` : 'Compensação salva');
+    toast(n ? `${compTipo(c)} salva. Atenção: ${n} aula(s) com o docente nesse período — veja os alertas “Fora de sala”.` : compTipo(c) + ' salva na agenda');
   } };
-  modal(`<h2>${k >= 0 ? 'Editar' : 'Nova'} compensação de horas</h2><p class="small muted">${esc(dn)} não estará em sala nesse dia/horário. As aulas lançadas com o docente nesse período ganham o alerta <span class="at comp">Compensação</span>.</p>
+  modal(`<h2>${k >= 0 ? 'Editar' : 'Nova'} atividade fora de sala</h2><p class="small muted">Mostra na agenda o que ${esc(dn)} está fazendo quando não está em aula nem planejando. Aulas com o docente nesse período ganham o alerta <span class="at comp">Fora de sala</span>.</p>
+   <div class="grid"><label class="f">Atividade<select data-cp="tipo" onchange="document.getElementById('cpout').style.display=this.value==='Outros'?'':'none'">${ATV_TIPOS.map(x => `<option ${(c0.tipo || 'Compensação') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label><label class="f" id="cpout" style="${c0.tipo === 'Outros' ? '' : 'display:none'}">Qual?<input data-cp="outro" value="${esc(c0.outro || '')}" placeholder="Ex.: reunião pedagógica"></label></div>
    <div class="grid"><label class="f">Data<input type="date" data-cp="ini" value="${esc(c0.ini || '')}"></label><label class="f">Até (opcional, vários dias)<input type="date" data-cp="fim" value="${esc(c0.fim || '')}"></label></div>
    <label class="small" style="display:block;margin:8px 0"><input type="checkbox" data-cp="td" ${tudo ? 'checked' : ''} onchange="document.getElementById('cphr').style.display=this.checked?'none':''"> Dia todo</label>
    <div class="grid" id="cphr" style="${tudo ? 'display:none' : ''}"><label class="f">Das<input type="time" data-cp="hi" value="${esc(c0.hi || '')}"></label><label class="f">Até<input type="time" data-cp="hf" value="${esc(c0.hf || '')}"></label></div>
@@ -4263,7 +4276,7 @@ ACT.compEd = el => {
   MCTX.k = k; MCTX.d = d;
 };
 MACT.compDel = () => { const { d, k } = MCTX; d.comp.splice(k, 1); saveDocs(); closeModal(); refresh(); toast('Compensação excluída'); };
-{ const s = MANUAL.find(x => x.id === 'agenda'); if (s) s.h += `<div class="mbox tip"><b>Compensação de horas</b> Na Agenda do docente, clique em <b>+ Compensação</b>: data (ou período), dia todo ou só um horário, observação. O dia aparece no calendário do docente em azul, o docente fica marcado “compensação de horas” na lista ao escolher docentes, e aulas já lançadas com ele nesse horário ganham o alerta <b>Compensação</b> (clique para corrigir). Marque “Descontar da carga do mês” só se essas horas devem sair da carga no rateio.</div>`; }
+{ const s = MANUAL.find(x => x.id === 'agenda'); if (s) s.h += `<div class="mbox tip"><b>Atividades fora de sala</b> Na Agenda do docente, clique em <b>+ Atividade fora de sala</b> e escolha <b>Compensação</b>, <b>Educor</b>, <b>Deslocamento</b>, <b>Grupo de trabalho</b> ou <b>Outros</b> (descreva). Depois: data (ou período), dia todo ou só um horário, observação. O dia aparece no calendário do docente em azul, o docente fica marcado “compensação de horas” na lista ao escolher docentes, e aulas já lançadas com ele nesse horário ganham o alerta <b>Compensação</b> (clique para corrigir). Marque “Descontar da carga do mês” só se essas horas devem sair da carga no rateio.</div>`; }
 
 // ===== Alertas analisados (t.alv = { chave: {em, por} }) =====
 const alKey = a => (a.row ? a.row.ds : '-') + '|' + a.tp + '|' + a.msg;
@@ -4311,7 +4324,7 @@ const CAD = [
 <p>Use esta lista para achar o passo a passo de cada cadastro. Tudo o que é salvo aparece na hora para os editores; para quem consulta, em poucos segundos (publicação automática).</p>
 <table class="plain mtab"><tr><th>Quero cadastrar…</th><th>Onde</th></tr>
 ${[['Uma nova turma (curso)', 'cad-turma', 'Turmas e UCs → + Nova turma'], ['UCs, carga horária e docentes de uma turma', 'cad-uc', 'Turmas e UCs → abrir a turma'], ['Uma aula extra ou reposição', 'cad-extra', 'Turma → + Aula extra'],
-  ['Um docente, a escala e as férias', 'cad-docente', 'Docentes e escalas → + Docente'], ['Compensação de horas do docente', 'cad-comp', 'Agenda do docente → + Compensação'],
+  ['Um docente, a escala e as férias', 'cad-docente', 'Docentes e escalas → + Docente'], ['Compensação, Educor, deslocamento e outras atividades', 'cad-comp', 'Agenda do docente → + Atividade fora de sala'],
   ['Feriado, recesso ou expediente parcial', 'cad-naolet', 'Dias não letivos → + Dia / + Período'], ['Uma sala', 'cad-sala', 'Cadastro de salas → + Sala'], ['Um centro de custo', 'cad-cc', 'Centros de custo → + Centro de custo'],
   ['Um espaço para reserva (lousa, pátio…)', 'cad-espaco', 'Espaços → Espaços cadastrados → + Espaço'], ['Uma reserva de espaço', 'cad-espres', 'Espaços → + Reserva'], ['Uma reserva de sala (reunião, prova…)', 'cad-salares', 'Mapa de salas → + Reservar sala'],
   ['Um material no estoque', 'cad-estoque', 'Mapa de salas → Estoque de materiais → + Item'], ['Pedido de material para uma aula', 'cad-pedido', 'Mapa de salas → Pedidos de materiais'], ['Atividade com material fora do cronograma', 'cad-ativ', 'Pedidos de materiais → + Reserva de material / atividade'],
@@ -4346,14 +4359,14 @@ ${P(`Clique em ${caminho('Docentes e escalas')} e em <b>+ Docente</b>.`,
  `Na janela, preencha <b>Nome</b>, <b>Função</b> e <b>Carga contratual (h/semana)</b>.`,
  `Em <b>Escala (horário de trabalho)</b>, digite os horários de cada dia nas colunas Manhã, Tarde e Noite, no formato <code>08:00–12:00</code>. Dois turnos no mesmo campo: <code>13:00–17:00 / 17:15–18:00</code>. Dia sem trabalho: deixe vazio ou escreva <code>Compensado</code>.`,
  `Em <b>Férias e afastamentos</b>, clique em <b>+ Período</b>, escolha o tipo (Férias, Afastamento, Licença, Outro) e as datas de início e fim.`,
- `Clique em <b>Salvar</b>. Para alterar depois, use <b>Editar</b> na linha do docente.`)}
+ `Marque <b>Carta convite</b> se o docente não entra no rateio. Em caso de desligamento, informe <b>Desligamento a partir de [data]</b>: tudo antes continua registrado.`, `Clique em <b>Salvar</b>. Para alterar depois, use <b>Editar</b> na linha do docente.`)}
 ${ref('<p>O docente passa a aparecer na lista ao escolher docentes das aulas (com aviso de escala, férias ou conflito). A escala define a carga do mês, os blocos de planejamento na agenda e o alerta “Fora da escala”; férias geram o alerta “Férias”.</p>')}` },
 
-  { id: 'cad-comp', t: 'Compensação de horas do docente', h: `
-${P(`Abra ${caminho('Agenda do docente')} e escolha o docente.`, `Clique em <b>+ Compensação</b> (linha “Compensação de horas”).`,
+  { id: 'cad-comp', t: 'Atividades fora de sala (compensação, Educor…)', h: `
+${P(`Abra ${caminho('Agenda do docente')} e escolha o docente.`, `Clique em <b>+ Atividade fora de sala</b> e escolha a <b>Atividade</b>: Compensação, Educor, Deslocamento, Grupo de trabalho ou Outros (descreva em “Qual?”).`,
  `Informe a <b>Data</b> (e <b>Até</b>, se forem vários dias). Deixe <b>Dia todo</b> marcado ou desmarque para informar o horário (das / até).`,
- `Escreva uma observação, se quiser. Marque <b>Descontar da carga do mês</b> só se essas horas devem sair da carga no rateio.`, `Clique em <b>Salvar</b>. Para editar ou excluir, clique na compensação.`)}
-${ref('<p>O dia aparece em azul no calendário do docente; aulas com ele nesse horário ganham o alerta <b>Compensação</b>.</p>')}` },
+ `Escreva uma observação, se quiser. Marque <b>Descontar da carga do mês</b> só se essas horas devem sair da carga no rateio.`, `Clique em <b>Salvar</b>. Para editar ou excluir, clique na atividade.`)}
+${ref('<p>O dia aparece em azul no calendário do docente; o calendário mostra o nome da atividade; aulas com ele nesse horário ganham o alerta <b>Fora de sala</b>.</p>')}` },
 
   { id: 'cad-naolet', t: 'Feriado, recesso ou expediente parcial', h: `
 ${P(`Clique em ${caminho('Dias não letivos')} e confira o <b>Ano</b> no canto direito.`,
@@ -4754,9 +4767,9 @@ Object.assign(ACT, {
 { const ca = confAlerts; confAlerts = function () {
   const out = ca.apply(this, arguments);
   for (const t of Object.values(S.turmas)) {
-    if (!t.livTipo || t.enc) continue;
+    if (!livRecebe(t).length && !(t.livros || []).length || t.enc) continue;
     for (const x of t.livros || []) { if (isDate(x.ent) || !isDate(x.prev) || x.prev >= HOJE) continue;
-      ALERTS.push({ tp: 'liv', t, row: null, msg: (LIV_IT2[x.tp] || 'Item') + ' “' + (x.tit || (String(x.src||'').startsWith('k:') ? (eduKit(x.src.slice(2))||{}).nome : String(x.src||'').startsWith('i:') ? (eduIt(x.src.slice(2))||{}).nome : '') || 'sem título') + '”' + (x.qtd ? ' (' + x.qtd + ')' : '') + ' programado para ' + br(x.prev) + ' — não entregue' }); }
+      ALERTS.push({ tp: 'liv', t, row: null, msg: livLbl(x) + ' “' + (x.tit || (String(x.src||'').startsWith('k:') ? (eduKit(x.src.slice(2))||{}).nome : String(x.src||'').startsWith('i:') ? (eduIt(x.src.slice(2))||{}).nome : '') || 'sem título') + '”' + (x.qtd ? ' (' + x.qtd + ')' : '') + ' programado para ' + br(x.prev) + ' — não entregue' }); }
   }
   return out;
 }; }
@@ -4777,7 +4790,7 @@ function livTodos() {
 function viewLivros() {
   const f = V.lvF || 'pend'; const A = livTodos();
   const L = A.filter(o => f === 'all' ? true : f === 'ent' ? o.s[0] === 'Entregue' : f === 'late' ? o.s[0] === 'Atrasado' : o.s[0] !== 'Entregue');
-  const sem = Object.values(S.turmas).filter(t => !isPlanAct(t) && t.livTipo && !(t.livros || []).length && areaOk(t.area));
+  const sem = Object.values(S.turmas).filter(t => !isPlanAct(t) && livRecebe(t).length && !(t.livros || []).length && areaOk(t.area));
   const cnt = k => A.filter(o => o.s[0] === k).length;
   let h = `<div class="pagehead"><h1>Livros, kits e brindes</h1><p class="muted">Entregas programadas e realizadas de livros técnicos e brindes em todos os cursos. O tipo de cada curso e os itens são lançados na própria turma.</p></div>
    <div class="kpis"><div class="kpi"><b style="color:var(--red)">${cnt('Atrasado')}</b><span>atrasados</span></div><div class="kpi"><b>${cnt('Programado')}</b><span>programados</span></div><div class="kpi"><b>${cnt('Entregue')}</b><span>entregues</span></div><div class="kpi"><b>${sem.length}</b><span>curso(s) que recebem sem item lançado</span></div></div>
@@ -4785,12 +4798,12 @@ function viewLivros() {
   if (sem.length) h += `<div class="banner">Cursos marcados para receber, sem item lançado: ${sem.map(t => `<a class="link" data-open="${t.id}">${esc(t.nome)}</a>`).join(', ')}.</div>`;
   if (!L.length) return h + '<div class="card empty">Nada nesta lista.</div>';
   h += `<div class="card"><div class="tw" style="max-height:none"><table><tr><th>Programado</th><th>Curso</th><th>Tipo</th><th>Título / item</th><th class="num">Qtd</th><th>Entregue em</th><th>Situação</th></tr>
-   ${L.map(o => `<tr data-open="${o.t.id}" style="cursor:pointer"><td class="nowrap">${o.x.prev ? br(o.x.prev) : '—'}</td><td><b>${esc(o.t.nome)}</b><div class="small muted">${esc(o.t.area || '')}</div></td><td class="small">${LIV_IT2[o.x.tp] || ''}</td><td>${esc(o.x.tit || (String(o.x.src||'').startsWith('k:') ? (eduKit(o.x.src.slice(2))||{}).nome : '') || '')}</td><td class="num">${o.x.qtd ?? ''}</td><td class="nowrap">${o.x.ent ? br(o.x.ent) : ''}</td><td><span class="pill ${o.s[1]}">${o.s[0]}</span></td></tr>`).join('')}</table></div></div>`;
+   ${L.map(o => `<tr data-open="${o.t.id}" style="cursor:pointer"><td class="nowrap">${o.x.prev ? br(o.x.prev) : '—'}</td><td><b>${esc(o.t.nome)}</b><div class="small muted">${esc(o.t.area || '')}</div></td><td class="small">${esc(livLbl(o.x))}</td><td>${esc(o.x.tit || (String(o.x.src||'').startsWith('k:') ? (eduKit(o.x.src.slice(2))||{}).nome : '') || '')}</td><td class="num">${o.x.qtd ?? ''}</td><td class="nowrap">${o.x.ent ? br(o.x.ent) : ''}</td><td><span class="pill ${o.s[1]}">${o.s[0]}</span></td></tr>`).join('')}</table></div></div>`;
   return h;
 }
 ACT.livXls = () => {
   const rows = [['Curso', 'Área', 'Recebe', 'Tipo', 'Título / item', 'Kit / item do estoque', 'UC', 'Quantidade', 'Entrega programada', 'Entregue em', 'Situação', 'Observação']];
-  for (const o of livTodos()) { const u = (o.t.ucs || []).find(u => String(u.id) === String(o.x.uc)); rows.push([o.t.nome, o.t.area || '', (LIV_TIPOS.find(x => x[0] === o.t.livTipo) || ['', ''])[1], LIV_IT2[o.x.tp] || '', o.x.tit || '', (String(o.x.src||'').startsWith('k:') ? (eduKit(o.x.src.slice(2))||{}).nome : String(o.x.src||'').startsWith('i:') ? (eduIt(o.x.src.slice(2))||{}).nome : '') || '', u ? u.nome : '', o.x.qtd ?? '', o.x.prev ? br(o.x.prev) : '', o.x.ent ? br(o.x.ent) : '', o.s[0], o.x.obs || '']); }
+  for (const o of livTodos()) { const u = (o.t.ucs || []).find(u => String(u.id) === String(o.x.uc)); rows.push([o.t.nome, o.t.area || '', livRecebe(o.t).map(v => v === 'tec' ? 'Livro técnico' : kitTipoNome(v.slice(4))).join(', '), livLbl(o.x), o.x.tit || '', (String(o.x.src||'').startsWith('k:') ? (eduKit(o.x.src.slice(2))||{}).nome : String(o.x.src||'').startsWith('i:') ? (eduIt(o.x.src.slice(2))||{}).nome : '') || '', u ? u.nome : '', o.x.qtd ?? '', o.x.prev ? br(o.x.prev) : '', o.x.ent ? br(o.x.ent) : '', o.s[0], o.x.obs || '']); }
   xlsSave('Livros e brindes.xlsx', [{ name: 'Livros e brindes', rows, widths: [44, 22, 22, 14, 36, 30, 10, 14, 14, 12, 30] }]);
 };
 { const i = NAV_ADM.findIndex(x => x[0] === 'cursos') + 1; NAV_ADM.splice(i, 0, ['livros', 'Livros e brindes', '📚']); ADM_VIEWS.add('livros'); }
@@ -4814,6 +4827,14 @@ function EDU() {
   const E = S.cfg.edu; E.itens = E.itens || []; E.kits = E.kits || []; E.movs = E.movs || []; return E;
 }
 const eduIt = id => EDU().itens.find(x => x.id === id);
+// tipos de kit: 'brinde' e 'aluno' (legado) ou qualquer nome livre (ex.: Kit evento)
+const kitTipoNome = tp => tp === 'brinde' ? 'Kit brinde' : tp === 'aluno' ? 'Kit aluno' : tp;
+const kitTipoVal = nome => { const n = String(nome || '').trim(); return /^kit brinde$/i.test(n) ? 'brinde' : /^kit aluno$/i.test(n) ? 'aluno' : n; };
+function kitTipos() { const s = new Set(['brinde', 'aluno']); for (const k of EDU().kits) if (k.tipo) s.add(k.tipo); return [...s]; }
+const rowKt = x => x.tp === 'kit' ? x.kt : x.tp === 'brinde' ? 'brinde' : x.tp === 'kita' ? 'aluno' : null;
+const livLbl = x => x.tp === 'tec' ? 'Livro técnico' : kitTipoNome(rowKt(x) || 'Kit');
+// o que o curso recebe: ['tec', 'kit:brinde', 'kit:aluno', 'kit:Kit evento'…]
+function livRecebe(t) { if (Array.isArray(t.recebe)) return t.recebe; const o = []; const lt = t.livTipo || ''; if (lt === 'tec' || lt === 'ambos') o.push('tec'); if (lt === 'brinde' || lt === 'ambos') o.push('kit:brinde'); if (t.kitAluno) o.push('kit:aluno'); return o; }
 const eduKit = id => EDU().kits.find(x => x.id === id);
 const kitTxt = k => k && k.comp.length ? k.comp.map(c => (eduIt(c.item) || { nome: '?' }).nome + ' ' + c.q).join(' + ') : 'composição a definir';
 function eduMov(item, q, motivo, tid) {
@@ -4833,7 +4854,7 @@ function livNeeds(x) {
 function livSync(t, x) {
   const want = isDate(x.ent) ? livNeeds(x) : []; const cur = x.baixa || [];
   const M = {}; for (const c of cur) M[c.item] = (M[c.item] || 0) - c.q; for (const c of want) M[c.item] = (M[c.item] || 0) + c.q;
-  const desc = (LIV_IT2[x.tp] || 'Entrega') + ' — ' + t.nome; let neg = [];
+  const desc = livLbl(x) + ' — ' + t.nome; let neg = [];
   for (const [item, d] of Object.entries(M)) if (d) { eduMov(item, -d, (d > 0 ? 'Entrega: ' : 'Estorno: ') + desc, t.id); const it = eduIt(item); if (it && it.qtd < 0) neg.push(it.nome + ' (' + it.qtd + ')'); }
   if (want.length) x.baixa = want; else delete x.baixa;
   if (Object.values(M).some(Boolean)) saveCfg();
@@ -4841,29 +4862,29 @@ function livSync(t, x) {
 }
 function livSrcOpts(x) {
   const E = EDU(); let o = '<option value="">— não baixar do estoque —</option>';
-  if (x.tp === 'brinde' || x.tp === 'kita') o += E.kits.filter(k => k.tipo === (x.tp === 'kita' ? 'aluno' : 'brinde')).map(k => `<option value="k:${k.id}" ${x.src === 'k:' + k.id ? 'selected' : ''}>${esc(k.nome)}</option>`).join('');
-  const cats = x.tp === 'tec' ? ['livro'] : x.tp === 'brinde' ? ['brinde'] : ['kita'];
-  const its = E.itens.filter(i => cats.includes(i.cat)); if (its.length) o += `<optgroup label="Itens">${its.map(i => `<option value="i:${i.id}" ${x.src === 'i:' + i.id ? 'selected' : ''}>${esc(i.nome)} (saldo ${i.qtd || 0})</option>`).join('')}</optgroup>`;
+  const kt = rowKt(x);
+  if (kt) o += E.kits.filter(k => k.tipo === kt).map(k => `<option value="k:${k.id}" ${x.src === 'k:' + k.id ? 'selected' : ''}>${esc(k.nome)}</option>`).join('');
+  const its = x.tp === 'tec' ? E.itens.filter(i => i.cat === 'livro') : E.itens.filter(i => i.cat !== 'livro'); if (its.length) o += `<optgroup label="Itens">${its.map(i => `<option value="i:${i.id}" ${x.src === 'i:' + i.id ? 'selected' : ''}>${esc(i.nome)} (saldo ${i.qtd || 0})</option>`).join('')}</optgroup>`;
   return o;
 }
 function livQtdPadrao(t) { const v = t.vagas || {}; const n = (+v.PSG || 0) + (+v.COM || 0); return n || ''; }
 function livrosCard(t) {
   if (isPlanAct(t)) return '';
-  const tp = t.livTipo || ''; const L = t.livros || [];
-  const pode = k => tp === 'ambos' || tp === k;
-  let h = `<div class="card" id="livcard"><div class="bar"><h2 class="grow" style="margin:0">Livros, kits e brindes</h2>
-   <label class="small">Este curso recebe <select data-livtipo>${LIV_TIPOS.map(([v, l]) => `<option value="${v}" ${tp === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-   <label class="small chk"><input type="checkbox" data-kitaluno ${t.kitAluno ? 'checked' : ''}><span>Recebe kit aluno</span></label></div>`;
-  const btns = (pode('tec') ? '<button class="sm" data-act="livAdd" data-tp="tec">+ Livro técnico</button>' : '') + (pode('brinde') ? '<button class="sm" data-act="livAdd" data-tp="brinde">+ Kit brinde</button>' : '') + (t.kitAluno ? '<button class="sm" data-act="livAdd" data-tp="kita">+ Kit aluno</button>' : '');
-  if (!btns) return h + (L.length ? `<p class="small" style="color:var(--red)">Há ${L.length} item(ns) lançado(s), mas o curso está como “Não recebe”.</p>` : '<p class="small muted">Escolha acima o que o curso recebe.</p>') + '</div>';
+  const rec = livRecebe(t); const L = t.livros || [];
+  const opts = [['tec', 'Livro técnico'], ...kitTipos().map(k => ['kit:' + k, kitTipoNome(k)])];
+  let h = `<div class="card" id="livcard"><div class="bar"><h2 class="grow" style="margin:0">Livros e kits</h2></div>
+   <div class="bar" style="gap:6px;flex-wrap:wrap"><span class="small"><b>Este curso recebe:</b></span>${opts.map(([v, l]) => `<label class="chk small livrec"><input type="checkbox" data-recebe="${esc(v)}" ${rec.includes(v) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}
+   ${rec.length ? '' : '<span class="small muted">— nada marcado = não recebe</span>'}<a class="link small" data-go="edu" title="Novos tipos de kit são criados na aba Kits do Estoque educacional">+ tipo de kit</a></div>`;
+  const btns = rec.map(v => v === 'tec' ? '<button class="sm" data-act="livAdd" data-tp="tec">+ Livro técnico</button>' : `<button class="sm" data-act="livAdd" data-tp="kit" data-kt="${esc(v.slice(4))}">+ ${esc(kitTipoNome(v.slice(4)))}</button>`).join('');
+  if (!btns) return h + (L.length ? `<p class="small" style="color:var(--red)">Há ${L.length} item(ns) lançado(s), mas nada está marcado em “Este curso recebe”.</p>` : '') + (L.length ? '' : '</div>');
   h += `<div class="bar" style="gap:6px">${btns}<span class="small muted">Ao preencher <b>Entregue em</b>, o estoque educacional é baixado sozinho (apagar a data devolve ao estoque).</span></div>`;
   if (!L.length) return h + '<p class="small muted">Nenhum item lançado.</p></div>';
   const ucs = t.ucs || [];
   h += `<div class="tw" style="max-height:none"><table class="livtab"><tr><th>Tipo</th><th>Do estoque / o que vai</th><th>Título</th><th>UC</th><th class="num">Qtd</th><th>Entrega programada</th><th>Entregue em</th><th>Situação</th><th>Obs.</th><th></th></tr>
    ${L.map((x, i) => { const [s, c] = livSit(x); const nd = livNeeds(x); const kit = String(x.src || '').startsWith('k:') ? eduKit(x.src.slice(2)) : null;
      const falta = !isDate(x.ent) ? nd.filter(n => (eduIt(n.item).qtd || 0) < n.q).map(n => eduIt(n.item).nome) : [];
-     return `<tr class="${c === 'bad' ? 'livlate' : ''}"><td class="small nowrap">${LIV_IT2[x.tp] || ''}</td>
-    <td><select data-livf="src" data-i="${i}" style="max-width:230px">${livSrcOpts(x)}</select>${kit ? `<div class="small muted">Kit: ${esc(kitTxt(kit))}</div>` : ''}${nd.length && +x.qtd ? `<div class="small ${falta.length ? '' : 'muted'}" ${falta.length ? 'style="color:var(--red)"' : ''}>${isDate(x.ent) ? 'Baixado' : 'Vai baixar'}: ${nd.map(n => esc(eduIt(n.item).nome) + ' ' + n.q).join(', ')}${falta.length ? ' — falta: ' + esc(falta.join(', ')) : ''}</div>` : ''}</td>
+     return `<tr class="${c === 'bad' ? 'livlate' : ''}"><td class="small nowrap">${esc(livLbl(x))}</td>
+    <td><select data-livf="src" data-i="${i}" style="max-width:230px">${livSrcOpts(x)}</select>${kit ? `<div class="small muted">Vai no kit: ${esc(kitTxt(kit))}</div>` : ''}${nd.length && +x.qtd ? `<div class="small ${falta.length ? '' : 'muted'}" ${falta.length ? 'style="color:var(--red)"' : ''}>${isDate(x.ent) ? 'Baixado' : 'Vai baixar'}: ${nd.map(n => esc(eduIt(n.item).nome) + ' ' + n.q).join(', ')}${falta.length ? ' — falta: ' + esc(falta.join(', ')) : ''}</div>` : ''}</td>
     <td><input data-livf="tit" data-i="${i}" value="${esc(x.tit || '')}" placeholder="${x.tp === 'tec' ? 'Título do livro' : 'opcional'}" style="min-width:160px"></td>
     <td><select data-livf="uc" data-i="${i}" style="max-width:170px"><option value="">— curso todo —</option>${ucs.map(u => `<option value="${esc(u.id)}" ${String(x.uc) === String(u.id) ? 'selected' : ''}>${esc((u.num ? u.num + ' · ' : '') + u.nome)}</option>`).join('')}</select></td>
     <td class="num"><input type="number" min="0" data-livf="qtd" data-i="${i}" value="${esc(x.qtd ?? '')}" style="width:70px"></td>
@@ -4876,17 +4897,18 @@ function livrosCard(t) {
 }
 Object.assign(ACT, {
   livAdd: el => {
-    const t = curT(); t.livros = t.livros || []; const tp = el.dataset.tp; const r = R[t.id];
-    const k1 = EDU().kits.find(k => k.tipo === (tp === 'kita' ? 'aluno' : 'brinde'));
-    t.livros.push({ id: uid('l'), tp, tit: '', src: tp === 'tec' ? '' : (k1 ? 'k:' + k1.id : ''), uc: '', qtd: tp === 'tec' ? '' : livQtdPadrao(t), prev: (r && r.inicio) || '', ent: '', obs: '' });
+    const t = curT(); t.livros = t.livros || []; const tp = el.dataset.tp; const kt = el.dataset.kt || ''; const r = R[t.id];
+    const k1 = tp === 'kit' ? EDU().kits.find(k => k.tipo === kt) : null;
+    t.livros.push({ id: uid('l'), tp, kt: tp === 'kit' ? kt : undefined, tit: '', src: k1 ? 'k:' + k1.id : '', uc: '', qtd: tp === 'tec' ? '' : livQtdPadrao(t), prev: (r && r.inicio) || '', ent: '', obs: '' });
     saveT(t); refresh();
   },
-  livDel: el => { const t = curT(); const x = t.livros[+el.dataset.i]; askConfirm(`Excluir <b>${esc(x.tit || LIV_IT2[x.tp])}</b>?${x.baixa ? ' O que foi baixado volta para o estoque.' : ''}`, () => { if (x.baixa) { x.ent = ''; livSync(t, x); } t.livros.splice(+el.dataset.i, 1); if (!t.livros.length) delete t.livros; saveT(t); closeModal(); refresh(); }, 'Excluir'); },
+  livDel: el => { const t = curT(); const x = t.livros[+el.dataset.i]; askConfirm(`Excluir <b>${esc(x.tit || livLbl(x))}</b>?${x.baixa ? ' O que foi baixado volta para o estoque.' : ''}`, () => { if (x.baixa) { x.ent = ''; livSync(t, x); } t.livros.splice(+el.dataset.i, 1); if (!t.livros.length) delete t.livros; saveT(t); closeModal(); refresh(); }, 'Excluir'); },
   livHoje: el => { const t = curT(); const x = t.livros[+el.dataset.i]; x.ent = HOJE; const neg = livSync(t, x); saveT(t); refresh(); toast(neg.length ? 'Entregue, mas o estoque ficou negativo: ' + neg.join(', ') : 'Entrega registrada' + (x.baixa ? ' e estoque baixado' : '')); },
 });
 document.addEventListener('change', e => {
   const el = e.target; if (!el.matches) return;
   if (el.matches('[data-livtipo]')) { const t = curT(); if (el.value) t.livTipo = el.value; else delete t.livTipo; saveT(t); refresh(); return; }
+  if (el.matches('[data-recebe]')) { const t = curT(); const v = el.dataset.recebe; let rec = livRecebe(t).filter(x => x !== v); if (el.checked) rec.push(v); t.recebe = rec; delete t.livTipo; delete t.kitAluno; saveT(t); refresh(); return; }
   if (el.matches('[data-kitaluno]')) { const t = curT(); if (el.checked) t.kitAluno = true; else delete t.kitAluno; saveT(t); refresh(); return; }
   if (el.matches('[data-livf]')) {
     const t = curT(); const x = t.livros[+el.dataset.i]; const k = el.dataset.livf; let v = el.value;
@@ -4922,15 +4944,15 @@ function viewEdu() {
    <span class="small muted">Nível de segurança = quantidade mínima; abaixo dela (ou sem saldo para as entregas programadas) o sistema pede compra.</span></div>`;
   const L = E.itens.filter(i => !fc || i.cat === fc);
   if (!L.length) return h + '<div class="card empty">Nenhum material cadastrado.</div>';
-  h += `<div class="card"><div class="tw" style="max-height:none"><table class="edutab"><tr><th>Material</th><th>Especificidade</th><th class="num">Saldo</th><th class="num">Nível de segurança</th><th class="num">A entregar</th><th>Situação</th><th>Usado nos kits</th><th>Obs.</th><th></th></tr>
-   ${L.map(it => { const i = E.itens.indexOf(it); const [s, c] = eduSit(it, P); const ks = E.kits.filter(k => k.comp.some(x => x.item === it.id)).map(k => k.nome); return `<tr>
+  h += `<div class="card"><div class="tw" style="max-height:none"><table class="edutab"><tr><th>Material</th><th>Especificidade</th><th class="num">Saldo</th><th class="num">Nível de segurança</th><th class="num">A entregar</th><th>Situação</th><th>Compõe os kits</th><th>Obs.</th><th></th></tr>
+   ${L.map(it => { const i = E.itens.indexOf(it); const [s, c] = eduSit(it, P); const ks = E.kits.filter(k => k.comp.some(x => x.item === it.id)).map(k => k.nome + ' (' + k.comp.find(x => x.item === it.id).q + ')'); return `<tr>
     <td><input data-eduf="nome" data-i="${i}" value="${esc(it.nome)}" style="min-width:180px"></td>
     <td><select data-eduf="cat" data-i="${i}">${EDU_CAT.map(([k, l]) => `<option value="${k}" ${it.cat === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
     <td class="num"><b style="font-size:16px">${it.qtd || 0}</b></td>
     <td class="num"><input type="number" min="0" data-eduf="min" data-i="${i}" value="${esc(it.min ?? 0)}" style="width:80px"></td>
     <td class="num">${P[it.id] || ''}</td>
     <td><span class="pill ${c}">${s}</span></td>
-    <td class="small muted">${esc(ks.join(', '))}</td>
+    <td class="small"><span class="muted">${esc(ks.join(', ')) || 'nenhum'}</span> <button class="sm" data-act="eduItKits" data-id="${it.id}" title="Escolher os kits que levam este material">✎</button></td>
     <td><input data-eduf="obs" data-i="${i}" value="${esc(it.obs || '')}" style="min-width:120px"></td>
     <td class="nowrap"><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="in">+ Entrada</button><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="out">− Saída</button><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="set" title="Corrigir o saldo (inventário)">=</button><button class="sm dng" data-act="eduDel" data-i="${i}">✕</button></td></tr>`; }).join('')}</table></div></div>`;
   return h;
@@ -4938,8 +4960,9 @@ function viewEdu() {
 function eduKitsHtml() {
   const E = EDU();
   let h = `<div class="bar filters"><button class="pri" data-act="eduKitAdd">+ Kit</button><span class="small muted">Monte cada kit com os materiais do estoque. Na turma, ao lançar um kit e marcar a entrega, cada material é baixado (quantidade do kit × número de kits).</span></div>`;
+  h += `<datalist id="kitTiposDL">${kitTipos().map(t => `<option value="${esc(kitTipoNome(t))}">`).join('')}</datalist><p class="small muted">Tipo de kit: escolha <b>Kit brinde</b>, <b>Kit aluno</b> ou digite um novo (ex.: Kit evento). Cada tipo aparece no cadastro do curso em “Este curso recebe”.</p>`;
   return h + `<div class="cmgrid">${E.kits.map((k, ki) => { const pode = k.comp.length ? Math.min(...k.comp.map(c => Math.floor(((eduIt(c.item) || {}).qtd || 0) / (c.q || 1)))) : 0; return `<div class="card">
-   <div class="bar" style="margin:0 0 6px"><input data-kitf="nome" data-k="${ki}" value="${esc(k.nome)}" style="flex:1;font-weight:700"><select data-kitf="tipo" data-k="${ki}"><option value="brinde" ${k.tipo === 'brinde' ? 'selected' : ''}>Kit brinde</option><option value="aluno" ${k.tipo === 'aluno' ? 'selected' : ''}>Kit aluno</option></select><button class="sm dng" data-act="eduKitDel" data-k="${ki}">✕</button></div>
+   <div class="bar" style="margin:0 0 6px"><input data-kitf="nome" data-k="${ki}" value="${esc(k.nome)}" style="flex:1;font-weight:700"><input data-kitf="tipo" data-k="${ki}" list="kitTiposDL" value="${esc(kitTipoNome(k.tipo))}" title="Tipo de kit (escolha ou digite um novo, ex.: Kit evento)" style="width:170px"><button class="sm dng" data-act="eduKitDel" data-k="${ki}">✕</button></div>
    <table class="plain">${k.comp.map((c, ci) => `<tr><td><select data-kitc="item" data-k="${ki}" data-c="${ci}">${E.itens.map(it => `<option value="${it.id}" ${c.item === it.id ? 'selected' : ''}>${esc(it.nome)}</option>`).join('')}</select></td><td class="num"><input type="number" min="1" data-kitc="q" data-k="${ki}" data-c="${ci}" value="${c.q}" style="width:64px"> por kit</td><td><button class="sm" data-act="eduKitCDel" data-k="${ki}" data-c="${ci}">✕</button></td></tr>`).join('') || '<tr><td class="small muted">Sem materiais — inclua abaixo.</td></tr>'}</table>
    <div class="bar" style="margin-top:6px"><button class="sm" data-act="eduKitCAdd" data-k="${ki}">+ Material no kit</button><span class="grow"></span><span class="small ${pode ? 'muted' : ''}" ${pode ? '' : 'style="color:var(--red)"'}>Dá para montar <b>${pode}</b> kit(s) com o saldo</span></div></div>`; }).join('')}</div>`;
 }
@@ -4963,6 +4986,16 @@ Object.assign(ACT, {
      <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
     setTimeout(() => { const i = $('#modal [data-mq]'); if (i) i.focus(); }, 50);
   },
+  eduItKits: el => {
+    const it = eduIt(el.dataset.id); const E = EDU();
+    MCTX = { ok: () => {
+      for (const k of E.kits) { const cb = $('#modal [data-ikk="' + k.id + '"]'); const q = Math.max(1, parseInt(($('#modal [data-ikq="' + k.id + '"]') || {}).value) || 1); const c = k.comp.find(x => x.item === it.id);
+        if (cb.checked) { if (c) c.q = q; else k.comp.push({ item: it.id, q }); } else if (c) k.comp = k.comp.filter(x => x.item !== it.id); }
+      saveCfg(); closeModal(); refresh(); toast('Kits atualizados'); } };
+    modal(`<h2>Kits que levam ${esc(it.nome)}</h2><p class="small muted">Marque os kits de entrega que têm este material e a quantidade por kit. Para criar outro kit ou tipo de kit, use a aba Kits.</p>
+     <table class="plain">${E.kits.map(k => { const c = k.comp.find(x => x.item === it.id); return `<tr><td><label class="chk"><input type="checkbox" data-ikk="${k.id}" ${c ? 'checked' : ''}><span><b>${esc(k.nome)}</b> <span class="small muted">${esc(kitTipoNome(k.tipo))}</span></span></label></td><td class="num"><input type="number" min="1" data-ikq="${k.id}" value="${c ? c.q : 1}" style="width:64px"> por kit</td></tr>`; }).join('') || '<tr><td class="muted">Nenhum kit cadastrado.</td></tr>'}</table>
+     <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+  },
   eduKitAdd: () => { EDU().kits.push({ id: uid('k'), nome: 'Novo kit', tipo: 'brinde', comp: [] }); saveCfg(); refresh(); },
   eduKitDel: el => { const E = EDU(); const k = E.kits[+el.dataset.k]; const uso = Object.values(S.turmas).filter(t => (t.livros || []).some(x => x.src === 'k:' + k.id)).length; askConfirm(`Excluir o kit <b>${esc(k.nome)}</b>?${uso ? ` Ele está lançado em ${uso} turma(s); essas entregas deixam de baixar o estoque.` : ''}`, () => { E.kits.splice(+el.dataset.k, 1); saveCfg(); closeModal(); refresh(); }, 'Excluir'); },
   eduKitCAdd: el => { const E = EDU(); if (!E.itens.length) return toast('Cadastre os materiais primeiro'); E.kits[+el.dataset.k].comp.push({ item: E.itens[0].id, q: 1 }); saveCfg(); refresh(); },
@@ -4972,7 +5005,7 @@ Object.assign(ACT, {
 document.addEventListener('change', e => {
   const el = e.target; if (!el.matches) return;
   if (el.matches('[data-eduf]')) { const it = EDU().itens[+el.dataset.i]; const k = el.dataset.eduf; it[k] = k === 'min' ? Math.max(0, parseInt(el.value) || 0) : el.value.trim(); saveCfg(); refresh(); }
-  if (el.matches('[data-kitf]')) { const k = EDU().kits[+el.dataset.k]; k[el.dataset.kitf] = el.value.trim(); saveCfg(); refresh(); }
+  if (el.matches('[data-kitf]')) { const k = EDU().kits[+el.dataset.k]; const f = el.dataset.kitf; const v = f === 'tipo' ? kitTipoVal(el.value) : el.value.trim(); if (f === 'tipo' && !v) return toast('Informe o tipo do kit'); k[f] = v; saveCfg(); refresh(); }
   if (el.matches('[data-kitc]')) { const c = EDU().kits[+el.dataset.k].comp[+el.dataset.c]; if (el.dataset.kitc === 'q') c.q = Math.max(1, parseInt(el.value) || 1); else c.item = el.value; saveCfg(); refresh(); }
 });
 // menu, rota, avisos
@@ -4984,16 +5017,16 @@ MICON.edu = '📦';
 // público: o estoque educacional não vai para a consulta
 { const pd = pubData; pubData = function () { const d = pd(); if (d && d.cfg) delete d.cfg.edu; if (d && d.turmas) for (const t of Object.values(d.turmas)) { delete t.livros; } return d; }; }
 // manual
-{ const s = MANUAL.find(x => x.id === 'livros'); if (s) { s.t = 'Livros, kits e brindes'; s.h = `
+{ const s = MANUAL.find(x => x.id === 'livros'); if (s) { s.t = 'Livros e kits'; s.h = `
 <ol class="msteps"><li>Abra a turma em <b>Turmas e UCs</b> e desça até <b>Livros, kits e brindes</b>.</li>
-<li>Em <b>Este curso recebe</b>, escolha <b>Não recebe</b>, <b>Só livros técnicos</b>, <b>Só brinde</b> ou <b>Livros técnicos e brinde</b>. Marque <b>Recebe kit aluno</b> se a turma tiver kit aluno.</li>
-<li>Clique em <b>+ Livro técnico</b>, <b>+ Kit brinde</b> ou <b>+ Kit aluno</b>. Em <b>Do estoque / o que vai</b>, escolha o kit (ex.: Kit brinde — Sacochila ou Ecobag): o sistema mostra o que vai no kit e quanto será baixado. Informe quantidade e <b>entrega programada</b>.</li>
+<li>Em <b>Este curso recebe</b>, marque o que a turma recebe: <b>Livro técnico</b>, <b>Kit brinde</b>, <b>Kit aluno</b> e qualquer outro tipo de kit criado no Estoque educacional. Nada marcado = não recebe.</li>
+<li>Clique no botão do tipo (ex.: <b>+ Kit brinde</b>). Em <b>Do estoque / o que vai</b>, escolha o kit (ex.: Kit brinde — Sacochila ou Ecobag): o sistema mostra o que vai no kit e quanto será baixado. Informe quantidade e <b>entrega programada</b>.</li>
 <li>Na entrega, preencha <b>Entregue em</b> ou clique em <b>Entregar hoje</b>: o estoque educacional é baixado na hora. Apagar a data devolve os itens.</li></ol>
 ${ref('<p>Item com data programada passada e sem entrega gera o alerta <b>Livro/brinde</b>. A tela <b>Livros e brindes</b> mostra todas as entregas; o <b>Estoque educacional</b> mostra o saldo e o que ainda está programado para sair.</p>')}` }; }
 MANUAL.splice(MANUAL.findIndex(s => s.id === 'livros') + 1, 0, { id: 'edu', g: 'Gestão', t: 'Estoque de materiais educacionais', who: 'ed', h: `
 <ol class="msteps"><li>Abra <b>Estoque educacional</b> (menu Gestão). Aba <b>Materiais</b>: <b>+ Material</b>, nome e <b>especificidade</b> (material do kit brinde, do kit aluno, livro técnico, brinde ou outro).</li>
 <li>Informe o <b>nível de segurança</b> (quantidade mínima). Use <b>+ Entrada</b> para compras, <b>− Saída</b> para retiradas avulsas e <b>=</b> para corrigir o saldo após inventário.</li>
-<li>Aba <b>Kits</b>: monte cada kit com os materiais e a quantidade por kit (já vêm Kit brinde — Sacochila, Kit brinde — Ecobag e Kit aluno). O quadro mostra quantos kits dá para montar com o saldo.</li>
+<li>Aba <b>Kits</b>: monte cada kit com os materiais e a quantidade por kit (já vêm Kit brinde — Sacochila, Kit brinde — Ecobag e Kit aluno). Em <b>Tipo</b>, escolha Kit brinde, Kit aluno ou digite um tipo novo (ex.: Kit evento). Na aba Materiais, o ✎ em <b>Compõe os kits</b> marca de uma vez em quais kits o material entra. O quadro mostra quantos kits dá para montar com o saldo.</li>
 <li>Aba <b>Movimentações</b>: histórico de entradas, saídas e baixas das turmas.</li></ol>
 ${ref('<p>As entregas marcadas nas turmas baixam o estoque sozinhas. Quando o saldo fica no nível de segurança ou abaixo — ou não dá para as entregas já programadas — aparece o aviso <b>🛒 Comprar</b> no Início, nos Alertas e no menu.</p>')}` });
 
