@@ -284,6 +284,14 @@ table.ucs label.chk{display:inline-flex;gap:4px;align-items:center;white-space:n
 .compbox{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 10px}.pill.cmpp{background:#e0f2fe;color:#0369a1}
 .pill.okv{background:#dbeafe;color:#1d4ed8}.at.okv{background:#dbeafe;color:#1d4ed8}.almsgs .alok{color:#2563eb}.almsgs .alpe{color:var(--red)}a.alv{cursor:pointer;color:var(--acc);text-decoration:underline;font-size:11px;margin-left:2px;white-space:nowrap}
 .cparea td{background:var(--bg2,#f4f6f8)}.pbar{display:inline-block;width:70px;height:8px;background:#e5e7eb;border-radius:4px;vertical-align:middle;margin-right:6px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--acc)}.mttab td,.cptab td{vertical-align:middle}
+.escver{background:#f8fafc;border:1px solid var(--line,#e5e7eb);border-radius:8px;padding:8px 10px;margin:8px 0}
+.alck{width:28px;text-align:center}.albulk{align-items:center}button.alot,a.alot{margin-left:4px}
+select.desm{font-size:12px;padding:2px 4px}select.desm.total{background:#dcfce7;color:#166534}select.desm.parcial{background:#fef3c7;color:#92400e}select.desm.nao{background:#f3f4f6}select.desm.desmal{outline:2px solid var(--red)}.at.desm{background:#fce7f3;color:#9d174d}
+.livtab td{vertical-align:middle}.livtab input,.livtab select{font-size:13px}tr.livlate td{background:#fef2f2}.at.liv{background:#ede9fe;color:#5b21b6}
+.edutab td{vertical-align:middle}.edutab input,.edutab select{font-size:13px}
+tr.dimrow td{opacity:.6}.livrec{background:#f1f5f9;border-radius:999px;padding:3px 10px}
+
+.at.inter{background:#fdf2fa;color:#a1185f}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -315,8 +323,11 @@ function ivs(str) {
   while ((m = re.exec(str))) { const a = tm(m[1]), b = tm(m[2]); if (b > a) out.push([a, b]); }
   return out;
 }
-function escIvs(d, w) { return [].concat(ivs(d.esc && d.esc[w + 'M']), ivs(d.esc && d.esc[w + 'T']), ivs(d.esc && d.esc[w + 'N'])); }
-function escHorasDia(d, w) { return escIvs(d, w).reduce((s, [a, b]) => s + (b - a), 0) / 60; }
+// escala com vigência: d.esc = escala mais recente (vale a partir de d.escDe); d.escH = [{de, esc}] escalas anteriores
+function escVers(d) { return [...(d.escH || []), { de: d.escDe || '', esc: d.esc || {} }].sort((x, y) => (x.de || '').localeCompare(y.de || '')); }
+function escOn(d, ds) { if (!ds || !(d.escH && d.escH.length) && !d.escDe) return d.esc; let e = null; for (const v of escVers(d)) if (!v.de || v.de <= ds) e = v.esc; return e || d.esc; }
+function escIvs(d, w, ds) { const E = escOn(d, ds); return [].concat(ivs(E && E[w + 'M']), ivs(E && E[w + 'T']), ivs(E && E[w + 'N'])); }
+function escHorasDia(d, w, ds) { return escIvs(d, w, ds).reduce((s, [a, b]) => s + (b - a), 0) / 60; }
 // aula que ocupa sala: presencial ou EAD síncrona (docente na sala)
 function naSala(row) { return !row.ead || !!row.sinc; }
 function overlap(a1, b1, a2, b2) { return Math.max(0, Math.min(b1, b2) - Math.max(a1, a2)); }
@@ -371,7 +382,7 @@ const calLbl = ds => calInfo(ds) || calParc(ds);
 // para uma aula das a às b: o dia tira a aula? (expediente parcial tira a aula se menos da metade dela cabe no horário de funcionamento)
 function calInfoAula(ds, a, b) { const ci = calInfo(ds); if (ci) return ci; const p = calParc(ds); if (p && (p.sa || (a != null && b > a && overlap(a, b, p.a, p.b) < (b - a) / 2))) return p; return null; }
 // escala do docente no dia, recortada pelo expediente parcial
-function escIvsDia(d, ds, per) { const w = wd(ds); const iv = per ? ivs(d.esc && d.esc[w + per]) : escIvs(d, w); const p = calParc(ds); if (!p) return iv; return iv.map(([x, y]) => [Math.max(x, p.a), Math.min(y, p.b)]).filter(([x, y]) => y > x); }
+function escIvsDia(d, ds, per) { const w = wd(ds); const E = escOn(d, ds); const iv = per ? ivs(E && E[w + per]) : escIvs(d, w, ds); const p = calParc(ds); if (!p) return iv; return iv.map(([x, y]) => [Math.max(x, p.a), Math.min(y, p.b)]).filter(([x, y]) => y > x); }
 
 // ---- Cronograma de uma turma ----
 function horasAula(t) { const a = tm(t.hi), b = tm(t.hf); return (a != null && b != null && b > a) ? (b - a) / 60 : 0; }
@@ -384,7 +395,7 @@ function hAulaUC(t, u, H) { if (+u.h > 0) return Math.min(+u.h, H || +u.h); if (
 function unitsOf(t) {
   const H = horasAula(t);
   if (t.ucs && t.ucs.length) return t.ucs.map(u => { const hA = hAulaUC(t, u, H); const ch = +u.ch || 0, chE = Math.min(ch, Math.max(0, +u.chE || 0)); const hE = +t.hEad > 0 ? +t.hEad : hA; const nE = hE ? Math.max(0, Math.ceil(chE / hE - 1e-9)) : 0, nP = hA ? Math.max(0, Math.ceil((ch - chE) / hA - 1e-9)) : 0; return { id: u.id, num: u.num, nome: u.nome, ch, chE, doc: u.doc || [], wd: (u.wd || []).map(Number), wdDe: u.wdDe || '', hA, hE, auto: !(+u.h > 0) && hA !== H, n: chE ? nP + nE : (hA ? Math.max(0, Math.ceil(ch / hA - 1e-9)) : 0), nP, nE }; });
-  if (+t.aulasTot > 0) return [{ id: '_', num: '', nome: t.nome || 'Curso', ch: r2((+t.aulasTot) * H), doc: t.docPad || [], hA: H, n: +t.aulasTot, solo: true }];
+  if (+t.aulasTot > 0) return [{ id: '_', num: '', nome: t.nome || 'Curso', ch: r2((+t.aulasTot) * H), doc: t.docPad || [], wd: [], wdDe: '', hA: H, n: +t.aulasTot, solo: true }];
   return [];
 }
 function situacao(t) {
@@ -397,6 +408,15 @@ function situacao(t) {
 }
 
 const knTxt = row => row.mod ? (row.mod === 'EAD' ? 'EAD ' : 'Pres. ') + row.kM + '/' + row.nM : row.k + '/' + row.n;
+// dias de aula da turma numa data: períodos com dias diferentes (t.diasPer) substituem os dias normais
+function diasTurma(t, ds) { for (const p of t.diasPer || []) if (isDate(p.de) && ds >= p.de && (!isDate(p.ate) || ds <= p.ate)) return (p.dias || []).map(Number); return (t.dias || []).map(Number); }
+// recesso próprio da turma e dias não letivos que a turma desconsidera
+function recTurma(t, ds) { for (const r of t.recT || []) if (isDate(r.de) && ds >= r.de && ds <= (isDate(r.ate) ? r.ate : r.de)) return r; return null; }
+function calIgn(t, ds, ci) { return !!ci && ((t.calIgn || []).includes(ds) || (t.calIgnSem && ci.kind === 'sem') || (t.calIgnFer && ci.kind === 'fer')); }
+function calTurma(t, ds, a, b) {
+  const r = recTurma(t, ds); if (r) return { carga: true, mot: 'Recesso da turma' + (r.mot ? ': ' + r.mot : ''), kind: 'rect' };
+  const ci = calInfoAula(ds, a, b); return calIgn(t, ds, ci) ? null : ci;
+}
 function buildTurma(t) {
   if (t.copia && t.copia.src && R[t.copia.src] && R[t.copia.src].aulas) return buildCopia(t);
   const H = horasAula(t);
@@ -405,6 +425,7 @@ function buildTurma(t) {
   if (res.sit !== 'OK') return res;
   // modo dividido: alguma UC com carga EAD → dias EAD consomem a carga EAD, os demais a presencial
   const dias0 = new Set((t.dias || []).map(Number));
+  for (const p of t.diasPer || []) for (const x of p.dias || []) dias0.add(+x);
   const temDiaEad = (t.ead !== '' && t.ead != null && dias0.has(+t.ead)) || Object.values(t.ov || {}).some(o => o && o.ead);
   const split = temDiaEad && units.some(u => u.chE > 0);
   res.split = split;
@@ -427,7 +448,7 @@ function buildTurma(t) {
     const o = ov[ds] || {};
     if (o.skip) return false;
     if (o.extra) return true;
-    return dias.has(wd(ds)) && !calInfoAula(ds, tm(t.hi), tm(t.hf));
+    return diasTurma(t, ds).includes(wd(ds)) && !calTurma(t, ds, tm(t.hi), tm(t.hf));
   };
   // aulas fixadas (UC escolhida à mão) ainda à frente
   const lkP = units.map(() => 0), lkE = units.map(() => 0);
@@ -435,7 +456,7 @@ function buildTurma(t) {
   for (const ds of Object.keys(ov)) {
     if (!isDate(ds) || ds < t.ini) continue;
     const o = ov[ds];
-    if (o.uc && uidx[o.uc] != null && isSlot(ds)) { if (split && isEadDay(ds, o)) lkE[uidx[o.uc]]++; else lkP[uidx[o.uc]]++; }
+    if (o.uc && uidx[o.uc] != null && isSlot(ds)) { if (split && isEadDay(ds, o) && !o.eadP) lkE[uidx[o.uc]]++; else lkP[uidx[o.uc]]++; }
     if ((o.uc || o.extra) && isSlot(ds) && ds > lastFixed) lastFixed = ds;
   }
   const allDone = () => units.every((u, i) => dP[i] >= nP[i] && dE[i] >= nE[i]);
@@ -446,16 +467,17 @@ function buildTurma(t) {
     if (allDone() && ds > lastFixed) break;
     if (vazios > 120) break;
     const w = wd(ds), o = ov[ds] || {};
-    const pattern = dias.has(w);
+    const pattern = (t.diasPer && t.diasPer.length) ? diasTurma(t, ds).includes(w) : dias.has(w);
     if (pattern || o.extra) {
-      const ci = calInfoAula(ds, tm(t.hi), tm(t.hf));
+      const ci = calTurma(t, ds, tm(t.hi), tm(t.hf));
       if (ci && !o.extra) { if (!allDone()) res.rows.push({ ds, w, type: 'off', mot: ci.mot, kind: ci.kind }); }
       else if (o.skip) { res.rows.push({ ds, w, type: 'skip', o }); }
       else {
         const ead = isEadDay(ds, o);
+        const cE = split && ead && !o.eadP; // aula EAD que consome a carga EAD da UC (eadP: EAD que conta na presencial)
         let ui = -1, locked = false;
-        if (o.uc && uidx[o.uc] != null) { ui = uidx[o.uc]; if (split && ead) lkE[ui]--; else lkP[ui]--; locked = true; }
-        else if (!split || !ead) {
+        if (o.uc && uidx[o.uc] != null) { ui = uidx[o.uc]; if (cE) lkE[ui]--; else lkP[ui]--; locked = true; }
+        else if (!cE) {
           // UC com dias da semana definidos tem prioridade nesses dias; as demais seguem a ordem nos outros dias
           for (let i = 0; i < units.length; i++) if (units[i].wd.length && units[i].wd.includes(w) && !(units[i].wdDe > ds) && dP[i] + lkP[i] < nP[i]) { ui = i; break; }
           if (ui < 0) for (let i = 0; i < units.length; i++) if (!units[i].wd.length && dP[i] + lkP[i] < nP[i]) { ui = i; break; }
@@ -465,13 +487,14 @@ function buildTurma(t) {
           for (let i = 0; i < units.length; i++) if (units[i].wd.length && units[i].wd.includes(w) && !(units[i].wdDe > ds) && dE[i] + lkE[i] < nE[i]) { ui = i; break; }
           if (ui < 0) for (let i = 0; i <= cur; i++) if (!units[i].wd.length && dE[i] + lkE[i] < nE[i]) { ui = i; break; }
         }
-        if (ui < 0 && !locked && !allDone()) { res.rows.push({ ds, w, type: 'off', kind: 'split', mot: split && ead ? 'Dia EAD sem carga EAD pendente na UC atual' : !restaP() ? 'Carga presencial concluída — restam aulas EAD' : 'Sem UC neste dia da semana (as UCs restantes têm dias definidos)' }); vazios++; ds = addD(ds, 1); continue; }
+        if (ui < 0 && !locked && !allDone()) { res.rows.push({ ds, w, type: 'off', kind: 'split', mot: cE ? 'Dia EAD sem carga EAD pendente na UC atual' : !restaP() ? 'Carga presencial concluída — restam aulas EAD' : 'Sem UC neste dia da semana (as UCs restantes têm dias definidos)' }); vazios++; ds = addD(ds, 1); continue; }
         vazios = 0;
         const row = { ds, w, type: 'aula', ui, locked, extra: !!o.extra, o, al: [] };
         if (ui >= 0) {
-          if (split && ead) dE[ui]++; else dP[ui]++;
+          if (cE) dE[ui]++; else dP[ui]++;
           row.k = done(ui); row.n = n[ui]; row.num = ++count;
-          if (split) { row.mod = ead ? 'EAD' : 'P'; row.kM = ead ? dE[ui] : dP[ui]; row.nM = ead ? nE[ui] : nP[ui]; }
+          if (split) { row.mod = cE ? 'EAD' : 'P'; row.kM = cE ? dE[ui] : dP[ui]; row.nM = cE ? nE[ui] : nP[ui]; }
+          row.conv = ead && +t.ead !== w; // aula de dia presencial transformada em EAD
           const u = units[ui];
           row.ead = ead; row.sinc = ead && !!(t.ucs && (t.ucs.find(x => x.id === u.id) || {}).sinc);
           row.sala = (row.ead && !row.sinc) ? EAD_SALA : o.semSala ? '' : (o.sala || t.sala || VSALA[t.id] || '');
@@ -525,10 +548,14 @@ function vinculadas(A, B) { return !!A && !!B && A.id !== B.id && ((A.vinc && A.
 // compensação de horas: d.comp = [{ini, fim, hi, hf, obs, desc}] (hi/hf vazios = dia todo)
 function compDe(d, ds, a, b) { return (d.comp || []).find(c => isDate(c.ini) && c.ini <= ds && ds <= (isDate(c.fim) ? c.fim : c.ini) && (a == null || !(tm(c.hi) != null && tm(c.hf) != null) || overlap(a, b, tm(c.hi), tm(c.hf)) > 0)); }
 const compTxt = c => (tm(c.hi) != null && tm(c.hf) != null ? c.hi + '–' + c.hf : 'dia todo');
+const ATV_TIPOS = ['Compensação', 'Educor', 'Deslocamento', 'Grupo de trabalho', 'Outros'];
+const compTipo = c => (c.tipo === 'Outros' && c.outro) ? c.outro : (c.tipo || 'Compensação');
+// desligamento: docente inativo a partir de d.desl
+const deslDe = (d, ds) => !!(d && isDate(d.desl) && ds >= d.desl);
 function inFerias(d, ds) { return (d.fer || []).find(f => isDate(f.ini) && isDate(f.fim) && f.ini <= ds && ds <= f.fim); }
-function escalaCheck(d, w, a, b) {
-  const iv = escIvs(d, w);
-  if (!d.esc || !Object.keys(d.esc).length) return null;
+function escalaCheck(d, w, a, b, ds) {
+  const iv = escIvs(d, w, ds); const E = escOn(d, ds);
+  if (!E || !Object.keys(E).length) return null;
   const cov = iv.reduce((s, [x, y]) => s + overlap(a, b, x, y), 0);
   if (cov <= 0) return 'fora';
   if (cov < (b - a) - 20) return 'parcial';
@@ -539,12 +566,26 @@ function computeAll(S) {
   DOCMAP = {}; for (const d of S.docentes) DOCMAP[d.nome] = d;
   R = {}; IDX = {}; ALERTS = []; VSALA = {};
   for (const t of Object.values(S.turmas)) if (t.vinc && S.turmas[t.vinc]) VSALA[t.id] = S.turmas[t.vinc].sala || '';
-  const add = (row, tp, msg, t) => { row.al.push({ tp, msg }); ALERTS.push({ tp, msg, t, row }); };
+  const add = (row, tp, msg, t, ot) => { row.al.push({ tp, msg, ot }); ALERTS.push({ tp, msg, t, row, ot }); };
   const TT = Object.values(S.turmas); const ordem = TT.filter(t => !t.copia).concat(TT.filter(t => t.copia));
   for (const t of ordem) { const r = buildTurma(t); R[t.id] = r; }
   // cópias de cópias (raro): segunda passada
   for (const t of TT) if (t.copia && !R[t.id].copia && R[t.copia.src] && R[t.copia.src].aulas) R[t.id] = buildTurma(t);
   for (const t of TT) for (const row of R[t.id].aulas) (IDX[row.ds] = IDX[row.ds] || []).push({ t, row });
+  // interjornada: descanso mínimo entre o fim do último trabalho de um dia e o início do primeiro no dia seguinte
+  { const H = +((S.cfg || {}).interj) || 11; const J = {};
+    for (const ds of Object.keys(IDX)) for (const { t, row } of IDX[ds]) for (const nome of row.docs) {
+      const o = (J[nome] = J[nome] || {})[ds] = J[nome][ds] || { a: null, b: null };
+      if (o.a == null || row.a < o.a.row.a) o.a = { t, row }; if (o.b == null || row.b > o.b.row.b) o.b = { t, row }; }
+    for (const nome of Object.keys(J)) for (const ds of Object.keys(J[nome])) {
+      const ant = J[nome][addD(ds, -1)]; if (!ant) continue; const hoje = J[nome][ds];
+      const desc = (1440 - ant.b.row.b) + hoje.a.row.a; if (desc >= H * 60) continue;
+      const hh = Math.floor(desc / 60), mm = desc % 60;
+      const dur = hh + 'h' + (mm ? String(mm).padStart(2, '0') : '');
+      const ad = (row, msg, t, ot, od) => { row.al.push({ tp: 'inter', msg, ot, od }); ALERTS.push({ tp: 'inter', msg, t, row, ot, od }); };
+      ad(hoje.a.row, nome + ': só ' + dur + ' de descanso após ' + ant.b.t.nome + ' (' + WD[wd(ant.b.row.ds)] + ' até ' + hm(ant.b.row.b) + ') — interjornada mínima de ' + H + 'h', hoje.a.t, ant.b.t.id, ant.b.row.ds);
+      ad(ant.b.row, nome + ': só ' + dur + ' de descanso até ' + hoje.a.t.nome + ' (' + WD[wd(ds)] + ' às ' + hm(hoje.a.row.a) + ') — interjornada mínima de ' + H + 'h', ant.b.t, hoje.a.t.id, ds);
+    } }
   for (const ds of Object.keys(IDX)) {
     const L = IDX[ds];
     for (let i = 0; i < L.length; i++) {
@@ -554,9 +595,10 @@ function computeAll(S) {
         if (!d) { add(A.row, 'cad', nome + ' não está no cadastro de docentes', A.t); continue; }
         const f = inFerias(d, ds);
         const cp = !f && compDe(d, ds, A.row.a, A.row.b);
-        if (cp) add(A.row, 'comp', nome + ' em compensação de horas (' + compTxt(cp) + ')', A.t);
+        if (cp) add(A.row, 'comp', nome + ' em ' + compTipo(cp) + (compTipo(cp) === 'Compensação' ? ' de horas' : '') + ' (' + compTxt(cp) + ')', A.t);
+        if (deslDe(d, ds)) add(A.row, 'desl', nome + ' desligado(a) desde ' + br(d.desl), A.t);
         if (f) add(A.row, 'fer', nome + ' em ' + (f.tipo || 'férias').toLowerCase() + ' (' + brs(f.ini) + '–' + brs(f.fim) + ')', A.t);
-        const e = escalaCheck(d, A.row.w, A.row.a, A.row.b);
+        const e = escalaCheck(d, A.row.w, A.row.a, A.row.b, A.row.ds);
         if (e) add(A.row, 'esc', nome + (e === 'fora' ? ' fora da escala' : ' parcialmente fora da escala') + ' (' + WD[A.row.w] + ' ' + hm(A.row.a) + '–' + hm(A.row.b) + ')', A.t);
       }
       for (let j = i + 1; j < L.length; j++) {
@@ -564,12 +606,12 @@ function computeAll(S) {
         if (!overlap(A.row.a, A.row.b, B.row.a, B.row.b)) continue;
         const vin = vinculadas(A.t, B.t);
         if (!vin) for (const nome of A.row.docs) if (B.row.docs.includes(nome)) {
-          add(A.row, 'conf', nome + ' também em ' + B.t.nome + ' (horas divididas no rateio)', A.t);
-          add(B.row, 'conf', nome + ' também em ' + A.t.nome + ' (horas divididas no rateio)', B.t);
+          add(A.row, 'conf', nome + ' também em ' + B.t.nome + ' (horas divididas no rateio)', A.t, B.t.id);
+          add(B.row, 'conf', nome + ' também em ' + A.t.nome + ' (horas divididas no rateio)', B.t, A.t.id);
         }
         if (!vin && A.row.sala && A.row.sala === B.row.sala && A.row.sala !== EAD_SALA && naSala(A.row) && naSala(B.row) && salaOvRows(A.row, B.row) > 0) {
-          add(A.row, 'sala', A.row.sala + ' também com ' + B.t.nome, A.t);
-          add(B.row, 'sala', B.row.sala + ' também com ' + A.t.nome, B.t);
+          add(A.row, 'sala', A.row.sala + ' também com ' + B.t.nome, A.t, B.t.id);
+          add(B.row, 'sala', B.row.sala + ' também com ' + A.t.nome, B.t, A.t.id);
         }
       }
     }
@@ -636,7 +678,7 @@ function cargaDisponivel(d, ano) {
     const w = wd(ds);
     if (w !== 7) {
       const ci = calInfo(ds);
-      if (!(ci && !ci.carga) && !inFerias(d, ds)) m[+ds.slice(5, 7) - 1] += calParc(ds) ? escIvsDia(d, ds).reduce((s, [a, b]) => s + b - a, 0) / 60 : hw[w];
+      if (!(ci && !ci.carga) && !inFerias(d, ds) && !deslDe(d, ds)) m[+ds.slice(5, 7) - 1] += calParc(ds) ? escIvsDia(d, ds).reduce((s, [a, b]) => s + b - a, 0) / 60 : escHorasDia(d, w, ds);
     }
     ds = addD(ds, 1);
   }
@@ -660,7 +702,7 @@ function rateio(S, ano) {
   const MAN = rajOf(S).man.filter(e => e.doc && String(e.mes || '').slice(0, 4) === String(ano) && +e.h);
   for (const e of MAN) if (!H[e.doc]) H[e.doc] = { m: Array(12).fill(0), pl: Array(12).fill(0), t: {} };
   for (const [nome, o] of Object.entries(H)) {
-    const d = DOCMAP[nome]; const C = d ? cargaDisponivel(d, ano) : Array(12).fill(0);
+    const d = DOCMAP[nome]; if (d && d.convite) continue; const C = d ? cargaDisponivel(d, ano) : Array(12).fill(0);
     const byA = {}, byP = {}, manK = {};
     for (const e of MAN) if (e.doc === nome) { const i = +e.mes.slice(5, 7) - 1; const cc = String(e.cc || '').trim(); const tgt = e.tipo === '4060' ? byP : byA; (tgt[cc] = tgt[cc] || Array(12).fill(0))[i] += +e.h; manK[cc + '|' + i] = 1; }
     for (const [tid, m] of Object.entries(o.t)) { const t = S.turmas[tid] || {}; const cc = String(t.cc || '').trim(); const tgt = isPlanAct(t) ? byP : byA; const a = tgt[cc] = tgt[cc] || Array(12).fill(0); m.forEach((x, i) => a[i] += x); }
@@ -698,8 +740,8 @@ const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(
 const COLORS = ['#0b7a83', '#d4622b', '#5a32c8', '#2f8f3a', '#c2185b', '#b08600', '#1f6fd1', '#7b5e3c', '#0f9d8a', '#8e44ad', '#e0457b', '#557a00'];
 const ucColor = i => COLORS[i % COLORS.length];
 const short = n => { const p = String(n || '').trim().split(/\s+/); return p.length > 1 ? p[0] + ' ' + p[p.length - 1][0] + '.' : p[0] || ''; };
-const ALT = { ucc: 'Conferir UC', enc: 'Encerrar turma', exc: 'Excluir turma', conf: 'Conflito', fer: 'Férias/afast.', comp: 'Compensação', esc: 'Fora da escala', sala: 'Sala ocupada', cad: 'Sem cadastro', uc: 'UC', sit: 'Cadastro', cc: 'Sem centro de custo' };
-const ALTL = { ucc: 'UC terminada para conferir', enc: 'Turma terminada para encerrar', exc: 'Turma terminada há mais de 50 dias', conf: 'Docente em duas turmas ao mesmo tempo', fer: 'Docente em férias ou afastamento', comp: 'Docente em compensação de horas', esc: 'Docente fora da escala', sala: 'Sala com duas turmas ao mesmo tempo', cad: 'Docente não cadastrado', uc: 'UC com aulas a mais', sit: 'Turma com cadastro incompleto', cc: 'Turma sem centro de custo' };
+const ALT = { inter: 'Interjornada', ucc: 'Conferir UC', enc: 'Encerrar turma', exc: 'Excluir turma', conf: 'Conflito', fer: 'Férias/afast.', comp: 'Fora de sala', desl: 'Desligado', esc: 'Fora da escala', sala: 'Sala ocupada', cad: 'Sem cadastro', uc: 'UC', sit: 'Cadastro', cc: 'Sem centro de custo' };
+const ALTL = { inter: 'Docente sem o descanso mínimo entre um dia e outro (ex.: sexta à noite e sábado de manhã)', ucc: 'UC terminada para conferir', enc: 'Turma terminada para encerrar', exc: 'Turma terminada há mais de 50 dias', conf: 'Docente em duas turmas ao mesmo tempo', fer: 'Docente em férias ou afastamento', comp: 'Docente em compensação, Educor, deslocamento ou outra atividade fora de sala', desl: 'Docente desligado alocado em aula', esc: 'Docente fora da escala', sala: 'Sala com duas turmas ao mesmo tempo', cad: 'Docente não cadastrado', uc: 'UC com aulas a mais', sit: 'Turma com cadastro incompleto', cc: 'Turma sem centro de custo' };
 const HOJE = new Date().toISOString().slice(0, 10);
 const PER_ORD = { 'Manhã': 0, 'Tarde': 1, 'Noite': 2, 'Sábado': 3 };
 
@@ -825,7 +867,7 @@ function render() {
   if (!V.mes) V.mes = (new Date().getFullYear() === +S.cfg.ano ? new Date().toISOString().slice(0, 7) : S.cfg.ano + '-02');
   if (!V.area) { const ts = Object.values(S.turmas); V.area = S.cfg.areas.find(a => ts.some(t => t.area === a)) || S.cfg.areas[0] || ''; }
   V.ano = V.ano || S.cfg.ano;
-  const f = { cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
+  const f = { edu: viewEdu, livros: viewLivros, cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
   try { m.innerHTML = f(); } catch (e) { console.error(e); m.innerHTML = '<div class="card empty">Não foi possível mostrar esta tela.</div>'; }
   document.documentElement.style.setProperty('--hh', document.querySelector('header').offsetHeight + 'px');
   if (V.hl) { const el = document.getElementById('r-' + V.hl); if (el) { el.classList.add('hl'); el.scrollIntoView({ block: 'center' }); } V.hl = ''; }
@@ -882,7 +924,7 @@ function viewTurma() {
    <label class="f">Período<select data-tf="per">${opt(PERS, t.per)}</select></label>
    <label class="f">Código / oferta<input data-tf="cod" value="${esc(t.cod)}"></label>
    <label class="f">Sigla (mapa de salas)<input data-tf="sigla" value="${esc(t.sigla)}"></label>
-   <label class="f w2"><span style="display:flex;justify-content:space-between;color:var(--mut);font-size:12px">Centro de custo <button class="link sm" data-act="newCC" data-t="1" style="padding:0;font-size:12px">+ novo centro de custo</button></span><select data-tf="cc">${ccOptions(t.cc)}</select></label>
+   <label class="f w2"><span style="display:flex;justify-content:space-between;color:var(--mut);font-size:12px">Centro de custo <button class="link sm" data-act="newCC" data-t="1" style="padding:0;font-size:12px">+ novo centro de custo</button></span><input data-tccin="1" list="ccDL" value="${esc(t.cc || '')}" placeholder="Digite o código ou escolha da lista" autocomplete="off">${ccDatalist()}${t.cc && !(S.cfg.cc || []).some(c => c.cod === t.cc) ? '<span class="small muted">digitado manualmente</span>' : ''}</label>
    <label class="f">Início do curso<input type="date" data-tf="ini" value="${esc(t.ini)}"></label>
    <label class="f">Horário início<input type="time" data-tf="hi" value="${esc(t.hi)}"></label>
    <label class="f">Horário fim<input type="time" data-tf="hf" value="${esc(t.hf)}"></label>
@@ -900,19 +942,22 @@ function viewTurma() {
   </div><datalist id="ccl">${(S.cfg.cc || []).map(c => `<option value="${esc(c.cod)}">${esc(c.desc)}</option>`).join('')}</datalist>
   <div class="bar small" style="margin:10px 0 0">${r.sit === 'OK' ? `<span class="pill ok">${r.total} aulas · ${r2(r.ch)} h · ${r.H} h por aula${r.units.some(u => u.hA !== r.H) ? ' (algumas UCs com hora diferente)' : ''}</span>${isPlanAct(t) ? '<span class="pill warn">conta no planejamento (30%)</span>' : ''}<span class="pill">Término previsto: <b>${br(r.fim)}</b></span>${nal ? `<span class="pill bad">${nal} alerta(s)</span>` : '<span class="pill ok">sem alertas</span>'}` : `<span class="pill warn">${esc(r.sit)}</span>`}</div></div>`;
   h += copiaCard(t);
+  if (!t.copia) h += diasEspCard(t);
   h += turmaAlunosCard(t);
   // UCs
   h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Unidades curriculares</h2><button data-act="pasteUC">Colar lista</button><button class="pri" data-act="addUC">+ UC</button></div>`;
   if (!t.ucs || !t.ucs.length) h += `<p class="muted small">Sem UCs: o curso conta pelo “Total de aulas”. Cadastre UCs para a contagem automática por unidade.</p>`;
   else {
-    h += `<div class="tw" style="max-height:none"><table class="ucs"><tr><th></th><th>Nº</th><th>Unidade curricular</th><th class="num" title="Carga horária presencial da UC">CH presencial</th><th class="num" title="Carga horária EAD da UC: é dada nos dias de aula EAD da turma">CH EAD</th><th class="num" title="Horas por aula desta UC. Vazio = automático (horário da turma; estágio à noite = 3 h)">H/aula</th><th class="num">Aulas</th><th>Docentes de referência</th><th>Programadas</th><th></th></tr>`;
+    h += `<div class="tw" style="max-height:none"><table class="ucs"><tr><th></th><th>Nº</th><th>Unidade curricular</th><th class="num" title="Carga horária presencial da UC">CH presencial</th><th class="num" title="Carga horária EAD da UC: é dada nos dias de aula EAD da turma">CH EAD</th><th class="num" title="Horas por aula desta UC. Vazio = automático (horário da turma; estágio à noite = 3 h)">H/aula</th><th class="num">Aulas</th><th>Docentes de referência</th><th>Programadas</th><th>Início</th><th>Fim</th><th title="Desmembramento da UC no SS — preenchido pelos apoios">Desmembramento (SS)</th><th></th></tr>`;
+    const UP = ucPeriodos(t);
     t.ucs.forEach((u, i) => {
       const p = r.prog[i] || { n: 0, done: 0 };
       const st = p.done > p.n ? 'bad' : p.done < p.n ? 'warn' : 'ok';
-      h += `<tr><td><span class="dot" style="background:${ucColor(i)}"></span></td><td><input class="nu" data-uf="num" data-i="${i}" value="${esc(u.num)}"></td><td><input data-uf="nome" data-i="${i}" value="${esc(u.nome)}" style="min-width:200px"><div class="small ucwd" data-act="ucDias" data-i="${i}" title="Dias da semana desta UC">${(u.wd || []).length ? `📅 Só ${(u.wd || []).map(Number).sort().map(x => WD[x]).join(", ")}${u.wdDe ? ' a partir de ' + br(u.wdDe) : ''}` : '<span class="muted">📅 Todos os dias da turma</span>'}</div></td>
+      h += `<tr data-dgt="uc" data-i="${i}"><td class="nowrap">${canWrite() ? `<span class="dragh" data-dg="uc" data-i="${i}" title="Arraste para mudar a ordem">⠿</span>` : ''}<span class="dot" style="background:${ucColor(i)}"></span></td><td><input class="nu" data-uf="num" data-i="${i}" value="${esc(u.num)}"></td><td><input data-uf="nome" data-i="${i}" value="${esc(u.nome)}" style="min-width:200px"><div class="small ucwd" data-act="ucDias" data-i="${i}" title="Dias da semana desta UC">${(u.wd || []).length ? `📅 Só ${(u.wd || []).map(Number).sort().map(x => WD[x]).join(", ")}${u.wdDe ? ' a partir de ' + br(u.wdDe) : ''}` : '<span class="muted">📅 Todos os dias da turma</span>'}</div></td>
       <td class="num"><input class="ch" type="number" min="0" step="any" data-ucp="${i}" value="${esc(r2((+u.ch || 0) - (+u.chE || 0)))}"></td><td class="num"><input class="ch" type="number" min="0" step="any" data-uce="${i}" value="${esc(u.chE || '')}" placeholder="0" title="${!(+t.ead) ? 'Defina o dia fixo EAD da turma para usar a carga EAD' : 'Dada nos dias EAD'}">${+u.chE ? `<div class="small muted">total ${r2(+u.ch)} h</div>` : ''}${+u.chE || +t.ead ? `<label class="chk small" title="EAD síncrona: aula ao vivo, o docente precisa de sala"><input type="checkbox" data-ucsinc="${i}" ${u.sinc ? 'checked' : ''}><span>síncrona (sala)</span></label>` : ''}</td><td class="num"><input class="ch" style="width:62px" type="number" min="0" step="0.25" data-uf="h" data-i="${i}" value="${esc(u.h || '')}" placeholder="${r.units[i] ? r.units[i].hA : ''}" title="${r.units[i] && r.units[i].auto ? 'Automático: estágio no período da noite conta 3 h' : 'Vazio = horário da turma'}"></td><td class="num">${p.n}${r.split && p.nE ? `<div class="small muted">${p.nP} + ${p.nE} EAD${r.units[i] && r.units[i].hE !== r.units[i].hA ? ' (' + fmtH(r.units[i].hE) + ' h)' : ''}</div>` : ''}</td>
       <td><div class="docs" data-act="ucDocs" data-i="${i}" style="display:flex;gap:3px;flex-wrap:wrap;cursor:pointer;min-width:140px">${(u.doc || []).filter(Boolean).map(n => `<span class="dchip">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docente</span>'}</div></td>
       <td class="nowrap"><span class="pill ${st}">${p.done}/${p.n}</span>${r.split && p.nE ? `<div class="small muted">pres. ${p.dP}/${p.nP} · EAD ${p.dE}/${p.nE}</div>` : ''}</td>
+      ${ucPerCells(t, u, UP)}
       <td class="nowrap"><button class="sm" data-act="ucUp" data-i="${i}" title="Subir">↑</button><button class="sm" data-act="ucDn" data-i="${i}" title="Descer">↓</button><button class="sm dng" data-act="ucDel" data-i="${i}" title="Excluir">✕</button></td></tr>`;
     });
     h += `</table></div><p class="small muted">Aulas = CH ÷ horas por aula (${r.H || '?'} h pelo horário da turma; UCs de estágio no período da noite contam 3 h; dá para mudar na coluna H/aula), arredondado para cima. As UCs entram na ordem acima; a UC com <b>dias da semana definidos</b> (📅 abaixo do nome) ocupa só esses dias, com prioridade, enquanto as outras seguem a ordem nos demais dias. Mude a UC de qualquer dia no cronograma e o app recalcula o resto sozinho.</p>`;
@@ -920,7 +965,7 @@ function viewTurma() {
   if (!t.ucs || !t.ucs.length) h += `<div class="small muted">Docentes do curso: <span class="docs" data-act="soloDocs" style="display:inline-flex;gap:3px;cursor:pointer;border:1px dashed var(--line);border-radius:8px;padding:2px 6px">${(t.docPad || []).filter(Boolean).map(n => `<span class="dchip">${esc(short(n))}</span>`).join('') || '+ docente'}</span></div>`;
   h += '</div>';
   // Cronograma
-  h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Cronograma de aulas</h2>
+  h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Cronograma de aulas</h2>${tDocSel(t)}
    <button data-act="addExtra">+ Aula extra</button><button data-act="cancelRange">Cancelar período</button><button data-act="resetOv">Limpar ajustes</button></div>
    <div class="legend"><span>📌 UC escolhida à mão</span><span><span class="ead on">EAD</span> aula a distância</span><span class="at conf">Conflito</span><span class="at fer">Férias</span><span class="at esc">Fora da escala</span><span class="at sala">Sala ocupada</span></div></div>`;
   if (r.sit !== 'OK') return h + `<div class="card empty">${esc(r.sit)} para gerar o cronograma.</div>`;
@@ -929,6 +974,7 @@ function viewTurma() {
   h += '<div class="rows">';
   for (const row of r.rows) {
     if (V.tFix && !fixRowOk(row, r)) continue;
+    if (tDocFiltro(t) && !(row.docs || []).includes(tDocFiltro(t))) continue;
     const m = row.ds.slice(0, 7);
     if (m !== mes) { mes = m; h += `<div class="mhead">${MESESL[+m.slice(5) - 1]} ${m.slice(0, 4)}</div>`; }
     const dt = `<div class="dt"><b>${brs(row.ds)}</b><small>${WD[row.w]}</small></div>`;
@@ -936,18 +982,18 @@ function viewTurma() {
     if (row.type === 'skip') { h += `<div class="row skip" id="r-${row.ds}">${dt}<span class="grow">Aula cancelada neste dia${row.o.moved ? ' (movida para ' + brs(row.o.moved) + ')' : ''}</span><button class="sm" data-act="unskip" data-ds="${row.ds}">Restaurar</button></div>`; continue; }
     if (row.ui < 0) { h += `<div class="row livre" id="r-${row.ds}">${dt}<span class="no">—</span><select class="uc" data-act="rUC" data-ds="${row.ds}">${ucOpts(-1, false)}</select><span class="small muted grow">Dia livre: as UCs já fecharam antes de uma aula fixada mais à frente. Escolha uma UC ou cancele o dia.</span><button class="more" data-act="rMenu" data-ds="${row.ds}">⋯</button></div>`; continue; }
     const u = r.units[row.ui];
-    const PRI = { conf: 4, fer: 3, comp: 3, esc: 2, cad: 1 }; const dst = {}; for (const n of row.docs) for (const a of row.al) if (a.msg.startsWith(n) && PRI[a.tp] && (!dst[n] || PRI[a.tp] > PRI[dst[n]])) dst[n] = a.tp;
+    const PRI = { conf: 4, desl: 4, fer: 3, comp: 3, esc: 2, cad: 1 }; const dst = {}; for (const n of row.docs) for (const a of row.al) if (a.msg.startsWith(n) && PRI[a.tp] && (!dst[n] || PRI[a.tp] > PRI[dst[n]])) dst[n] = a.tp;
     const docs = row.docs.map(n => `<span class="dchip ${dst[n] || ''}">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docentes</span>';
     const salaSel = !naSala(row) ? `<span style="width:150px"></span>` : `<select class="sala" data-act="rSala" data-ds="${row.ds}">${opt(salaNames(), row.sala, '— sala —')}</select>`;
     const als = [...new Set(row.al.map(a => a.tp))].map(tp => { const okT = row.al.filter(a => a.tp === tp).every(a => a.ok); return `<span class="at ${okT ? 'okv' : tp}" title="${esc(row.al.filter(a => a.tp === tp).map(a => (a.ok ? '✓ ' : '') + a.msg).join('\n'))}">${okT ? '✓ ' : ''}${ALT[tp]}</span>`; }).join('');
-    h += `<div class="row" id="r-${row.ds}">${dt}<span class="no">#${row.num}</span>
+    h += `<div class="row" id="r-${row.ds}" data-dgt="aula" data-ds="${row.ds}">${canWrite() ? `<span class="dragh" data-dg="aula" data-ds="${row.ds}" title="Arraste até outra aula para trocar as UCs">⠿</span>` : ''}${dt}<span class="no">#${row.num}</span>
      <select class="uc" style="border-left-color:${ucColor(row.ui)}" data-act="rUC" data-ds="${row.ds}">${ucOpts(row.ui, row.locked)}</select>
      ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${knTxt(row)}</span>
      <button class="ead ${row.ead ? 'on' : ''}" data-act="rEad" data-ds="${row.ds}">${row.ead ? (row.sinc ? 'EAD síncr.' : 'EAD') : 'Presencial'}</button>${salaSel}
      <div class="docs" data-act="rDocs" data-ds="${row.ds}">${docs}</div>
-     ${row.extra ? '<span class="pill">extra</span>' : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
+     ${row.extra ? '<span class="pill">extra</span>' : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
      <div class="al">${als}</div><button class="more" data-act="rMenu" data-ds="${row.ds}" title="Mais opções">⋯</button></div>`;
-    if (row.al.length) h += `<div class="small almsgs" style="margin:-2px 0 4px 72px;color:var(--mut)">${row.al.map((a, k) => `<span class="${a.ok ? 'alok' : 'alpe'}" title="${esc(a.ok ? alvInfo(a) : '')}">${a.ok ? '✓ ' : ''}${esc(a.msg)} <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="${k}">${a.ok ? '↺ pendente' : '✓ analisado'}</a></span>`).join(' · ')}${row.al.filter(a => !a.ok).length > 1 ? ` <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="all">✓ todos analisados</a>` : ''}</div>`;
+    if (row.al.length) h += `<div class="small almsgs" style="margin:-2px 0 4px 72px;color:var(--mut)">${row.al.map((a, k) => `<span class="${a.ok ? 'alok' : 'alpe'}" title="${esc(a.ok ? alvInfo(a) : '')}">${a.ok ? '✓ ' : ''}${esc(a.msg)}${a.ot && S.turmas[a.ot] ? ` <a class="alv alot" data-act="fixGo" data-t="${a.ot}" data-ds="${a.od || row.ds}" data-f="${a.tp === 'inter' ? '' : a.tp}" title="Abrir a outra turma neste dia">abrir ${esc(S.turmas[a.ot].sigla || 'a outra turma')} ›</a>` : ''} <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="${k}">${a.ok ? '↺ pendente' : '✓ analisado'}</a></span>`).join(' · ')}${row.al.filter(a => !a.ok).length > 1 ? ` <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="all">✓ todos analisados</a>` : ''}</div>`;
   }
   return h + '</div>';
 }
@@ -991,7 +1037,7 @@ function viewDocentes() {
     const disp = V.mes.slice(0, 4) == ano ? cargaDisponivel(d, ano)[m] : '';
     const aula = r2(((H[d.nome] || {}).m || [])[m] || 0);
     const diff = d.carga && Math.abs(sem - d.carga) > 0.01;
-    h += `<tr><td><b>${esc(d.nome)}</b></td><td class="small">${esc(d.funcao)}</td><td class="num">${d.carga ?? ''}</td><td class="num ${diff ? '' : ''}">${sem}${diff ? ' <span class="pill warn" title="Escala diferente da carga contratual">≠</span>' : ''}</td>
+    h += `<tr class="${d.desl && d.desl <= HOJE ? 'dimrow' : ''}"><td><b>${esc(d.nome)}</b>${d.convite ? ' <span class="pill" title="Não entra no rateio">carta convite</span>' : ''}${d.desl ? ` <span class="pill ${d.desl <= HOJE ? 'bad' : 'warn'}">${d.desl <= HOJE ? 'desligado(a)' : 'desliga'} em ${br(d.desl)}</span>` : ''}</td><td class="small">${esc(d.funcao)}</td><td class="num">${d.carga ?? ''}</td><td class="num ${diff ? '' : ''}">${sem}${diff ? ' <span class="pill warn" title="Escala diferente da carga contratual">≠</span>' : ''}</td>
       <td class="num">${disp}</td><td class="num">${aula}</td><td class="small">${(d.fer || []).map(f => `${esc(f.tipo)} ${brs(f.ini)}–${brs(f.fim)}`).join('<br>')}</td>
       <td class="nowrap"><button class="sm" data-act="editD" data-id="${d.id}">Editar</button> <button class="sm" data-act="agD" data-n="${esc(d.nome)}">Agenda</button></td></tr>`;
   });
@@ -1061,18 +1107,7 @@ function viewHoras() {
     for (const n of outros) { const m = H[n].m; h += `<tr><td>${esc(n)} <span class="pill warn">sem cadastro</span></td>${m.map(x => `<td class="num">${x ? r2(x) : ''}</td>`).join('')}<td class="num">${r2(m.reduce((a, b) => a + b, 0))}</td><td></td><td></td></tr>`; }
     return h + '</table></div><p class="small muted">Horas em aula = dias de aula do docente × horas da aula da turma (inclui aulas EAD). Disponível = escala da semana nos dias letivos e “sem aula (conta carga)”, descontando feriados, emendas, férias e afastamentos.</p>';
   }
-  if (V.sub === '70') {
-    const mi = +V.mes.slice(5) - 1; const meta = +S.cfg.meta || 0.7, tol = +S.cfg.tol || 0.05;
-    h += `<div class="bar"><select data-in="m70">${MESESL.map((m, i) => `<option value="${i}" ${i === mi ? 'selected' : ''}>${m}</option>`).join('')}</select><span class="small muted">Meta de aula: ${Math.round(meta * 100)}% (± ${Math.round(tol * 100)} p.p.) · verde = na meta · vermelho = aula acima (falta planejamento) · amarelo = abaixo (folga para alocar) · Turmas marcadas como planejamento e as de centro de custo terminado em 4060.0 contam no planejamento (30%), não em aula.</span></div>
-    ${chart70(ano, H, docs, mi)}
-    <div class="tw"><table><tr><th>Docente</th><th>Função</th><th class="num">Carga do mês (h)</th><th class="num">Aula (h)</th><th class="num">Planejamento (h) — inclui atividades</th><th class="num">% aula</th><th class="num">% plan.</th></tr>`;
-    for (const d of docs) {
-      const c = cargaDisponivel(d, ano)[mi]; const a = r2(((H[d.nome] || {}).m || [])[mi] || 0); const at = r2(((H[d.nome] || {}).pl || [])[mi] || 0);
-      const p = c ? a / c : 0; const cls = !a ? 'no' : p > meta + tol ? 'hi' : p < meta - tol ? 'lo' : 'ok';
-      h += `<tr><td>${esc(d.nome)}</td><td class="small">${esc(d.funcao)}</td><td class="num">${c}</td><td class="num">${a}</td><td class="num">${r2(Math.max(0, c - a))}${at ? ` <span class="small muted">(${at} em atividades)</span>` : ''}</td><td class="num c70 ${cls}">${c ? Math.round(p * 100) + '%' : ''}</td><td class="num">${c ? Math.round(Math.max(0, 1 - p) * 100) + '%' : ''}</td></tr>`;
-    }
-    return h + '</table></div>';
-  }
+  if (V.sub === '70') return h + view70(ano, H, docs);
   if (V.sub === 'turma') {
     h += `<div class="tw"><table><tr><th>Docente</th><th>Área</th><th>Turma</th>${MESES.map(m => `<th class="num">${m}</th>`).join('')}<th class="num">Total</th><th>Centro de custo</th></tr>`;
     for (const n of Object.keys(H).sort()) for (const [tid, m] of Object.entries(H[n].t)) {
@@ -1100,17 +1135,18 @@ function viewHoras() {
 
 // ---------- Alertas ----------
 function viewAlertas() {
-  const tps = ['ucc', 'enc', 'exc', 'conf', 'fer', 'comp', 'esc', 'sala', 'cad', 'uc', 'cc', 'sit'];
+  const tps = ['ucc', 'enc', 'exc', 'conf', 'inter', 'fer', 'comp', 'desl', 'esc', 'sala', 'cad', 'uc', 'desm', 'liv', 'cc', 'sit'];
   const nOk = ALERTS.filter(a => a.ok).length, nPe = ALERTS.length - nOk;
   const AL = ALERTS.filter(a => V.alOk === 'ok' ? a.ok : V.alOk === 'all' ? true : !a.ok);
   const cnt = {}; for (const a of AL) cnt[a.tp] = (cnt[a.tp] || 0) + 1;
   let h = `<h1>Alertas</h1><div class="tabs"><button class="${!V.alOk ? 'on' : ''}" data-set="alOk" data-v=""><span class="pill bad">${nPe}</span> Pendentes</button><button class="${V.alOk === 'ok' ? 'on' : ''}" data-set="alOk" data-v="ok"><span class="pill okv">${nOk}</span> Analisados</button><button class="${V.alOk === 'all' ? 'on' : ''}" data-set="alOk" data-v="all">Todos (${ALERTS.length})</button></div>
   <div class="tabs"><button class="${!V.alTp ? 'on' : ''}" data-set="alTp" data-v="">Todos os tipos (${AL.length})</button>${tps.filter(t => cnt[t]).map(t => `<button class="${V.alTp === t ? 'on' : ''}" data-set="alTp" data-v="${t}">${ALTL[t]} (${cnt[t]})</button>`).join('')}</div>`;
-  const L = AL.filter(a => !V.alTp || a.tp === V.alTp).sort((a, b) => ((a.row && a.row.ds) || '').localeCompare((b.row && b.row.ds) || ''));
+  const L = AL.filter(a => (!V.alTp || a.tp === V.alTp) && (!V.alT || a.t.id === V.alT)).sort((a, b) => ((a.row && a.row.ds) || '').localeCompare((b.row && b.row.ds) || ''));
   if (!L.length) return h + '<div class="card empty">Nenhum alerta. 🎉</div>';
-  h += `<div class="tw"><table><tr><th>Data</th><th>Tipo</th><th>Turma</th><th>Detalhe</th><th>Situação</th></tr>`;
-  for (const a of L.slice(0, 800)) h += `<tr ${CONF_TP.has(a.tp) ? `data-go="conferencia"` : `data-open="${a.t.id}"`} data-ds="${a.row ? a.row.ds : ''}" style="cursor:pointer"><td class="nowrap">${a.row ? brs(a.row.ds) + ' ' + WD[a.row.w] : ''}</td><td><span class="at ${a.tp}">${ALT[a.tp]}</span></td><td class="small">${esc(a.t.nome)}</td><td class="small">${a.ok ? '<span style="color:#2563eb">✓ </span>' : ''}${esc(a.msg)}</td><td class="nowrap">${CONF_TP.has(a.tp) ? '<span class="small muted">na Conferência</span>' : a.ok ? `<span class="pill okv" title="${esc(alvInfo(a))}">✓ analisado</span> <button class="sm" data-act="alOkG" data-i="${ALERTS.indexOf(a)}" title="Voltar para pendente">↺</button>` : `<button class="sm" data-act="alOkG" data-i="${ALERTS.indexOf(a)}">✓ Analisado</button>`}</td></tr>`;
-  if (L.length > 800) h += `<tr><td colspan="5" class="muted">… e mais ${L.length - 800}. Filtre por tipo.</td></tr>`;
+  h += alBulkBar(L);
+  h += `<div class="tw"><table><tr><th class="alck"><input type="checkbox" data-alall title="Selecionar todos da lista" onclick="event.stopPropagation()" ${L.length && L.slice(0, 800).filter(a => !CONF_TP.has(a.tp)).every(a => ALSEL.has(alSelK(a))) ? 'checked' : ''}></th><th>Data</th><th>Tipo</th><th>Turma</th><th>Detalhe</th><th>Situação</th></tr>`;
+  for (const a of L.slice(0, 800)) h += `<tr ${CONF_TP.has(a.tp) ? `data-go="conferencia"` : `data-open="${a.t.id}"`} data-ds="${a.row ? a.row.ds : ''}" style="cursor:pointer"><td class="alck" onclick="event.stopPropagation()">${CONF_TP.has(a.tp) ? '' : `<input type="checkbox" data-alsel="${esc(alSelK(a))}" ${ALSEL.has(alSelK(a)) ? 'checked' : ''}>`}</td><td class="nowrap">${a.row ? brs(a.row.ds) + ' ' + WD[a.row.w] : ''}</td><td><span class="at ${a.tp}">${ALT[a.tp]}</span></td><td class="small">${esc(a.t.nome)}</td><td class="small">${a.ok ? '<span style="color:#2563eb">✓ </span>' : ''}${esc(a.msg)}${a.ot && S.turmas[a.ot] ? ` <button class="sm alot" data-act="fixGo" data-t="${a.ot}" data-ds="${a.od || (a.row ? a.row.ds : '')}" data-f="${a.tp === 'inter' ? '' : a.tp}" title="Abrir ${esc(S.turmas[a.ot].nome)} neste dia">Abrir ${esc(S.turmas[a.ot].sigla || 'outra turma')} ›</button>` : ''}</td><td class="nowrap">${CONF_TP.has(a.tp) ? '<span class="small muted">na Conferência</span>' : a.ok ? `<span class="pill okv" title="${esc(alvInfo(a))}">✓ analisado</span> <button class="sm" data-act="alOkG" data-i="${ALERTS.indexOf(a)}" title="Voltar para pendente">↺</button>` : `<button class="sm" data-act="alOkG" data-i="${ALERTS.indexOf(a)}">✓ Analisado</button>`}</td></tr>`;
+  if (L.length > 800) h += `<tr><td colspan="6" class="muted">… e mais ${L.length - 800}. Filtre por tipo.</td></tr>`;
   return h + '</table></div>';
 }
 
@@ -1151,7 +1187,7 @@ function docOptions(sel, ds, a, b, tid) {
   const bi = ds ? busyInfo(ds, a, b, tid) : { doc: {} };
   return '<option value="">—</option>' + docNames().map(n => {
     let tag = '';
-    if (ds) { const d = DOCMAP[n]; if (bi.doc[n]) tag = ' · ocupado: ' + bi.doc[n]; else if (d && inFerias(d, ds)) tag = ' · férias/afast.'; else if (d && compDe(d, ds, a, b)) tag = ' · compensação de horas'; else if (d && escalaCheck(d, wd(ds), a, b)) tag = ' · fora da escala'; else tag = ' · livre'; }
+    if (ds) { const d = DOCMAP[n]; if (bi.doc[n]) tag = ' · ocupado: ' + bi.doc[n]; else if (d && inFerias(d, ds)) tag = ' · férias/afast.'; else if (d && deslDe(d, ds)) tag = ' · desligado(a)'; else if (d && compDe(d, ds, a, b)) tag = ' · compensação de horas'; else if (d && escalaCheck(d, wd(ds), a, b, ds)) tag = ' · fora da escala'; else tag = ' · livre'; }
     return `<option value="${esc(n)}" ${n === sel ? 'selected' : ''}>${esc(n + tag)}</option>`;
   }).join('') + (sel && !DOCMAP[sel] ? `<option selected value="${esc(sel)}">${esc(sel)} (sem cadastro)</option>` : '');
 }
@@ -1210,7 +1246,7 @@ const ACT = {
         (t.ucs = t.ucs || []).push({ id: uid('u'), num: num || t.ucs.length + 1, nome, ch, doc: p[3] ? [p[3]] : [] }); n++; }
       saveT(t); closeModal(); refresh(); toast(n + ' UC(s) adicionada(s)'); } };
     modal(`<h2>Colar lista de UCs</h2><p class="small muted">Copie do Excel ou do plano de curso. Uma UC por linha, colunas separadas por tabulação ou ponto e vírgula:<br><b>Nome ; CH</b> &nbsp;ou&nbsp; <b>Nº ; Nome ; CH ; Docente</b></p><textarea rows="10" style="width:100%" placeholder="1;Realizar improvisação teatral;60\n2;Pesquisar a história do teatro;72"></textarea><div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Adicionar</button></div>`); },
-  rEad: (el) => { const t = curT(); const ds = el.dataset.ds; const row = R[t.id].rows.find(x => x.ds === ds); const def = +t.ead === wd(ds); const nv = !row.ead; setOv(t, ds, { ead: nv === def ? undefined : nv }); saveT(t); refresh(); },
+  rEad: (el) => { const t = curT(); const ds = el.dataset.ds; const row = R[t.id].rows.find(x => x.ds === ds); const def = +t.ead === wd(ds); const nv = !row.ead; if (nv && !def && row.ui >= 0) return eadConvModal(t, row); const o = (t.ov || {})[ds] || {}; setOv(t, ds, { ead: nv === def ? undefined : nv, eadP: undefined, uc: o.eadUc ? undefined : o.uc, eadUc: undefined }); saveT(t); refresh(); },
   rDocs: (el) => { const t = curT(); const ds = el.dataset.ds; const r = R[t.id]; const row = r.rows.find(x => x.ds === ds); const u = r.units[row.ui];
     docsModal('Docentes da aula ' + row.num, row.docs, ds, row.a, row.b, t.id, [['one', 'Só nesta aula'], ['next', 'Nesta e nas próximas aulas desta UC'], ['all', 'Em todas as aulas desta UC'], ['wk', 'Repetir em dias da semana escolhidos, num período (ex.: toda terça e quarta; cobrir um afastamento)']], (v, sc) => {
       if (sc === 'wk') { const n = wkAplica(t, v, u.id); if (n < 0) return; saveT(t); closeModal(); refresh(); return toast(n + ' aula(s) com o novo docente'); }
@@ -1277,24 +1313,36 @@ function editDoc(id) {
   const w = clone(d);
   const draw = () => {
     modal(`<h2>Docente</h2><div class="grid"><label class="f w2">Nome<input data-dk="nome" value="${esc(w.nome)}"></label><label class="f w2">Função<input data-dk="funcao" value="${esc(w.funcao)}"></label><label class="f">Carga contratual (h/semana)<input type="number" data-dk="carga" value="${esc(w.carga ?? '')}"></label></div>
+    <div class="escver" style="margin-top:8px"><label class="chk"><input type="checkbox" data-dconv ${w.convite ? 'checked' : ''}><span><b>Carta convite</b> — não entra no rateio</span></label>
+     <div class="bar" style="margin-top:6px;gap:8px"><span class="small"><b>Desligamento:</b> a partir de</span><input type="date" data-ddesl value="${esc(w.desl || '')}" style="width:auto"><span class="small muted">Deixa de contar carga, sai das escolhas e aulas depois dessa data geram alerta. Tudo antes continua registrado.</span>${w.desl ? '<button class="sm" data-m="deslLimpa">Reativar</button>' : ''}</div></div>
     <h3>Escala (horário de trabalho)</h3><p class="small muted">Ex.: 08:00–12:00 · dois turnos: 13:00–17:00 / 17:15–18:00 · “Compensado” = sem trabalho.</p>
-    <div class="tw" style="max-height:none"><table class="esc"><tr><th></th><th>Manhã</th><th>Tarde</th><th>Noite</th><th class="num">h</th></tr>${[1, 2, 3, 4, 5, 6].map(x => `<tr><td>${WD[x]}</td>${'MTN'.split('').map(p => `<td><input data-esc="${x}${p}" value="${esc((w.esc || {})[x + p] || '')}"></td>`).join('')}<td class="num">${r2(escHorasDia(w, x))}</td></tr>`).join('')}</table></div>
+    <div class="tw" style="max-height:none"><table class="esc"><tr><th></th><th>Manhã</th><th>Tarde</th><th>Noite</th><th class="num">h</th></tr>${[1, 2, 3, 4, 5, 6].map(x => `<tr><td>${WD[x]}</td>${'MTN'.split('').map(p => `<td><input data-esc="${x}${p}" value="${esc((w.esc || {})[x + p] || '')}"></td>`).join('')}<td class="num">${r2(escHorasDia(w, x))}</td></tr>`).join('')}</table></div>${escVerBlock(w)}
     <h3>Férias e afastamentos</h3>${(w.fer || []).map((f, i) => `<div class="bar"><select data-fk="tipo" data-i="${i}">${opt(['Férias', 'Afastamento', 'Licença', 'Outro'], f.tipo)}</select><input type="date" data-fk="ini" data-i="${i}" value="${esc(f.ini)}"><input type="date" data-fk="fim" data-i="${i}" value="${esc(f.fim)}"><button class="sm dng" data-m="ferDel" data-i="${i}">✕</button></div>`).join('')}
     <button class="sm" data-m="ferAdd">+ Período</button>
     <div class="mact"><button class="dng" data-m="docDel">Excluir docente</button><span class="grow"></span><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`, true);
   };
   const read = () => {
     document.querySelectorAll('#modal [data-dk]').forEach(i => { w[i.dataset.dk] = i.dataset.dk === 'carga' ? (i.value === '' ? null : +i.value) : i.value.trim(); });
+    { const cv = document.querySelector('#modal [data-dconv]'); if (cv) { if (cv.checked) w.convite = true; else delete w.convite; } const dl = document.querySelector('#modal [data-ddesl]'); if (dl) { if (isDate(dl.value)) w.desl = dl.value; else delete w.desl; } }
     w.esc = {}; document.querySelectorAll('#modal [data-esc]').forEach(i => { if (i.value.trim()) w.esc[i.dataset.esc] = i.value.trim(); });
+    const em = document.querySelector('#modal [data-escmodo]:checked'); if (em) { w.__modo = em.value; w.__de = (document.querySelector('#modal [data-escde]') || {}).value || ''; }
     document.querySelectorAll('#modal [data-fk]').forEach(i => { w.fer[+i.dataset.i][i.dataset.fk] = i.value; });
   };
   MCTX = { ok: () => {
     read(); const old = d.nome;
     if (w.nome !== old && S.docentes.some(x => x !== d && x.nome === w.nome)) return toast('Já existe um docente com esse nome');
-    Object.assign(d, w); saveDocs();
+    if (w.__modo === 'nova') {
+      if (!isDate(w.__de)) return toast('Informe a data a partir da qual vale a nova escala');
+      const vs = escVers(Object.assign({}, d, { escH: w.escH })).filter(v => (v.de || '') < w.__de);
+      w.escH = vs.map(v => ({ de: v.de || '', esc: v.esc })); w.escDe = w.__de;
+    }
+    delete w.__modo; delete w.__de; if (w.escH && !w.escH.length) delete w.escH;
+    Object.assign(d, w); if (!w.escH) delete d.escH; if (!w.convite) delete d.convite; if (!w.desl) delete d.desl; saveDocs();
     if (w.nome !== old) { for (const t of Object.values(S.turmas)) { let ch = false; const ren = a => a && a.map(n => { if (n === old) { ch = true; return w.nome; } return n; });
       for (const u of t.ucs || []) u.doc = ren(u.doc); t.docPad = ren(t.docPad); for (const o of Object.values(t.ov || {})) if (o.doc) o.doc = ren(o.doc); if (ch) saveT(t); } }
     closeModal(); refresh(); } };
+  MACT.deslLimpa = () => { read(); delete w.desl; draw(); };
+  MACT.escVerDel = el => { read(); w.escH.splice(+el.dataset.i, 1); draw(); };
   MACT.ferAdd = () => { read(); w.fer = w.fer || []; w.fer.push({ tipo: 'Férias', ini: '', fim: '' }); draw(); };
   MACT.ferDel = el => { read(); w.fer.splice(+el.dataset.i, 1); draw(); };
   MACT.docDel = () => { const ctx = MCTX; askConfirm('Excluir <b>' + esc(d.nome) + '</b> do cadastro? As aulas em que aparece passam a mostrar alerta de “sem cadastro”.', () => { S.docentes = S.docentes.filter(x => x !== d); saveDocs(); closeModal(); refresh(); }, 'Excluir'); };
@@ -1621,7 +1669,7 @@ function viewAgenda() {
     if (x.slice(0, 7) > V.mes && wd(x) === 1) break;
     const inM = x.slice(0, 7) === V.mes; const ci = calInfo(x); const fer = d && inFerias(d, x); const cpx = d && !fer && compDe(d, x);
     const items = (byDay[x] || []).sort((p, q) => p.a.a - q.a.a);
-    cal += `<div class="mday ${inM ? '' : 'out'} ${ci ? 'nl' : ''} ${fer ? 'fer' : ''} ${cpx ? 'comp' : ''} ${x === HOJE ? 'today' : ''}"><div class="dn">${+x.slice(8)}</div>${cpx && inM ? `<div class="mot cmpm" ${canWrite() ? `data-act="compEd" data-k="${(d.comp || []).indexOf(cpx)}" style="cursor:pointer"` : ''}>Compensação · ${esc(compTxt(cpx))}</div>` : ''}${ci && inM ? `<div class="mot">${esc(ci.mot)}</div>` : ''}${fer && inM ? `<div class="mot">${esc(fer.tipo)}</div>` : ''}
+    cal += `<div class="mday ${inM ? '' : 'out'} ${ci ? 'nl' : ''} ${fer ? 'fer' : ''} ${cpx ? 'comp' : ''} ${x === HOJE ? 'today' : ''}"><div class="dn">${+x.slice(8)}</div>${cpx && inM ? `<div class="mot cmpm" ${canWrite() ? `data-act="compEd" data-k="${(d.comp || []).indexOf(cpx)}" style="cursor:pointer"` : ''}>${esc(compTipo(cpx))} · ${esc(compTxt(cpx))}</div>` : ''}${ci && inM ? `<div class="mot">${esc(ci.mot)}</div>` : ''}${fer && inM ? `<div class="mot">${esc(fer.tipo)}</div>` : ''}
       ${inM ? items.map(({ t, a }) => ({ s: a.a, h: (() => { const atv = isPlanAct(t); if (atv) totAt += a.h; else tot += a.h; const u = R[t.id].units[a.ui]; const cls = canWrite() ? docClass(a, dn) : ''; return `<div class="ev ${a.ead ? 'evead' : ''} ${atv ? 'evatv' : ''} ${cls ? 'ev-' + cls : ''}" data-open="${t.id}" data-ds="${x}" title="${esc(t.nome + ' · ' + u.nome)}"><b>${hm(a.a)}–${hm(a.b)}</b> ${esc(t.sigla || t.nome.slice(0, 22))}<div>${atv ? 'atividade (planejamento)' : (a.ead ? 'EAD' : esc(a.sala || 'sem sala')) + ' · ' + esc(u.num ? 'UC ' + u.num : '') + ' ' + a.k + '/' + a.n}</div>${infoTxt(a.o) ? `<div>${infoBadge(a.o, true)}</div>` : ''}</div>`; })() })).concat(planBlocks(x, items.map(i => ({ a: i.a })))).sort((p, q) => p.s - q.s).map(o => o.h).join('') : ''}</div>`;
     x = addD(x, 1);
   }
@@ -1629,7 +1677,7 @@ function viewAgenda() {
   const disp = d ? cargaDisponivel(d, ano)[+V.mes.slice(5) - 1] : 0;
   h += `<div class="card"><div class="bar" style="margin:0 0 8px"><h3 class="grow" style="margin:0">2) ${MESESL[+V.mes.slice(5) - 1]} de ${ano}</h3><span class="pill">${r2(tot)} h em aula</span>${totAt ? `<span class="pill" style="background:#fff3d6">${r2(totAt)} h em atividades</span>` : ''}${d ? `<span class="pill">${disp} h de carga no mês</span><span class="pill ${disp && tot / disp > (+S.cfg.meta || .7) + (+S.cfg.tol || .05) ? 'bad' : 'ok'}">${disp ? Math.round(100 * tot / disp) : 0}% em aula</span>` : ''}</div>${cal}</div>`;
   // 3) escala
-  if (d) h += `<div class="card"><h3 style="margin-top:0">3) Escala de trabalho</h3><div class="tw" style="max-height:none"><table><tr><th></th>${[1, 2, 3, 4, 5, 6].map(w => `<th>${WD[w]}</th>`).join('')}</tr>${['M', 'T', 'N'].map(p => `<tr><td class="small muted">${{ M: 'Manhã', T: 'Tarde', N: 'Noite' }[p]}</td>${[1, 2, 3, 4, 5, 6].map(w => `<td class="small">${esc((d.esc || {})[w + p] || '')}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
+  if (d) h += `<div class="card"><h3 style="margin-top:0">3) Escala de trabalho</h3>${escMesNota(d)}<div class="tw" style="max-height:none"><table><tr><th></th>${[1, 2, 3, 4, 5, 6].map(w => `<th>${WD[w]}</th>`).join('')}</tr>${['M', 'T', 'N'].map(p => `<tr><td class="small muted">${{ M: 'Manhã', T: 'Tarde', N: 'Noite' }[p]}</td>${[1, 2, 3, 4, 5, 6].map(w => `<td class="small">${esc((escOn(d, escMesRef()) || {})[w + p] || '')}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
   return h;
 }
 
@@ -1919,19 +1967,20 @@ function passT(t) { return areaOk(t.area) && (!V.cPer || t.per === V.cPer) && (!
 function viewCronograma() {
   const tab = V.cTab || 'semana';
   let h = `<div class="pagehead"><h1>Cronograma</h1><p class="muted">Veja a semana por período, a linha do tempo das turmas ou o formato da planilha.</p></div>
-  <div class="tabs">${[['semana', 'Semana'], ['linha', 'Linha do tempo'], ['planilha', 'Formato planilha']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-set="cTab" data-v="${k}">${l}</button>`).join('')}</div>`;
+  <div class="tabs">${[['semana', 'Semana / mês / ano'], ['linha', 'Linha do tempo'], ['planilha', 'Formato planilha']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-set="cTab" data-v="${k}">${l}</button>`).join('')}</div>`;
   if (tab === 'planilha') return h + viewCronogramaPlanilha();
   if (tab === 'linha') return h + viewLinha();
+  if (V.cVis === 'mes' || V.cVis === 'ano') return h + viewCronMesAno();
   return h + viewSemana();
 }
 
 // ---------- Semana ----------
 function viewSemana() {
   const w = curWeek(); const days = [0, 1, 2, 3, 4, 5].map(i => addD(w, i));
-  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select><input placeholder="Filtrar curso ou sigla" data-in="cq" value="${esc(V.cq || '')}" style="flex:1 1 160px"></div>
-  <div class="bar filters wkbar">${weekNav()}</div>`;
+  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select><input placeholder="Filtrar curso ou sigla" data-in="cq" value="${esc(V.cq || '')}" style="flex:1 1 160px">${docSelCron()}</div>
+  <div class="bar filters wkbar">${visTabs()}${weekNav()}</div>`;
   const cell = {}; let n = 0;
-  for (const d of days) for (const { t, row } of (IDX[d] || [])) { if (!passT(t)) continue; const k = d + '|' + slotOf(row.a); (cell[k] = cell[k] || []).push({ t, row }); n++; }
+  for (const d of days) for (const { t, row } of (IDX[d] || [])) { if (!passT(t) || !passDoc(row)) continue; const k = d + '|' + slotOf(row.a); (cell[k] = cell[k] || []).push({ t, row }); n++; }
   for (const k in cell) cell[k].sort((a, b) => a.row.a - b.row.a || a.t.nome.localeCompare(b.t.nome));
   const used = SLOTS.filter(([s]) => days.some(d => (cell[d + '|' + s] || []).length));
   const card = ({ t, row }) => {
@@ -2013,7 +2062,7 @@ function viewOcupacao() {
       if (!off && !(wd(d) === 6 && k === 'N')) avail++;
       const L = occ[s + '|' + d + '|' + k] || []; if (L.length) used++;
       const conf = L.length > 1 && s !== EAD_SALA && s !== '—';
-      cells += `<td class="oc ${off ? 'off' : ''} ${conf ? 'conf' : ''} ${one ? 'wide' : ''}" ${canWrite() && s !== EAD_SALA ? `data-occ-cell="${esc(s)}|${d}|${k}" title="Clique para reservar, trocar sala ou ver a aula"` : ''}>${L.map(({ t, row }) => `<span class="ochip" style="background:${areaColor(t.area)}" ${canWrite() ? `data-act="aulaInfo" data-tid="${t.id}"` : `data-open="${t.id}"`} data-ds="${d}" title="${esc(t.nome + ' · ' + hm(row.a) + '–' + hm(row.b) + (row.docs.length ? '\n' + row.docs.join(', ') : '') + (temMat(row.o) ? '\nMateriais: ' + matTxt(row.o) : '') + (infoTxt(row.o) ? '\n' + infoTxt(row.o) : ''))}">${temMat(row.o) ? '📦 ' : ''}${esc(one ? short2(tName(t)) : tSig(t))}</span>${one && row.docs.length ? `<div class="small muted">${esc(short(row.docs[0]))}</div>` : ''}`).join('')}</td>`;
+      cells += `<td class="oc ${off ? 'off' : ''} ${conf ? 'conf' : ''} ${one ? 'wide' : ''}" ${canWrite() && s !== EAD_SALA ? `data-occ-cell="${esc(s)}|${d}|${k}" title="Clique para reservar, trocar sala ou ver a aula"` : ''}>${L.map(({ t, row }) => `<span class="ochip" style="background:${areaColor(t.area)}" ${canWrite() ? `data-act="aulaInfo" data-tid="${t.id}"${String(t.id).startsWith('av:') ? '' : ' data-dgchip'}` : `data-open="${t.id}"`} data-ds="${d}" title="${esc(t.nome + ' · ' + hm(row.a) + '–' + hm(row.b) + (row.docs.length ? '\n' + row.docs.join(', ') : '') + (temMat(row.o) ? '\nMateriais: ' + matTxt(row.o) : '') + (infoTxt(row.o) ? '\n' + infoTxt(row.o) : ''))}">${temMat(row.o) ? '📦 ' : ''}${esc(one ? short2(tName(t)) : tSig(t))}</span>${one && row.docs.length ? `<div class="small muted">${esc(short(row.docs[0]))}</div>` : ''}`).join('')}</td>`;
     } }
     const p = avail ? Math.round(100 * used / avail) : 0;
     return `<tr><td class="stk"><b>${esc(label)}</b>${info ? `<div class="small muted">${esc(info)}</div>` : ''}</td>${cells}<td class="num"><div class="obar"><i style="width:${Math.min(100, p)}%"></i></div><span class="small">${p}%</span></td></tr>`;
@@ -2066,7 +2115,7 @@ document.addEventListener('change', e => {
 // ---------- Versão pública (sem login) ----------
 function pubData() {
   const cfg = clone(S.cfg); cfg.cc = []; delete cfg.raj; delete cfg.metaCH;
-  return { eventos: clone(S.eventos || []), esp: clone(ESP()), mats: clone(MATS()), cfg, docentes: S.docentes.map(d => ({ id: d.id, nome: d.nome, funcao: d.funcao, esc: d.esc, fer: d.fer, comp: (d.comp || []).map(c => ({ ini: c.ini, fim: c.fim, hi: c.hi, hf: c.hf })) })), turmas: Object.fromEntries(Object.entries(S.turmas).map(([k, t]) => { const c = Object.assign(clone(t), { cc: '' }); delete c.conf; delete c.enc; delete c.alv; for (const o of Object.values(c.ov || {})) { delete o.matSt; delete o.obs; } return [k, c]; })) };
+  return { eventos: clone(S.eventos || []), esp: clone(ESP()), mats: clone(MATS()), cfg, docentes: S.docentes.map(d => ({ id: d.id, nome: d.nome, funcao: d.funcao, esc: d.esc, escDe: d.escDe, escH: d.escH, fer: d.fer, comp: (d.comp || []).map(c => ({ ini: c.ini, fim: c.fim, hi: c.hi, hf: c.hf })) })), turmas: Object.fromEntries(Object.entries(S.turmas).map(([k, t]) => { const c = Object.assign(clone(t), { cc: '' }); delete c.conf; delete c.enc; delete c.alv; for (const o of Object.values(c.ov || {})) { delete o.matSt; delete o.obs; } return [k, c]; })) };
 }
 function pubStatus() {
   if (!SNAP) return { ok: false, txt: 'Ainda não publicada' };
@@ -2387,8 +2436,8 @@ const itemName = id => (MATS().itens.find(i => i.id === id) || {}).nome || '(ite
 const matItensTxt = o => ((o && o.matItens) || []).map(it => it.q + ' ' + itemName(it.id)).join(', ');
 function viewEstoque() {
   const w = curWeek(); const days = [0, 1, 2, 3, 4, 5].map(i => addD(w, i));
-  let h = `<div class="bar filters"><button data-act="itAdd">+ Item</button><span class="small muted">Cadastre o que pode ser emprestado às salas e a quantidade total. Os pedidos nas aulas descontam do saldo do dia.</span></div>`;
-  h += `<div class="tw" style="max-height:none;margin-bottom:12px"><table><tr><th>Material</th><th class="num">Quantidade total</th><th>Observação</th><th></th></tr>${MATS().itens.map((it, i) => `<tr><td><input data-itf="nome" data-i="${i}" value="${esc(it.nome)}"></td><td class="num"><input type="number" min="0" data-itf="qtd" data-i="${i}" value="${it.qtd || 0}" style="width:90px"></td><td><input data-itf="obs" data-i="${i}" value="${esc(it.obs || '')}" style="width:100%;min-width:200px"></td><td><button class="sm dng" data-act="itDel" data-i="${i}">✕</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Nenhum item cadastrado.</td></tr>'}</table></div>`;
+  let h = `<div class="bar filters"><button data-act="itAdd">+ Item</button><button data-act="itImport">⇪ Importar lista (Excel ou colar)</button><span class="small muted">Cadastre o que pode ser emprestado às salas e a quantidade total. Os pedidos nas aulas descontam do saldo do dia.</span></div>`;
+  h += `<div class="tw" style="max-height:none;margin-bottom:12px"><table><tr><th>Material</th><th class="num">Quantidade total</th><th>Onde fica</th><th>Observação</th><th></th></tr>${MATS().itens.map((it, i) => `<tr><td><input data-itf="nome" data-i="${i}" value="${esc(it.nome)}"></td><td class="num"><input type="number" min="0" data-itf="qtd" data-i="${i}" value="${it.qtd || 0}" style="width:90px"></td><td><input data-itf="local" data-i="${i}" value="${esc(it.local || '')}" placeholder="sala, armário, carrinho…" style="min-width:180px"></td><td><input data-itf="obs" data-i="${i}" value="${esc(it.obs || '')}" style="width:100%;min-width:200px"></td><td><button class="sm dng" data-act="itDel" data-i="${i}">✕</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Nenhum item cadastrado.</td></tr>'}</table></div>`;
   if (!MATS().itens.length) return h;
   h += `<h2>Saldo por dia</h2><div class="bar filters wkbar">${weekNav()}</div><div class="tw"><table class="stock"><tr><th>Material</th>${days.map(d => `<th class="num">${WD[wd(d)]} ${brs(d)}</th>`).join('')}</tr>`;
   for (const it of MATS().itens) {
@@ -3419,11 +3468,11 @@ const MANUAL = [
   { id: 'visao', g: 'Começo', t: 'Visão geral e acessos', who: 'all', h: `
 <p>O sistema substitui a planilha de cronograma: gera o cronograma de cada turma a partir das UCs, dos dias de aula e do calendário letivo, e a partir dele calcula horas dos docentes, 70×30, rateio, ocupação de salas, meta e relatórios.</p>
 <h4>Dois modos</h4>
-<ul><li><b>Consulta</b> (qualquer pessoa com o link, sem login): vê <b>Cronograma</b>, <b>Agenda do docente</b>, <b>Eventos</b>, <b>Espaços</b> e este <b>Manual</b>. Não altera nada.</li>
-<li><b>Edição</b> (pessoas convidadas como “Pode editar”, com conta Claude): vê também o menu <b>Gestão</b> e pode alterar dados. Todas as alterações ficam salvas na nuvem e aparecem iguais no computador e no celular.</li></ul>
-<h4>Versão pública</h4>
-<p>Quem abre sem login vê uma <b>cópia</b> dos dados, que não se atualiza sozinha. Depois de mudanças importantes, um editor clica em <b>“Atualizar versão pública”</b> (em Início ou em Planilha e dados). Um aviso amarelo aparece quando há alterações ainda não publicadas.</p>
-<p>A versão pública não leva: materiais e estoque, observações internas, centros de custo, rateio, ajustes, metas, matrículas e conferências.</p>
+<ul><li><b>Consulta</b> (qualquer pessoa com o link, sem login): vê <b>Cronograma</b>, <b>Agenda do docente</b>, <b>Eventos</b>, <b>Comitês</b>, <b>Espaços</b>, <b>Mapa de salas</b> e o manual <b>Como consultar</b>. Não altera nada.</li>
+<li><b>Edição</b> (administradores): clique em <b>Entrar para editar</b> e use o e-mail e a senha cadastrados. Aparece o menu <b>Gestão</b> e é possível alterar dados. Tudo fica salvo na nuvem e aparece igual no computador e no celular.</li></ul>
+<h4>Versão de consulta</h4>
+<p>Quem abre sem login vê a <b>versão de consulta</b>, atualizada <b>sozinha</b> alguns segundos depois de cada alteração salva. Não é preciso publicar nada. No topo aparece “✓ Salvo e publicado” quando terminou.</p>
+<p>A versão de consulta não mostra: materiais e estoque, observações internas, centros de custo, rateio, ajustes, metas, matrículas e conferências.</p>
 ${dica('<p>O botão <b>“👁 Ver como consulta”</b>, no rodapé do menu, mostra o site exatamente como os leitores veem. Clique de novo para voltar à edição.</p>')}` },
   { id: 'rotina', g: 'Começo', t: 'Roteiro de uso: implantação e rotina', who: 'ed', h: `
 <h4>Implantação (uma vez)</h4>
@@ -3433,11 +3482,11 @@ ${dica('<p>O botão <b>“👁 Ver como consulta”</b>, no rodapé do menu, mos
 <li><b>Centros de custo</b>: códigos e descrições.</li>
 <li><b>Turmas e UCs</b>: para cada curso, dados da turma, UCs com carga horária e docente, sala padrão, centro de custo, técnico responsável, vagas PSG/Comercial.</li>
 <li><b>Meta PSG e Comercial</b>: metas anuais.</li>
-<li>Clique em <b>Atualizar versão pública</b> e compartilhe o link.</li></ol>
+<li>Compartilhe o link com a equipe: a consulta já está atualizada.</li></ol>
 <h4>Rotina sugerida</h4>
 <ul><li><b>Diariamente/semanalmente</b>: ajustes de aula (cancelar, mover, trocar docente, informação do dia, liberar sala, materiais); olhar <b>Alertas</b>; gerar <b>arquivos para imprimir</b> (materiais e cartaz de salas).</li>
 <li><b>Mensalmente</b>: <b>Alunos e evasão → Atualizar matrículas do mês</b>; conferir <b>70×30</b> e <b>Rateio</b> (com ajustes manuais); ler o painel da <b>Meta</b>; tratar a <b>Conferência de UCs</b>.</li>
-<li><b>Sempre que mudar algo que os leitores precisam ver</b>: Atualizar versão pública.</li></ul>` },
+<li><b>Uma vez por mês</b>: baixe a <b>Cópia de segurança (.json)</b> em Planilha e dados.</li></ul>` },
   { id: 'cron', g: 'Consulta', t: 'Cronograma de aulas', who: 'all', h: `
 <p>${caminho('Cronograma')}. Três formas de ver:</p>
 <ul><li><b>Semana</b>: cartões por dia e turno, com turma, UC, docente, sala e horário. Eventos institucionais e dias não letivos aparecem no topo de cada dia.</li>
@@ -3454,7 +3503,7 @@ ${lei('<ul><li>Selo <b>EAD</b> = aula a distância (sem sala).</li><li>Etiquetas
 <p>${caminho('Eventos')}: calendário do mês com eventos, avisos importantes e dias não letivos (feriado, emenda, sem aula, expediente parcial).</p>
 <h4>Para editores — cadastrar um evento</h4>
 <ol><li>Clique em <b>+ Evento</b> (ou num dia do calendário).</li><li>Preencha título, data (ou período), horário, tipo, local e descrição. Marque <b>Importante</b> para destacar.</li><li>Salve.</li></ol>
-${ref('<p>O evento aparece no calendário de Eventos e no topo do dia no Cronograma (Semana), também no modo consulta depois de atualizar a versão pública.</p>')}` },
+${ref('<p>O evento aparece no calendário de Eventos e no topo do dia no Cronograma (Semana), também no modo consulta.</p>')}` },
   { id: 'espacos', g: 'Consulta', t: 'Espaços (lousas, pátio…) e reservas', who: 'all', h: `
 <p>${caminho('Espaços')}. Abas:</p>
 <ul><li><b>Disponibilidade</b> (primeira tela): por <b>mês</b>, cada espaço tem três quadrinhos por dia — <b>M</b> (7h–12h30), <b>T</b> (12h30–18h), <b>N</b> (18h–23h). Verde = livre, laranja = reservado em parte, vermelho = reservado. Por <b>ano</b>: % livre de cada espaço por mês, ou o calendário do ano de um espaço escolhido no filtro.</li>
@@ -3567,9 +3616,9 @@ ${ref('<ul><li>Cada pendência gera alerta (Conferir UC, Encerrar turma, Excluir
 <li><b>Trazer dados de outra planilha</b>: importa abas Docentes, Dias não letivos, Turmas, UCs, Salas e Centros de Custo.</li>
 <li><b>Cópia de segurança (.json)</b>: guarda tudo, inclusive ajustes de cada aula. Use antes de mudanças grandes ou exclusões. “Restaurar cópia” volta ao estado salvo.</li>
 <li><b>Configurações</b>: ano de referência, meta e tolerância do 70×30, lista de áreas. <b>Desmembrar uma área em várias…</b>: escolha a área (ex.: Comunicação+DI+Foto+TI), digite as novas áreas (uma por linha) e confira a nova área de cada turma (o sistema sugere pelo nome do curso).</li>
-<li><b>Atualizar versão pública</b>: publica para os leitores o estado atual.</li></ul>` },
+</ul>` },
   { id: 'faq', g: 'Ajuda', t: 'Perguntas frequentes', who: 'all', h: `
-<h4>Fiz uma alteração e quem consulta não vê.</h4><p>Um editor precisa clicar em <b>Atualizar versão pública</b>.</p>
+<h4>Fiz uma alteração e quem consulta não vê.</h4><p>Espere aparecer “✓ Salvo e publicado” no topo; quem já está com a página aberta vê a mudança em até 1 minuto (ou ao apertar F5).</p>
 <h4>O término de um curso mudou sozinho.</h4><p>Algum dia não letivo, cancelamento, aula movida ou mudança de UC empurrou as aulas. Veja o cronograma da turma: dias cancelados aparecem com borda tracejada e o motivo.</p>
 <h4>O docente aparece com pouca carga num mês.</h4><p>Verifique férias/afastamentos, feriados, expediente parcial e se há ajuste manual de carga no Rateio.</p>
 <h4>A sala aparece ocupada, mas a turma está em visita.</h4><p>Na aula, em “A sala neste dia”, escolha “Sala livre a aula toda” ou o período livre.</p>
@@ -4116,12 +4165,14 @@ ACT.ucDias = el => {
 { const s = MANUAL.find(x => x.id === 'turma'); if (s) s.h += `<div class="mbox tip"><b>Dica — UC em dias específicos</b> Clique em <b>📅 Todos os dias da turma</b>, abaixo do nome da UC, e marque os dias em que ela acontece (opcional: “a partir de”). Nesses dias a UC tem prioridade e corre em paralelo; as outras UCs seguem a ordem nos demais dias. Desmarque tudo para voltar ao normal.</div>`; }
 
 // ===== Alertas clicáveis: abrem a turma filtrando só o que precisa corrigir (V.tFix) =====
-const FIX_ROW = ['conf', 'fer', 'comp', 'esc', 'sala', 'cad'];
+const FIX_ROW = ['conf', 'inter', 'desl', 'fer', 'comp', 'esc', 'sala', 'cad'];
 const FIX_DICA = {
+  inter: 'Docente sem o descanso mínimo (interjornada) entre o fim do trabalho num dia e o início no dia seguinte — ex.: aula sexta à noite e sábado de manhã. Troque o docente de uma das aulas.',
   al: 'Aulas com algum alerta. Corrija docente, sala ou dia em cada linha; a lista some quando tudo estiver certo.',
   conf: 'Docente em duas turmas no mesmo horário. Clique nos docentes da linha para trocar, ou vincule as turmas se for QP / mesma aula.',
   fer: 'Docente em férias ou afastamento. Clique nos docentes da linha e escolha um substituto (dá para repetir em dias da semana de um período).',
-  comp: 'Docente em compensação de horas nesse dia. Troque o docente da aula (clique nos docentes da linha) ou mude a data da compensação na Agenda do docente.',
+  comp: 'Docente em atividade fora de sala nesse dia (compensação, Educor, deslocamento, grupo de trabalho…). Troque o docente da aula ou mude a data da atividade na Agenda do docente.',
+  desl: 'Docente desligado(a) alocado(a) depois da data de desligamento. Troque o docente dessas aulas (dá para repetir em dias da semana de um período).',
   esc: 'Docente fora da escala neste horário. Troque o docente ou ajuste a escala dele em Docentes e escalas.',
   sala: 'Sala com duas turmas ao mesmo tempo. Troque a sala na linha (ou libere a sala, se for visita/EAD).',
   cad: 'Docente digitado que não está no cadastro. Cadastre em Docentes e escalas ou escolha um nome da lista.',
@@ -4131,7 +4182,7 @@ const FIX_DICA = {
   cc: 'Turma sem centro de custo: preencha o campo destacado para entrar no rateio por CC.',
   okv: 'Alertas já analisados (em azul). Clique em “↺ pendente” para voltar um alerta para a lista vermelha.',
 };
-const FIX_NOME = { al: 'Todos os alertas', conf: 'Conflito', fer: 'Férias/afast.', comp: 'Compensação', esc: 'Fora da escala', sala: 'Sala ocupada', cad: 'Sem cadastro', uc: 'UC com aulas a mais', falta: 'UC incompleta', sit: 'Cadastro', cc: 'Sem centro de custo', okv: '✓ Analisados' };
+const FIX_NOME = { al: 'Todos os alertas', conf: 'Conflito', inter: 'Interjornada', fer: 'Férias/afast.', comp: 'Fora de sala', desl: 'Desligado', esc: 'Fora da escala', sala: 'Sala ocupada', cad: 'Sem cadastro', uc: 'UC com aulas a mais', falta: 'UC incompleta', sit: 'Cadastro', cc: 'Sem centro de custo', okv: '✓ Analisados' };
 function fixCont(t) {
   const r = R[t.id]; const c = {}; if (!r) return c;
   for (const a of r.aulas) for (const tp of new Set(a.al.filter(x => !x.ok).map(x => x.tp))) c[tp] = (c[tp] || 0) + 1;
@@ -4180,7 +4231,7 @@ function fixBar(t) {
 }; }
 // Tela Alertas: cada alerta abre a turma já filtrada no tipo
 { const va = viewAlertas; viewAlertas = function () {
-  return va().replace(/<tr data-open="([^"]+)" data-ds="([^"]*)"([^>]*)><td class="nowrap">([^<]*)<\/td><td><span class="at ([a-z]+)">/g, (m, id, ds, rest, dt, tp) => `<tr data-act="fixGo" data-t="${id}" data-ds="${ds}" data-f="${tp === 'uc' ? 'uc' : tp}"${rest} title="Abrir a turma mostrando só o que corrigir"><td class="nowrap">${dt}</td><td><span class="at ${tp}">`);
+  return va().replace(/<tr data-open="([^"]+)" data-ds="([^"]*)"([^>]*)>(<td class="alck"[^>]*>(?:<input[^>]*>)?<\/td>)<td class="nowrap">([^<]*)<\/td><td><span class="at ([a-z]+)">/g, (m, id, ds, rest, ck, dt, tp) => `<tr data-act="fixGo" data-t="${id}" data-ds="${ds}" data-f="${tp}"${rest} title="Abrir a turma mostrando só o que corrigir">${ck}<td class="nowrap">${dt}</td><td><span class="at ${tp}">`);
 }; }
 Object.assign(ACT, {
   tFix: el => { V.tFix = el.dataset.f || ''; refresh(); fixFoco(); },
@@ -4215,8 +4266,8 @@ function fixFoco() {
   const fut = L.filter(x => (x.c.fim || x.c.ini) >= HOJE), pas = L.length - fut.length;
   const choques = c => { let n = 0; for (const t of Object.values(S.turmas)) for (const a of R[t.id].aulas) if (a.docs.includes(dn) && a.al.some(z => z.tp === 'comp') && a.ds >= c.ini && a.ds <= (c.fim || c.ini)) n++; return n; };
   if (!L.length && !canWrite()) return h;
-  const box = `<div class="compbox"><span class="small"><b>Compensação de horas:</b></span> ${fut.map(({ c, k }) => { const n = canWrite() ? choques(c) : 0; return `<span class="pill cmpp" ${canWrite() ? `data-act="compEd" data-k="${k}" style="cursor:pointer" title="${esc(c.obs || 'Editar')}"` : ''}>${br(c.ini)}${c.fim && c.fim !== c.ini ? ' a ' + br(c.fim) : ''} · ${esc(compTxt(c))}${n ? ` · <b style="color:var(--red)">${n} aula(s)</b>` : ''}</span>`; }).join(' ') || '<span class="small muted">nenhuma programada</span>'}${pas ? ` <span class="small muted">(+${pas} já passada${pas > 1 ? 's' : ''})</span>` : ''}
-    ${canWrite() ? '<button class="sm" data-act="compEd" data-k="">+ Compensação</button>' : ''}</div>`;
+  const box = `<div class="compbox"><span class="small"><b>Fora de sala</b> (compensação, Educor, deslocamento…):</span> ${fut.map(({ c, k }) => { const n = canWrite() ? choques(c) : 0; return `<span class="pill cmpp" ${canWrite() ? `data-act="compEd" data-k="${k}" style="cursor:pointer" title="${esc(c.obs || 'Editar')}"` : ''}><b>${esc(compTipo(c))}</b> · ${br(c.ini)}${c.fim && c.fim !== c.ini ? ' a ' + br(c.fim) : ''} · ${esc(compTxt(c))}${n ? ` · <b style="color:var(--red)">${n} aula(s)</b>` : ''}</span>`; }).join(' ') || '<span class="small muted">nenhuma programada</span>'}${pas ? ` <span class="small muted">(+${pas} já passada${pas > 1 ? 's' : ''})</span>` : ''}
+    ${canWrite() ? '<button class="sm" data-act="compEd" data-k="">+ Atividade fora de sala</button>' : ''}</div>`;
   const k = '<h3>1) Cursos'; return h.includes(k) ? h.replace(k, box + k) : h;
 }; }
 ACT.compEd = el => {
@@ -4227,13 +4278,15 @@ ACT.compEd = el => {
     const q = s => $('#modal [data-cp=' + s + ']'); const ini = q('ini').value, fim = q('fim').value; const td = q('td').checked;
     if (!isDate(ini)) return toast('Informe a data'); if (fim && fim < ini) return toast('A data final é antes da inicial');
     const hi = td ? '' : q('hi').value, hf = td ? '' : q('hf').value; if (!td && !(tm(hi) != null && tm(hf) != null && tm(hf) > tm(hi))) return toast('Informe o horário (de/até)');
-    const c = { ini, fim: fim && fim !== ini ? fim : '', hi, hf, obs: q('obs').value.trim(), desc: q('desc').checked };
+    const tipo = q('tipo').value, outro = tipo === 'Outros' ? q('outro').value.trim() : ''; if (tipo === 'Outros' && !outro) return toast('Descreva a atividade em “Qual?”');
+    const c = { tipo, outro, ini, fim: fim && fim !== ini ? fim : '', hi, hf, obs: q('obs').value.trim(), desc: q('desc').checked };
     d.comp = d.comp || []; if (k >= 0) d.comp[k] = c; else d.comp.push(c);
     saveDocs(); closeModal(); refresh();
     const n = Object.values(S.turmas).reduce((s, t) => s + R[t.id].aulas.filter(a => a.docs.includes(dn) && a.al.some(z => z.tp === 'comp' && z.msg.startsWith(dn))).length, 0);
-    toast(n ? `Compensação salva. Atenção: ${n} aula(s) com o docente nesse período — veja os alertas “Compensação”.` : 'Compensação salva');
+    toast(n ? `${compTipo(c)} salva. Atenção: ${n} aula(s) com o docente nesse período — veja os alertas “Fora de sala”.` : compTipo(c) + ' salva na agenda');
   } };
-  modal(`<h2>${k >= 0 ? 'Editar' : 'Nova'} compensação de horas</h2><p class="small muted">${esc(dn)} não estará em sala nesse dia/horário. As aulas lançadas com o docente nesse período ganham o alerta <span class="at comp">Compensação</span>.</p>
+  modal(`<h2>${k >= 0 ? 'Editar' : 'Nova'} atividade fora de sala</h2><p class="small muted">Mostra na agenda o que ${esc(dn)} está fazendo quando não está em aula nem planejando. Aulas com o docente nesse período ganham o alerta <span class="at comp">Fora de sala</span>.</p>
+   <div class="grid"><label class="f">Atividade<select data-cp="tipo" onchange="document.getElementById('cpout').style.display=this.value==='Outros'?'':'none'">${ATV_TIPOS.map(x => `<option ${(c0.tipo || 'Compensação') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label><label class="f" id="cpout" style="${c0.tipo === 'Outros' ? '' : 'display:none'}">Qual?<input data-cp="outro" value="${esc(c0.outro || '')}" placeholder="Ex.: reunião pedagógica"></label></div>
    <div class="grid"><label class="f">Data<input type="date" data-cp="ini" value="${esc(c0.ini || '')}"></label><label class="f">Até (opcional, vários dias)<input type="date" data-cp="fim" value="${esc(c0.fim || '')}"></label></div>
    <label class="small" style="display:block;margin:8px 0"><input type="checkbox" data-cp="td" ${tudo ? 'checked' : ''} onchange="document.getElementById('cphr').style.display=this.checked?'none':''"> Dia todo</label>
    <div class="grid" id="cphr" style="${tudo ? 'display:none' : ''}"><label class="f">Das<input type="time" data-cp="hi" value="${esc(c0.hi || '')}"></label><label class="f">Até<input type="time" data-cp="hf" value="${esc(c0.hf || '')}"></label></div>
@@ -4244,7 +4297,7 @@ ACT.compEd = el => {
   MCTX.k = k; MCTX.d = d;
 };
 MACT.compDel = () => { const { d, k } = MCTX; d.comp.splice(k, 1); saveDocs(); closeModal(); refresh(); toast('Compensação excluída'); };
-{ const s = MANUAL.find(x => x.id === 'agenda'); if (s) s.h += `<div class="mbox tip"><b>Compensação de horas</b> Na Agenda do docente, clique em <b>+ Compensação</b>: data (ou período), dia todo ou só um horário, observação. O dia aparece no calendário do docente em azul, o docente fica marcado “compensação de horas” na lista ao escolher docentes, e aulas já lançadas com ele nesse horário ganham o alerta <b>Compensação</b> (clique para corrigir). Marque “Descontar da carga do mês” só se essas horas devem sair da carga no rateio.</div>`; }
+{ const s = MANUAL.find(x => x.id === 'agenda'); if (s) s.h += `<div class="mbox tip"><b>Atividades fora de sala</b> Na Agenda do docente, clique em <b>+ Atividade fora de sala</b> e escolha <b>Compensação</b>, <b>Educor</b>, <b>Deslocamento</b>, <b>Grupo de trabalho</b> ou <b>Outros</b> (descreva). Depois: data (ou período), dia todo ou só um horário, observação. O dia aparece no calendário do docente em azul, o docente fica marcado “compensação de horas” na lista ao escolher docentes, e aulas já lançadas com ele nesse horário ganham o alerta <b>Compensação</b> (clique para corrigir). Marque “Descontar da carga do mês” só se essas horas devem sair da carga no rateio.</div>`; }
 
 // ===== Alertas analisados (t.alv = { chave: {em, por} }) =====
 const alKey = a => (a.row ? a.row.ds : '-') + '|' + a.tp + '|' + a.msg;
@@ -4289,10 +4342,10 @@ const P = (...l) => `<ol class="msteps">${l.map(x => `<li>${x}</li>`).join('')}<
 const ir = (id, t) => `<a class="link" data-act="manGo" data-id="${id}">${t}</a>`;
 const CAD = [
   { id: 'cad-indice', t: 'Onde cadastrar cada coisa', h: `
-<p>Use esta lista para achar o passo a passo de cada cadastro. Tudo o que é salvo aparece na hora para os editores; para quem consulta, ${HOSTED ? 'em poucos segundos (publicação automática)' : 'depois de clicar em <b>Atualizar versão pública</b>'}.</p>
+<p>Use esta lista para achar o passo a passo de cada cadastro. Tudo o que é salvo aparece na hora para os editores; para quem consulta, em poucos segundos (publicação automática).</p>
 <table class="plain mtab"><tr><th>Quero cadastrar…</th><th>Onde</th></tr>
 ${[['Uma nova turma (curso)', 'cad-turma', 'Turmas e UCs → + Nova turma'], ['UCs, carga horária e docentes de uma turma', 'cad-uc', 'Turmas e UCs → abrir a turma'], ['Uma aula extra ou reposição', 'cad-extra', 'Turma → + Aula extra'],
-  ['Um docente, a escala e as férias', 'cad-docente', 'Docentes e escalas → + Docente'], ['Compensação de horas do docente', 'cad-comp', 'Agenda do docente → + Compensação'],
+  ['Um docente, a escala e as férias', 'cad-docente', 'Docentes e escalas → + Docente'], ['Compensação, Educor, deslocamento e outras atividades', 'cad-comp', 'Agenda do docente → + Atividade fora de sala'],
   ['Feriado, recesso ou expediente parcial', 'cad-naolet', 'Dias não letivos → + Dia / + Período'], ['Uma sala', 'cad-sala', 'Cadastro de salas → + Sala'], ['Um centro de custo', 'cad-cc', 'Centros de custo → + Centro de custo'],
   ['Um espaço para reserva (lousa, pátio…)', 'cad-espaco', 'Espaços → Espaços cadastrados → + Espaço'], ['Uma reserva de espaço', 'cad-espres', 'Espaços → + Reserva'], ['Uma reserva de sala (reunião, prova…)', 'cad-salares', 'Mapa de salas → + Reservar sala'],
   ['Um material no estoque', 'cad-estoque', 'Mapa de salas → Estoque de materiais → + Item'], ['Pedido de material para uma aula', 'cad-pedido', 'Mapa de salas → Pedidos de materiais'], ['Atividade com material fora do cronograma', 'cad-ativ', 'Pedidos de materiais → + Reserva de material / atividade'],
@@ -4302,7 +4355,7 @@ ${[['Uma nova turma (curso)', 'cad-turma', 'Turmas e UCs → + Nova turma'], ['U
 
   { id: 'cad-turma', t: 'Nova turma (curso)', h: `
 ${P(`No menu, clique em ${caminho('Turmas e UCs')} e depois em <b>+ Nova turma</b> (canto superior direito).`,
- `<b>1. Curso</b>: digite o nome (ex.: TÉCNICO EM EVENTOS), escolha a <b>Área</b>, o <b>Código / oferta</b>, a <b>Sigla</b> (aparece no mapa de salas) e o <b>Centro de custo</b>.`,
+ `<b>1. Curso</b>: digite o nome (ex.: TÉCNICO EM EVENTOS), escolha a <b>Área</b>, o <b>Código / oferta</b>, a <b>Sigla</b> (aparece no mapa de salas) e o <b>Centro de custo</b> (digite o código: se ele estiver na lista, o sistema usa o da lista; se não, fica o digitado).`,
  `Se for QP ou curso livre que acontece junto com um técnico já em andamento, escolha a turma em <b>Aulas junto com (turma vinculada)</b>. Marque <b>Entra no planejamento (30%)</b> só para atividades que não são aula.`,
  `<b>2. Quando</b>: período, <b>início do curso</b>, horário de início e fim e os <b>dias de aula</b> (clique nos dias para marcar/desmarcar). Se houver dia fixo EAD, escolha em <b>Dia fixo EAD</b> e informe <b>Horas por aula EAD</b> se for diferente da presencial. Escolha a <b>Sala padrão</b>.`,
  `<b>3. Unidades curriculares</b>: escolha uma forma — <b>Colar lista de UCs</b> (uma por linha, <code>Nome ; CH</code> ou <code>Nº ; Nome ; CH ; Docente</code>, dá para colar do Excel), <b>Copiar UCs de outra turma</b> ou <b>Só o total de aulas</b>. Opcional: docente de referência.`,
@@ -4315,26 +4368,45 @@ ${P(`Abra ${caminho('Turmas e UCs')} e clique na turma. Desça até o quadro <b>
  `Para incluir, clique em <b>+ UC</b>: preencha nº, nome, <b>CH presencial</b> e, se houver, <b>CH EAD</b>. Marque <b>síncrona (sala)</b> se a parte EAD precisa de sala para o docente.`,
  `Para os docentes, clique na área de docentes da UC: escolha até <b>10 docentes</b> (botão <b>+ Mais docentes</b>) e onde aplicar — em todas as aulas, mantendo trocas já feitas, ou só em dias da semana de um período (cobrir afastamento).`,
  `Se a UC acontece só em alguns dias, clique em <b>📅 Todos os dias da turma</b> (abaixo do nome), marque os dias e, se quiser, <b>A partir de</b>. Clique em <b>Aplicar</b>.`,
- `Use as setas ↑ ↓ para mudar a ordem e ✕ para excluir uma UC. Tudo salva sozinho.`)}
+ `Para mudar a ordem, <b>arraste a UC pela alça ⠿</b> (à esquerda da linha) até a posição desejada, ou use as setas ↑ ↓. ✕ exclui a UC. Tudo salva sozinho.`, `No <b>Cronograma de aulas</b>, arraste uma aula pela alça ⠿ e solte sobre outra aula: as duas trocam de UC e ficam fixadas (📌). Para desfazer, use <b>↺ voltar à sequência automática</b> na lista de UC da aula.`)}
 ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; UCs com dias definidos ocupam só esses dias. Os docentes entram nas aulas, nas horas, no 70×30, no rateio e na agenda.</p>')}` },
 
   { id: 'cad-extra', t: 'Aula extra ou reposição', h: `
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-inter', t: 'Alerta de interjornada', h: `
+<p>O sistema confere o descanso de cada docente entre o fim da última aula de um dia e o início da primeira aula do dia seguinte. Se for menor que <b>11 horas</b> (ex.: aula sexta até 22h30 e sábado às 8h = 9h30 de descanso), as duas aulas recebem o alerta <b>Interjornada</b>: a do dia anterior ("só 9h30 de descanso até…") e a do dia seguinte ("…após…").</p>
+${P(`Clique no alerta para filtrar as aulas a corrigir, ou em <b>Abrir [outra turma] ›</b> para ir à aula do dia anterior.`, `Troque o docente de uma das duas aulas. Se a situação for combinada, marque o alerta como analisado.`)}` },
+
+  { id: 'cad-filtros', t: 'Ver o cronograma por docente, mês ou ano', h: `
+${P(`Em ${caminho('Cronograma')} → <b>Semana / mês / ano</b>, escolha <b>Semana</b>, <b>Mês</b> ou <b>Ano</b>. As aulas aparecem nos mesmos cartões da semana.`, `Use o filtro de <b>docente</b> (e, se quiser, o de curso ou sigla) para ver só as aulas dele. No Ano, filtre por curso, docente ou área quando houver muitas aulas.`, `Dentro de uma turma, o <b>Cronograma de aulas</b> também tem o filtro <b>Todos os docentes</b>.`, `Em ${caminho('Horas e 70×30')} → <b>70 × 30</b>, escolha um docente para ver os 12 meses e o total do ano.`)}` },
+
+  { id: 'cad-diasesp', t: 'Dias especiais, recessos e dias não letivos da turma', h: `
+${P(`Abra a turma em ${caminho('Turmas e UCs')} e clique em <b>📆 Dias especiais e recessos desta turma…</b>.`, `<b>Período com outros dias</b>: informe as datas (ou escolha uma UC para usar as datas dela) e marque os dias de aula desse período. Ex.: curso só de segunda que, durante uma UC, tem aula de segunda a sexta.`, `<b>Recesso da turma</b>: informe de/até e o motivo. As aulas desses dias passam para a frente só nesta turma.`, `<b>Dias não letivos da unidade</b>: marque os dias em que esta turma terá aula mesmo assim, ou desconsidere de uma vez todos os “Sem aula”/recessos ou todos os feriados e emendas.`)}
+${dica('Quando a turma ganha ou perde dias, as datas das UCs mudam. Confira o cronograma depois de salvar.')}` },
+
+  { id: 'cad-arrsala', t: 'Arrastar turma para outra sala (Mapa de salas)', h: `
+${P(`Abra ${caminho('Mapa de salas')} → <b>Ocupação</b> → <b>Semana</b>.`, `Segure a etiqueta da turma e arraste até a sala desejada, <b>no mesmo dia</b> (no celular, toque e segure até a etiqueta "soltar" do dedo).`, `Se a sala estiver livre, clique em <b>Mover</b>. Se estiver ocupada, escolha <b>⇄ Trocar as salas</b> (a outra turma vai para a sala de origem) ou <b>Colocar as duas turmas</b> na mesma sala — nesse caso o alerta de sala ocupada continua aparecendo.`, `Marque <b>Repetir nas próximas…</b> para aplicar nas próximas semanas, ou use <b>Escolher outras datas…</b>.`)}
+${dica('O alerta de duas turmas na mesma sala pode ser marcado como analisado em Alertas, se a junção for proposital.')}` },
+
+  { id: 'cad-eadconv', t: 'Transformar aula presencial em EAD', h: `
+${P(`Abra a turma em ${caminho('Turmas e UCs')} e localize a aula no <b>Cronograma de aulas</b>.`, `Clique no botão <b>Presencial</b> da aula.`, `Escolha <b>Contar na carga EAD desta UC</b> (a aula consome uma das aulas EAD da UC; o dia fixo EAD que sobrar fica livre) ou <b>Só mudar para EAD</b> (continua contando como presencial).`, `Clique em <b>Transformar</b>. A aula fica com 📌 e a etiqueta <b>→ EAD</b>.`)}
+${dica('Para desfazer, clique em <b>EAD</b> na mesma aula: ela volta a ser presencial e a sequência é recalculada.')}` },
+
   { id: 'cad-docente', t: 'Novo docente, escala e férias', h: `
 ${P(`Clique em ${caminho('Docentes e escalas')} e em <b>+ Docente</b>.`,
  `Na janela, preencha <b>Nome</b>, <b>Função</b> e <b>Carga contratual (h/semana)</b>.`,
  `Em <b>Escala (horário de trabalho)</b>, digite os horários de cada dia nas colunas Manhã, Tarde e Noite, no formato <code>08:00–12:00</code>. Dois turnos no mesmo campo: <code>13:00–17:00 / 17:15–18:00</code>. Dia sem trabalho: deixe vazio ou escreva <code>Compensado</code>.`,
  `Em <b>Férias e afastamentos</b>, clique em <b>+ Período</b>, escolha o tipo (Férias, Afastamento, Licença, Outro) e as datas de início e fim.`,
- `Clique em <b>Salvar</b>. Para alterar depois, use <b>Editar</b> na linha do docente.`)}
+ `Marque <b>Carta convite</b> se o docente não entra no rateio. Em caso de desligamento, informe <b>Desligamento a partir de [data]</b>: tudo antes continua registrado.`, `Clique em <b>Salvar</b>. Para alterar depois, use <b>Editar</b> na linha do docente.`)}
 ${ref('<p>O docente passa a aparecer na lista ao escolher docentes das aulas (com aviso de escala, férias ou conflito). A escala define a carga do mês, os blocos de planejamento na agenda e o alerta “Fora da escala”; férias geram o alerta “Férias”.</p>')}` },
 
-  { id: 'cad-comp', t: 'Compensação de horas do docente', h: `
-${P(`Abra ${caminho('Agenda do docente')} e escolha o docente.`, `Clique em <b>+ Compensação</b> (linha “Compensação de horas”).`,
+  { id: 'cad-comp', t: 'Atividades fora de sala (compensação, Educor…)', h: `
+${P(`Abra ${caminho('Agenda do docente')} e escolha o docente.`, `Clique em <b>+ Atividade fora de sala</b> e escolha a <b>Atividade</b>: Compensação, Educor, Deslocamento, Grupo de trabalho ou Outros (descreva em “Qual?”).`,
  `Informe a <b>Data</b> (e <b>Até</b>, se forem vários dias). Deixe <b>Dia todo</b> marcado ou desmarque para informar o horário (das / até).`,
- `Escreva uma observação, se quiser. Marque <b>Descontar da carga do mês</b> só se essas horas devem sair da carga no rateio.`, `Clique em <b>Salvar</b>. Para editar ou excluir, clique na compensação.`)}
-${ref('<p>O dia aparece em azul no calendário do docente; aulas com ele nesse horário ganham o alerta <b>Compensação</b>.</p>')}` },
+ `Escreva uma observação, se quiser. Marque <b>Descontar da carga do mês</b> só se essas horas devem sair da carga no rateio.`, `Clique em <b>Salvar</b>. Para editar ou excluir, clique na atividade.`)}
+${ref('<p>O dia aparece em azul no calendário do docente; o calendário mostra o nome da atividade; aulas com ele nesse horário ganham o alerta <b>Fora de sala</b>.</p>')}` },
 
   { id: 'cad-naolet', t: 'Feriado, recesso ou expediente parcial', h: `
 ${P(`Clique em ${caminho('Dias não letivos')} e confira o <b>Ano</b> no canto direito.`,
@@ -4411,11 +4483,10 @@ ${P(`Abra ${caminho('Planilha e dados')} e desça até <b>Configurações</b>.`,
  `Ajuste, se precisar, o <b>Ano de referência</b>, a <b>Meta de aula (70×30)</b> e a <b>Tolerância</b>.`)}
 ${dica('Antes de mudanças grandes, baixe a <b>Cópia de segurança (.json)</b> na mesma tela.')}` },
 
-  { id: 'cad-admin', t: 'Outro administrador', h: HOSTED ? `
-${P(`Entre no painel do <b>Supabase</b> do projeto.`, `Em <b>Authentication → Users → Add user → Create new user</b>, informe e-mail e senha e marque <b>Auto Confirm User</b>.`,
- `Em <b>SQL Editor</b>, rode: <code>insert into admins (email) values ('email@exemplo.com');</code>`, `A pessoa abre o site e clica em <b>Entrar para editar</b>.`)}
-<p class="small muted">Para tirar o acesso: <code>delete from admins where email = '…';</code> e exclua o usuário em Authentication → Users.</p>` : `
-${P(`No site, clique em <b>Compartilhar</b> (canto superior do Claude).`, `Convide a pessoa pelo e-mail com permissão <b>Pode editar</b>.`, `Ela precisa ter conta no Claude; ao abrir o link, entra em modo edição.`)}` },
+  { id: 'cad-admin', t: 'Outro administrador', h: `
+${P(`Quem administra o banco de dados (Supabase) entra no painel do projeto.`, `Em <b>Authentication → Users → Add user → Create new user</b>, informe e-mail e senha e marque <b>Auto Confirm User</b>.`,
+ `Em <b>SQL Editor</b>, rode: <code>insert into admins (email) values ('email@exemplo.com');</code>`, `A pessoa abre o site, clica em <b>Entrar para editar</b> e usa esse e-mail e senha.`)}
+<p class="small muted">Para tirar o acesso: <code>delete from admins where email = '…';</code> e exclua o usuário em Authentication → Users.</p>` },
 ];
 const FIG = { 'cad-turma': [['c-turmas', '1. Botão + Nova turma'], ['c-turma-wiz', '2. Curso e quando'], ['c-turma-wiz2', '3. UCs e prévia']], 'cad-uc': [['c-turma-ucs', 'Quadro de UCs'], ['c-uc-docs', 'Docentes da UC'], ['c-uc-dias', 'Dias da semana da UC']], 'cad-extra': [['c-aula-extra', 'Inserir aula extra']],
   'cad-docente': [['c-docentes', '1. Lista e + Docente'], ['c-docente-edit', '2. Escala e férias']], 'cad-comp': [['c-comp', 'Nova compensação']], 'cad-naolet': [['c-naoletivos', 'Dias não letivos'], ['c-letivo', 'Calendário letivo (resultado)']],
@@ -4548,6 +4619,871 @@ Object.assign(ACT, {
 MANUAL.splice(MANUAL.findIndex(s => s.id === 'turma') + 1, 0, { id: 'cursos', g: 'Gestão', t: 'Cursos programados', who: 'ed', h: `<p>Em <b>Cursos programados</b> (menu Gestão) está a lista de todos os cursos com <b>área, início e término</b> (calculados pelo cronograma), período, técnico(a) e situação.</p>
 <ol><li>Filtre por <b>área</b> (uma ou várias) e por <b>mês</b>: escolha o mês no campo ou clique nos atalhos jan…dez.</li><li>Escolha como o mês filtra: <b>Com aula no mês</b>, <b>Começam no mês</b> ou <b>Terminam no mês</b>.</li><li>Clique num curso para abrir. <b>Baixar Excel</b> gera a lista filtrada.</li></ol>` });
 MICON.cursos = '▤';
+
+// ===== Escala com vigência: bloco do editor do docente e nota na agenda =====
+const escSem = E => r2([1, 2, 3, 4, 5, 6].reduce((s, w) => s + [].concat(ivs(E && E[w + 'M']), ivs(E && E[w + 'T']), ivs(E && E[w + 'N'])).reduce((t, [a, b]) => t + b - a, 0) / 60, 0));
+function escVerBlock(w) {
+  const vs = escVers(w); const H = (w.escH || []).slice().sort((x, y) => (x.de || '').localeCompare(y.de || ''));
+  const fimDe = de => { const nx = vs.find(v => (v.de || '') > (de || '')); return nx ? br(addD(nx.de, -1)) : ''; };
+  return `<div class="escver"><b>Quando vale esta escala?</b>
+   <label class="small" style="display:block;margin-top:4px"><input type="radio" name="escmodo" data-escmodo value="corr" checked> Corrigir a escala ${w.escDe ? 'vigente desde ' + br(w.escDe) : 'atual'} (vale para todo o período dela)</label>
+   <label class="small" style="display:block"><input type="radio" name="escmodo" data-escmodo value="nova"> É uma <b>nova escala</b> a partir de <input type="date" data-escde style="width:auto" onfocus="this.closest('.escver').querySelector('[value=nova]').checked=true"> — a escala anterior continua valendo até o dia anterior</label>
+   ${H.length || w.escDe ? `<div class="small" style="margin-top:6px"><b>Histórico de escalas</b>${H.map(v => { const i = (w.escH || []).indexOf(v); return `<div class="bar" style="margin:2px 0;gap:6px">• ${v.de ? 'de ' + br(v.de) : 'desde o início'} até ${fimDe(v.de)} · ${escSem(v.esc)} h/sem <button class="sm" data-m="escVerDel" data-i="${i}" title="Apagar esta versão (a anterior passa a valer no período)">✕</button></div>`; }).join('')}<div>• <b>${w.escDe ? 'a partir de ' + br(w.escDe) : 'atual'}</b>: a escala da tabela acima (${escSem(w.esc)} h/sem)</div></div>` : ''}</div>`;
+}
+function escMesRef() { const m = V.mes || HOJE.slice(0, 7); return m + '-01'; }
+function escMesNota(d) {
+  const m = V.mes || HOJE.slice(0, 7); const vs = escVers(d).filter(v => v.de);
+  const dentro = vs.filter(v => v.de.slice(0, 7) === m && v.de > m + '-01');
+  const vig = [...escVers(d)].reverse().find(v => !v.de || v.de <= escMesRef());
+  let s = vig && vig.de ? `<p class="small muted" style="margin:-4px 0 6px">Escala vigente desde ${br(vig.de)}.</p>` : '';
+  if (dentro.length) s += `<p class="small" style="margin:-2px 0 6px;color:#b45309">⚠ A escala muda em ${dentro.map(v => br(v.de)).join(', ')} — a tabela mostra a do início do mês; o cálculo usa cada uma no seu período.</p>`;
+  const fut = vs.filter(v => v.de > HOJE && v.de.slice(0, 7) > m); if (fut.length) s += `<p class="small muted" style="margin:-2px 0 6px">Nova escala programada a partir de ${br(fut[0].de)}.</p>`;
+  return s;
+}
+{ const s = MANUAL.find(x => x.id === 'cad-docente'); if (s) s.h += `<div class="mbox tip"><b>Escala mudou? Use a vigência</b> Ao alterar a escala de um docente, escolha <b>“É uma nova escala a partir de [data]”</b>. A escala anterior continua valendo até o dia anterior: os meses passados mantêm a carga, o 70×30, o rateio e os alertas calculados com a escala antiga. Escolha “Corrigir a escala atual” só para consertar um erro de digitação. O histórico aparece na janela do docente; ✕ apaga uma versão.</div>`; }
+
+// ===== Alertas: análise em bloco (seleção) =====
+const ALSEL = new Set();
+const alSelK = a => a.t.id + '§' + alKey(a);
+function alBulkBar(L) {
+  const tur = [...new Map(ALERTS.filter(a => !CONF_TP.has(a.tp)).map(a => [a.t.id, a.t])).values()].sort((x, y) => x.nome.localeCompare(y.nome));
+  const vis = L.filter(a => !CONF_TP.has(a.tp)); const nSel = ALERTS.filter(a => ALSEL.has(alSelK(a))).length;
+  return `<div class="bar filters albulk"><label class="small">Turma <select data-in="alT"><option value="">Todas</option>${tur.map(t => `<option value="${t.id}" ${V.alT === t.id ? 'selected' : ''}>${esc(t.nome)}</option>`).join('')}</select></label>
+   <span class="grow"></span><span class="small muted">${nSel ? `<b>${nSel}</b> selecionado(s)` : 'Marque as caixas para analisar em bloco'}</span>
+   <button class="sm" data-act="alSelTodos" ${vis.length ? '' : 'disabled'}>Selecionar os ${Math.min(vis.length, 800)} da lista</button>
+   ${nSel ? `<button class="sm pri" data-act="alBulk" data-on="1">✓ Marcar ${nSel} como analisado(s)</button><button class="sm" data-act="alBulk" data-on="">↺ Voltar ${nSel} para pendente</button><button class="sm" data-act="alSelLimpa">Limpar seleção</button>` : ''}</div>`;
+}
+function alvSetMany(itens, on) {
+  const por = new Map(); for (const a of itens) { if (CONF_TP.has(a.tp)) continue; const k = a.t.id; if (!por.has(k)) por.set(k, { t: a.t, keys: [] }); por.get(k).keys.push(alKey(a)); }
+  const quem = (typeof USER !== 'undefined' && USER) || '';
+  for (const { t, keys } of por.values()) {
+    t.alv = t.alv || {}; for (const k of keys) { if (on) t.alv[k] = { em: HOJE, por: quem }; else delete t.alv[k]; }
+    const vivos = new Set(ALERTS.filter(a => a.t === t).map(alKey)); for (const k of Object.keys(t.alv)) if (!vivos.has(k)) delete t.alv[k];
+    if (!Object.keys(t.alv).length) delete t.alv; saveT(t);
+  }
+  refresh(); return [...por.values()].reduce((s, x) => s + x.keys.length, 0);
+}
+function alListaAtual() {
+  const AL = ALERTS.filter(a => V.alOk === 'ok' ? a.ok : V.alOk === 'all' ? true : !a.ok);
+  return AL.filter(a => (!V.alTp || a.tp === V.alTp) && (!V.alT || a.t.id === V.alT) && !CONF_TP.has(a.tp)).slice(0, 800);
+}
+Object.assign(ACT, {
+  alSelTodos: () => { alListaAtual().forEach(a => ALSEL.add(alSelK(a))); refresh(); },
+  alSelLimpa: () => { ALSEL.clear(); refresh(); },
+  alBulk: el => { const on = !!el.dataset.on; const L = ALERTS.filter(a => ALSEL.has(alSelK(a))); const n = alvSetMany(L, on); ALSEL.clear(); refresh(); toast(n + (on ? ' alerta(s) marcados como analisados' : ' alerta(s) voltaram para pendente')); },
+  // turma: marca de uma vez os alertas pendentes da lista filtrada
+  fixBulk: () => {
+    const t = curT(); const r = R[t.id]; const f = V.tFix;
+    const L = ALERTS.filter(a => a.t === t && a.row && !a.ok && !CONF_TP.has(a.tp) && (f === 'al' || a.tp === f || ((f === 'uc' || f === 'falta') && false)));
+    if (!L.length) return toast('Nada pendente nesta lista');
+    askConfirm(`Marcar <b>${L.length}</b> alerta(s) ${f === 'al' ? '' : 'de <b>' + esc(FIX_NOME[f]) + '</b> '}desta turma como analisados?`, () => { closeModal(); const n = alvSetMany(L, true); toast(n + ' alerta(s) marcados como analisados'); }, 'Marcar');
+  },
+});
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.matches && el.matches('[data-alsel]')) { if (el.checked) ALSEL.add(el.dataset.alsel); else ALSEL.delete(el.dataset.alsel); render(); }
+  if (el.matches && el.matches('[data-alall]')) { const L = alListaAtual(); if (el.checked) L.forEach(a => ALSEL.add(alSelK(a))); else L.forEach(a => ALSEL.delete(alSelK(a))); render(); }
+});
+// barra ⚠ Corrigir da turma: botão para marcar todos da lista
+{ const fb = fixBar; fixBar = function (t) {
+  const h = fb(t); const f = V.tFix; if (!f || !(FIX_ROW.includes(f) || f === 'al')) return h;
+  const n = ALERTS.filter(a => a.t === t && a.row && !a.ok && !CONF_TP.has(a.tp) && (f === 'al' || a.tp === f)).length; if (!n) return h;
+  return h.replace('<button class="sm" data-act="tFix" data-f="">✕ Mostrar tudo</button>', `<button class="sm pri" data-act="fixBulk">✓ Marcar os ${n} desta lista como analisados</button><button class="sm" data-act="tFix" data-f="">✕ Mostrar tudo</button>`);
+}; }
+{ const s = MANUAL.find(x => x.id === 'alertas'); if (s) s.h += `<div class="mbox tip"><b>Analisar em bloco e ir à outra turma</b> Na tela Alertas, filtre por tipo e por <b>Turma</b>, marque as caixas (ou <b>Selecionar os N da lista</b>) e clique em <b>✓ Marcar como analisado(s)</b>. Dentro da turma, com um filtro da barra ⚠ Corrigir ativo, o botão <b>✓ Marcar os N desta lista como analisados</b> faz o mesmo. Em conflitos de docente ou de sala, o botão <b>Abrir [turma] ›</b> leva direto à outra turma, no mesmo dia, para você alterar lá.</div>`; }
+
+// ===== UCs: início/fim e desmembramento no SS =====
+const DESM = [['', 'Não desmembrada'], ['parcial', 'Parcialmente'], ['total', 'Desmembrada']];
+const DESM_DIAS = () => +((S.cfg && S.cfg.desmDias) || 15);
+function ucPeriodos(t) {
+  const r = R[t.id]; const P = {}; if (!r) return P;
+  for (const a of r.aulas) { const u = r.units[a.ui]; if (!u) continue; const p = P[u.id] = P[u.id] || { ini: a.ds, fim: a.ds }; if (a.ds < p.ini) p.ini = a.ds; if (a.ds > p.fim) p.fim = a.ds; }
+  return P;
+}
+function ucPerCells(t, u, UP) {
+  const p = UP[u.id] || {}; const st = u.desm || ''; const al = desmPendente(u, p);
+  return `<td class="nowrap small">${p.ini ? br(p.ini) : '<span class="muted">—</span>'}</td><td class="nowrap small">${p.fim ? br(p.fim) : '<span class="muted">—</span>'}</td>
+   <td class="nowrap"><select data-ucdesm="${esc(u.id)}" class="desm ${st || 'nao'}${al ? ' desmal' : ''}">${DESM.map(([v, l]) => `<option value="${v}" ${st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>${st === 'parcial' ? `<div class="small" style="margin-top:3px">até <input type="date" data-ucdesmate="${esc(u.id)}" value="${esc(u.desmAte || '')}" min="${esc(p.ini || '')}" max="${esc(p.fim || '')}" style="width:auto;font-size:12px;padding:1px 3px" title="Até que data a UC já está desmembrada no SS"></div>` : ''}${u.desmEm ? `<div class="small muted" title="${esc(u.desmPor || '')}">atualizado em ${br(u.desmEm)}</div>` : ''}${al ? '<div class="small" style="color:var(--red)">⚠ ' + desmMotivo(u, p) + '</div>' : ''}</td>`;
+}
+const dt = s => new Date(s + 'T12:00:00');
+// parcial com data: a UC está desmembrada até u.desmAte; o alerta volta quando faltam até N dias para essa data (e a UC continua depois dela)
+function desmRef(u, p) { return u.desm === 'parcial' && isDate(u.desmAte) ? addD(u.desmAte, 1) : p.ini; }
+function desmPendente(u, p) { if (!p || !p.ini || u.desm === 'total') return false; if (p.fim < HOJE) return false; if (u.desm === 'parcial' && isDate(u.desmAte) && u.desmAte >= p.fim) return false; return (dt(desmRef(u, p)) - dt(HOJE)) / 864e5 <= DESM_DIAS(); }
+function desmMotivo(u, p) { const ref = desmRef(u, p), d = Math.round((dt(ref) - dt(HOJE)) / 864e5); if (u.desm === 'parcial' && isDate(u.desmAte)) return u.desmAte < HOJE ? 'desmembrada só até ' + br(u.desmAte) : 'desmembrada até ' + br(u.desmAte) + ' (faltam ' + (d - 1 < 0 ? 0 : d - 1) + ' dia(s))'; return p.ini < HOJE ? 'já começou' : 'começa em ' + d + ' dia(s)'; }
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.matches && el.matches('[data-ucdesmate]')) { const t = curT(); const u = t && (t.ucs || []).find(x => String(x.id) === el.dataset.ucdesmate); if (!u) return; if (isDate(el.value)) u.desmAte = el.value; else delete u.desmAte; u.desmEm = HOJE; saveT(t); refresh(); toast(u.desmAte ? 'Desmembrada até ' + br(u.desmAte) : 'Data removida'); return; }
+  if (!(el.matches && el.matches('[data-ucdesm]'))) return;
+  const t = curT(); const u = t && (t.ucs || []).find(x => String(x.id) === el.dataset.ucdesm); if (!u) return;
+  u.desm = el.value || undefined; if (!u.desm) { delete u.desm; delete u.desmEm; delete u.desmPor; } else { u.desmEm = HOJE; u.desmPor = (typeof USER !== 'undefined' && USER) || ''; }
+  if (u.desm !== 'parcial') delete u.desmAte;
+  saveT(t); refresh(); toast('Desmembramento: ' + DESM.find(x => x[0] === el.value)[1]);
+});
+// alerta de desmembramento (UC que começa em até N dias, ou já começou, e não está desmembrada no SS)
+{ const ca = confAlerts; confAlerts = function () {
+  const out = ca.apply(this, arguments);
+  for (const t of Object.values(S.turmas)) {
+    if (isPlanAct(t) || t.enc) continue; const UP = ucPeriodos(t);
+    for (const u of t.ucs || []) { const p = UP[u.id]; if (!desmPendente(u, p)) continue;
+      ALERTS.push({ tp: 'desm', t, row: null, msg: 'UC "' + u.nome + '" (' + br(p.ini) + ' a ' + br(p.fim) + ') — ' + (u.desm === 'parcial' ? (isDate(u.desmAte) ? 'desmembrada no SS só até ' + br(u.desmAte) : 'desmembramento parcial no SS (sem data)') : 'não desmembrada no SS') }); }
+  }
+  return out;
+}; }
+Object.assign(ALT, { desm: 'Desmembramento' }); Object.assign(ALTL, { desm: 'UC próxima de começar sem desmembramento completo no SS' });
+FIX_NOME.desm = 'Desmembramento'; FIX_DICA.desm = 'UCs que começam em breve (ou já começaram) sem desmembramento completo no SS. Atualize a coluna Desmembramento (SS) na tabela de UCs, destacada em amarelo.';
+// barra ⚠ Corrigir: conta e destaca as UCs com desmembramento pendente
+{ const fc = fixCont; fixCont = function (t) { const c = fc(t); const n = ALERTS.filter(a => a.t === t && a.tp === 'desm' && !a.ok).length; if (n) c.desm = n; return c; }; }
+{ const fb = fixBar; fixBar = function (t) { const c = fixCont(t); let h = fb(t); if (!c.desm || h.includes('data-f="desm"')) return h; const f = V.tFix; const btn = `<button class="sm ${f === 'desm' ? 'on' : ''}" data-act="tFix" data-f="desm">${FIX_NOME.desm} <span class="pill">${c.desm}</span></button>`;
+  if (!h) return `<div class="card fixbar" id="fixbar"><div class="bar" style="margin:0;flex-wrap:wrap;gap:6px"><b style="margin-right:4px">⚠ Corrigir:</b>${btn}</div></div>`;
+  return h.replace('<b style="margin-right:4px">⚠ Corrigir:</b>', '<b style="margin-right:4px">⚠ Corrigir:</b>' + btn); }; }
+{ const fr = fixRowOk; fixRowOk = function (row, r) { if (V.tFix === 'desm') return true; return fr(row, r); }; }
+{ const ff = fixFoco; fixFoco = function () { ff(); if (V.tFix !== 'desm') return; setTimeout(() => { const L = [...document.querySelectorAll('#main select.desmal')]; L.forEach(s => s.closest('tr').classList.add('fixme')); if (L[0]) L[0].scrollIntoView({ block: 'center' }); }, 90); }; }
+{ const va = viewAlertas; viewAlertas = function () { return va().replace(/data-act="fixGo" data-t="([^"]+)" data-ds="" data-f="desm"/g, 'data-act="fixGo" data-t="$1" data-ds="" data-f="desm"'); }; }
+{ const s = MANUAL.find(x => x.id === 'cad-uc'); if (s) s.h += `<div class="mbox tip"><b>Início, fim e desmembramento da UC</b> A tabela de UCs mostra o <b>início</b> e o <b>fim</b> de cada UC (calculados pelo cronograma). Na coluna <b>Desmembramento (SS)</b>, os apoios escolhem <b>Não desmembrada</b>, <b>Parcialmente</b> ou <b>Desmembrada</b>; o sistema guarda a data. Em <b>Parcialmente</b>, informe <b>até</b> quando a UC já está desmembrada: o alerta volta 15 dias antes dessa data. UC que começa em até ${15} dias (ou já começou) sem desmembramento completo gera o alerta <b>Desmembramento</b> — clique nele para ir direto à UC.</div>`; }
+{ const s = MANUAL.find(x => x.id === 'alertas'); if (s) s.h += `<div class="mbox tip"><b>Alerta de desmembramento</b> Aparece quando uma UC começa em até 15 dias (ou já começou) e no SS não está “Desmembrada”. Some quando a coluna Desmembramento (SS) da UC é marcada como Desmembrada.</div>`; }
+
+// ===== Estoque: importar lista de equipamentos (Excel, CSV ou colar) =====
+const nk = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+function itParse(rows) {
+  rows = rows.map(r => r.map(c => String(c == null ? '' : c).trim())).filter(r => r.some(Boolean)); if (!rows.length) return [];
+  const H = rows[0].map(nk); const find = re => H.findIndex(h => re.test(h));
+  let cN = find(/^(material|equipamento|item|nome|descri)/), cQ = find(/^(qtd|quant|qtde|total|estoque)/), cL = find(/(local|onde|aloc|sala|setor|guardad)/), cO = find(/^(obs|observ|patrim|nota)/);
+  let body = rows;
+  if (cN >= 0 || cQ >= 0) body = rows.slice(1); else { cN = 0; cQ = 1; cL = rows[0].length > 2 ? 2 : -1; cO = rows[0].length > 3 ? 3 : -1; }
+  if (cN < 0) cN = 0;
+  return body.map(r => ({ nome: r[cN] || '', qtd: Math.max(0, parseInt(String(r[cQ] || '').replace(/\D/g, '')) || 0), local: cL >= 0 ? r[cL] || '' : '', obs: cO >= 0 ? r[cO] || '' : '' })).filter(x => x.nome);
+}
+function itAgrupa(L) {
+  const G = new Map();
+  for (const x of L) { const k = nk(x.nome); const g = G.get(k) || { nome: x.nome, qtd: 0, locs: [], obs: [] }; g.qtd += x.qtd; if (x.local) g.locs.push(x.local + (x.qtd ? ': ' + x.qtd : '')); if (x.obs && !g.obs.includes(x.obs)) g.obs.push(x.obs); G.set(k, g); }
+  return [...G.values()].map(g => ({ nome: g.nome, qtd: g.qtd, local: g.locs.length > 1 ? g.locs.join(' · ') : (g.locs[0] || '').replace(/: \d+$/, ''), obs: g.obs.join('; ') }));
+}
+let IT_IMP = [];
+function itPrev() {
+  const ex = new Map(MATS().itens.map(it => [nk(it.nome), it]));
+  const L = itAgrupa(IT_IMP); const el = $('#modal #itprev'); if (!el) return;
+  if (!L.length) { el.innerHTML = '<p class="small muted">Cole a lista ou escolha um arquivo para ver a prévia.</p>'; return; }
+  const nNovo = L.filter(x => !ex.has(nk(x.nome))).length;
+  el.innerHTML = `<p class="small"><b>${L.length}</b> item(ns): <b>${nNovo}</b> novo(s), <b>${L.length - nNovo}</b> já no estoque (serão atualizados).</p>
+   <div class="tw" style="max-height:300px"><table><tr><th>Material</th><th class="num">Qtd</th><th>Onde fica</th><th></th></tr>${L.map(x => { const e = ex.get(nk(x.nome)); return `<tr><td>${esc(x.nome)}</td><td class="num">${x.qtd}${e && e.qtd !== x.qtd ? ` <span class="small muted">(era ${e.qtd || 0})</span>` : ''}</td><td class="small">${esc(x.local)}</td><td>${e ? '<span class="pill">atualizar</span>' : '<span class="pill ok">novo</span>'}</td></tr>`; }).join('')}</table></div>`;
+}
+ACT.itImport = () => {
+  IT_IMP = [];
+  MCTX = { ok: () => {
+    const L = itAgrupa(IT_IMP); if (!L.length) return toast('Nada para importar');
+    const ex = new Map(MATS().itens.map(it => [nk(it.nome), it])); let nn = 0, na = 0;
+    for (const x of L) { const e = ex.get(nk(x.nome)); if (e) { e.qtd = x.qtd; if (x.local) e.local = x.local; if (x.obs) e.obs = x.obs; na++; } else { MATS().itens.push({ id: uid('m'), nome: x.nome, qtd: x.qtd, local: x.local, obs: x.obs }); nn++; } }
+    saveMats(); closeModal(); refresh(); toast(`${nn} item(ns) novo(s) e ${na} atualizado(s) no estoque`);
+  } };
+  modal(`<h2>Importar lista de materiais</h2>
+   <p class="small muted">Colunas aceitas (com ou sem cabeçalho, nesta ordem): <b>Material</b>, <b>Quantidade</b>, <b>Onde fica</b> (sala, armário…), <b>Observação</b>. Itens com o mesmo nome em lugares diferentes viram um só item com a quantidade somada e os locais listados. Itens que já existem têm a quantidade atualizada.</p>
+   <label class="f">Arquivo Excel ou CSV<input type="file" accept=".xlsx,.xls,.csv" data-itfile></label>
+   <label class="f" style="margin-top:8px">…ou cole aqui as linhas copiadas do Excel<textarea data-itpaste rows="6" placeholder="Material&#9;Quantidade&#9;Onde fica&#10;Notebook&#9;20&#9;Sala 3&#10;Projetor&#9;4&#9;Almoxarifado"></textarea></label>
+   <div id="itprev" style="margin-top:10px"></div>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Importar para o estoque</button></div>`, true);
+  itPrev();
+};
+document.addEventListener('input', e => { const el = e.target; if (!(el.matches && el.matches('[data-itpaste]'))) return; IT_IMP = itParse(el.value.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : /[;,]/))); itPrev(); });
+document.addEventListener('change', async e => {
+  const el = e.target; if (!(el.matches && el.matches('[data-itfile]')) || !el.files[0]) return;
+  const f = el.files[0]; if (/\.csv$/i.test(f.name)) { const tx = await f.text(); IT_IMP = itParse(tx.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : (l.split(';').length > l.split(',').length ? ';' : ',')))); itPrev(); toast(IT_IMP.length + ' linha(s) lidas'); return; }
+  try { const X = await loadXLSX(); const buf = await el.files[0].arrayBuffer(); const wb = X.read(buf, { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]]; IT_IMP = itParse(X.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false })); itPrev(); toast(IT_IMP.length + ' linha(s) lidas'); }
+  catch (err) { toast('Não consegui ler o arquivo: ' + ((err && err.message) || err)); }
+});
+{ const s = MANUAL.find(x => x.id === 'cad-estoque'); if (s) s.h += `<div class="mbox tip"><b>Importar uma lista pronta</b> Em <b>Estoque de materiais</b>, clique em <b>⇪ Importar lista (Excel ou colar)</b>. Escolha o arquivo (.xlsx ou .csv) ou cole as linhas copiadas do Excel com as colunas <b>Material, Quantidade, Onde fica, Observação</b>. Confira a prévia (novos × atualizados) e clique em <b>Importar para o estoque</b>. O mesmo equipamento em lugares diferentes vira um item só, com a quantidade somada e os locais listados em “Onde fica”.</div>`; }
+
+// ===== Livros técnicos e brindes por curso =====
+const LIV_TIPOS = [['', 'Não recebe'], ['tec', 'Só livros técnicos'], ['brinde', 'Só brinde'], ['ambos', 'Livros técnicos e brinde']];
+const LIV_IT = { tec: 'Livro técnico', brinde: 'Brinde' };
+function livSit(x) { if (isDate(x.ent)) return ['Entregue', 'ok']; if (!isDate(x.prev)) return ['Sem data', '']; if (x.prev < HOJE) return ['Atrasado', 'bad']; return ['Programado', 'warn']; }
+function livUcIni(t, ucId) { const P = typeof ucPeriodos === 'function' ? ucPeriodos(t) : {}; return (P[ucId] || {}).ini || ''; }
+{ const ta = turmaAlunosCard; turmaAlunosCard = function (t) { return ta(t) + livrosCard(t); }; }
+Object.assign(ACT, {
+  livAdd: el => { const t = curT(); t.livros = t.livros || []; const tp = el.dataset.tp; const r = R[t.id]; t.livros.push({ id: uid('l'), tp, tit: '', uc: '', qtd: '', prev: (r && r.inicio) || '', ent: '', obs: '' }); saveT(t); refresh(); setTimeout(() => { const L = document.querySelectorAll('#livcard [data-livf=tit]'); const i = L[L.length - 1]; if (i) { i.focus(); i.scrollIntoView({ block: 'center' }); } }, 50); },
+  livDel: el => { const t = curT(); const x = t.livros[+el.dataset.i]; askConfirm(`Excluir <b>${esc(x.tit || LIV_IT[x.tp])}</b>?`, () => { t.livros.splice(+el.dataset.i, 1); if (!t.livros.length) delete t.livros; saveT(t); closeModal(); refresh(); }, 'Excluir'); },
+  livHoje: el => { const t = curT(); t.livros[+el.dataset.i].ent = HOJE; saveT(t); refresh(); toast('Entrega registrada'); },
+});
+// alertas: item programado sem entrega depois da data
+{ const ca = confAlerts; confAlerts = function () {
+  const out = ca.apply(this, arguments);
+  for (const t of Object.values(S.turmas)) {
+    if (!livRecebe(t).length && !(t.livros || []).length || t.enc) continue;
+    for (const x of t.livros || []) { if (isDate(x.ent) || !isDate(x.prev) || x.prev >= HOJE) continue;
+      ALERTS.push({ tp: 'liv', t, row: null, msg: livLbl(x) + ' “' + (x.tit || (String(x.src||'').startsWith('k:') ? (eduKit(x.src.slice(2))||{}).nome : String(x.src||'').startsWith('i:') ? (eduIt(x.src.slice(2))||{}).nome : '') || 'sem título') + '”' + (x.qtd ? ' (' + x.qtd + ')' : '') + ' programado para ' + br(x.prev) + ' — não entregue' }); }
+  }
+  return out;
+}; }
+Object.assign(ALT, { liv: 'Livro/brinde' }); Object.assign(ALTL, { liv: 'Livro ou brinde não entregue na data programada' });
+FIX_NOME.liv = 'Livros/brindes'; FIX_DICA.liv = 'Livros ou brindes com data programada já passada e sem data de entrega. Preencha “Entregue em” no quadro Livros e brindes (destacado) ou ajuste a data programada.';
+{ const fc = fixCont; fixCont = function (t) { const c = fc(t); const n = ALERTS.filter(a => a.t === t && a.tp === 'liv' && !a.ok).length; if (n) c.liv = n; return c; }; }
+{ const fb = fixBar; fixBar = function (t) { const c = fixCont(t); let h = fb(t); if (!c.liv || h.includes('data-f="liv"')) return h; const f = V.tFix; const btn = `<button class="sm ${f === 'liv' ? 'on' : ''}" data-act="tFix" data-f="liv">${FIX_NOME.liv} <span class="pill">${c.liv}</span></button>`;
+  if (!h) return `<div class="card fixbar" id="fixbar"><div class="bar" style="margin:0;flex-wrap:wrap;gap:6px"><b style="margin-right:4px">⚠ Corrigir:</b>${btn}</div></div>`;
+  return h.replace('<b style="margin-right:4px">⚠ Corrigir:</b>', '<b style="margin-right:4px">⚠ Corrigir:</b>' + btn); }; }
+{ const fr = fixRowOk; fixRowOk = function (row, r) { if (V.tFix === 'liv') return true; return fr(row, r); }; }
+{ const ff = fixFoco; fixFoco = function () { ff(); if (V.tFix !== 'liv') return; setTimeout(() => { document.querySelectorAll('#livcard tr.livlate').forEach(r => r.classList.add('fixme')); const c = document.getElementById('livcard'); if (c) { c.classList.add('fixme'); c.scrollIntoView({ block: 'start' }); } }, 90); }; }
+// ===== Gestão: visão geral de livros e brindes =====
+function livTodos() {
+  const out = [];
+  for (const t of Object.values(S.turmas)) { if (isPlanAct(t) || !areaOk(t.area)) continue; for (const x of t.livros || []) out.push({ t, x, s: livSit(x) }); }
+  return out.sort((a, b) => (a.x.prev || '9').localeCompare(b.x.prev || '9') || a.t.nome.localeCompare(b.t.nome));
+}
+function viewLivros() {
+  const f = V.lvF || 'pend'; const A = livTodos();
+  const L = A.filter(o => f === 'all' ? true : f === 'ent' ? o.s[0] === 'Entregue' : f === 'late' ? o.s[0] === 'Atrasado' : o.s[0] !== 'Entregue');
+  const sem = Object.values(S.turmas).filter(t => !isPlanAct(t) && livRecebe(t).length && !(t.livros || []).length && areaOk(t.area));
+  const cnt = k => A.filter(o => o.s[0] === k).length;
+  let h = `<div class="pagehead"><h1>Livros, kits e brindes</h1><p class="muted">Entregas programadas e realizadas de livros técnicos e brindes em todos os cursos. O tipo de cada curso e os itens são lançados na própria turma.</p></div>
+   <div class="kpis"><div class="kpi"><b style="color:var(--red)">${cnt('Atrasado')}</b><span>atrasados</span></div><div class="kpi"><b>${cnt('Programado')}</b><span>programados</span></div><div class="kpi"><b>${cnt('Entregue')}</b><span>entregues</span></div><div class="kpi"><b>${sem.length}</b><span>curso(s) que recebem sem item lançado</span></div></div>
+   <div class="bar filters"><div class="tabs" style="margin:0">${[['pend', 'A entregar'], ['late', 'Atrasados'], ['ent', 'Entregues'], ['all', 'Todos']].map(([k, l]) => `<button class="${f === k ? 'on' : ''}" data-set="lvF" data-v="${k}">${l}</button>`).join('')}</div>${areaMulti()}<button data-act="livXls">Baixar Excel</button></div>`;
+  if (sem.length) h += `<div class="banner">Cursos marcados para receber, sem item lançado: ${sem.map(t => `<a class="link" data-open="${t.id}">${esc(t.nome)}</a>`).join(', ')}.</div>`;
+  if (!L.length) return h + '<div class="card empty">Nada nesta lista.</div>';
+  h += `<div class="card"><div class="tw" style="max-height:none"><table><tr><th>Programado</th><th>Curso</th><th>Tipo</th><th>Título / item</th><th class="num">Qtd</th><th>Entregue em</th><th>Situação</th></tr>
+   ${L.map(o => `<tr data-open="${o.t.id}" style="cursor:pointer"><td class="nowrap">${o.x.prev ? br(o.x.prev) : '—'}</td><td><b>${esc(o.t.nome)}</b><div class="small muted">${esc(o.t.area || '')}</div></td><td class="small">${esc(livLbl(o.x))}</td><td>${esc(o.x.tit || (String(o.x.src||'').startsWith('k:') ? (eduKit(o.x.src.slice(2))||{}).nome : '') || '')}</td><td class="num">${o.x.qtd ?? ''}</td><td class="nowrap">${o.x.ent ? br(o.x.ent) : ''}</td><td><span class="pill ${o.s[1]}">${o.s[0]}</span></td></tr>`).join('')}</table></div></div>`;
+  return h;
+}
+ACT.livXls = () => {
+  const rows = [['Curso', 'Área', 'Recebe', 'Tipo', 'Título / item', 'Kit / item do estoque', 'UC', 'Quantidade', 'Entrega programada', 'Entregue em', 'Situação', 'Observação']];
+  for (const o of livTodos()) { const u = (o.t.ucs || []).find(u => String(u.id) === String(o.x.uc)); rows.push([o.t.nome, o.t.area || '', livRecebe(o.t).map(v => v === 'tec' ? 'Livro técnico' : v === 'lbr' ? 'Livro brinde' : kitTipoNome(v.slice(4))).join(', '), livLbl(o.x), o.x.tit || '', (String(o.x.src||'').startsWith('k:') ? (eduKit(o.x.src.slice(2))||{}).nome : String(o.x.src||'').startsWith('i:') ? (eduIt(o.x.src.slice(2))||{}).nome : '') || '', u ? u.nome : '', o.x.qtd ?? '', o.x.prev ? br(o.x.prev) : '', o.x.ent ? br(o.x.ent) : '', o.s[0], o.x.obs || '']); }
+  xlsSave('Livros e brindes.xlsx', [{ name: 'Livros e brindes', rows, widths: [44, 22, 22, 14, 36, 30, 10, 14, 14, 12, 30] }]);
+};
+{ const i = NAV_ADM.findIndex(x => x[0] === 'cursos') + 1; NAV_ADM.splice(i, 0, ['livros', 'Livros e brindes', '📚']); ADM_VIEWS.add('livros'); }
+MICON.livros = '📚';
+MANUAL.splice(MANUAL.findIndex(s => s.id === 'cursos') + 1, 0, { id: 'livros', g: 'Gestão', t: 'Livros técnicos e brindes', who: 'ed', h: `
+<ol class="msteps"><li>Abra a turma em <b>Turmas e UCs</b> e desça até <b>Livros e brindes</b>.</li>
+<li>Em <b>Este curso recebe</b>, escolha <b>Não recebe</b>, <b>Só livros técnicos</b>, <b>Só brinde</b> ou <b>Livros técnicos e brinde</b>.</li>
+<li>Clique em <b>+ Livro técnico</b> ou <b>+ Brinde</b>: título, UC (opcional — a data programada vira o início da UC), quantidade e <b>entrega programada</b>.</li>
+<li>Quando entregar, preencha <b>Entregue em</b> (ou clique em <b>Hoje</b>).</li></ol>
+${ref('<p>Item com data programada já passada e sem entrega gera o alerta <b>Livro/brinde</b> (clique para ir ao quadro da turma). A tela <b>Livros e brindes</b> (Gestão) mostra tudo o que está a entregar, atrasado e entregue, por área, com Excel.</p>')}` });
+
+// ===== Estoque educacional, kits (brinde / aluno) e baixa automática na entrega =====
+const EDU_CAT = [['kitb', 'Material do kit bolsista'], ['kita', 'Material do kit aluno'], ['livro', 'Livro técnico'], ['livbr', 'Livro brinde'], ['brinde', 'Brinde'], ['outro', 'Outro material']];
+const LIV_IT2 = { tec: 'Livro técnico', brinde: 'Kit bolsista', kita: 'Kit aluno' };
+function EDU() {
+  if (!S.cfg.edu) S.cfg.edu = {
+    itens: [{ id: 'e-saco', nome: 'Sacochila', cat: 'kitb', qtd: 0, min: 0 }, { id: 'e-eco', nome: 'Ecobag', cat: 'kitb', qtd: 0, min: 0 }, { id: 'e-can', nome: 'Caneta', cat: 'kitb', qtd: 0, min: 0 }],
+    kits: [{ id: 'k-saco', nome: 'Kit bolsista — Sacochila', tipo: 'brinde', comp: [{ item: 'e-saco', q: 1 }, { item: 'e-can', q: 1 }] }, { id: 'k-eco', nome: 'Kit bolsista — Ecobag', tipo: 'brinde', comp: [{ item: 'e-eco', q: 1 }, { item: 'e-can', q: 1 }] }, { id: 'k-aluno', nome: 'Kit aluno', tipo: 'aluno', comp: [] }],
+    movs: [],
+  };
+  const E = S.cfg.edu; E.itens = E.itens || []; E.kits = E.kits || []; E.movs = E.movs || [];
+  for (const k of E.kits) if (/^Kit brinde/i.test(k.nome || '')) k.nome = k.nome.replace(/^Kit brinde/i, 'Kit bolsista'); // nome novo
+  return E;
+}
+const eduIt = id => EDU().itens.find(x => x.id === id);
+// tipos de kit: 'brinde' e 'aluno' (legado) ou qualquer nome livre (ex.: Kit evento)
+const kitTipoNome = tp => tp === 'brinde' ? 'Kit bolsista' : tp === 'aluno' ? 'Kit aluno' : tp;
+const kitTipoVal = nome => { const n = String(nome || '').trim(); return /^kit (bolsista|brinde)$/i.test(n) ? 'brinde' : /^kit aluno$/i.test(n) ? 'aluno' : n; };
+function kitTipos() { const s = new Set(['brinde', 'aluno']); for (const k of EDU().kits) if (k.tipo) s.add(k.tipo); return [...s]; }
+const rowKt = x => x.tp === 'kit' ? x.kt : x.tp === 'brinde' ? 'brinde' : x.tp === 'kita' ? 'aluno' : null;
+const livLbl = x => x.tp === 'tec' ? 'Livro técnico' : x.tp === 'lbr' ? 'Livro brinde' : kitTipoNome(rowKt(x) || 'Kit');
+// o que o curso recebe: ['tec', 'kit:brinde', 'kit:aluno', 'kit:Kit evento'…]
+function livRecebe(t) { if (Array.isArray(t.recebe)) return t.recebe; const o = []; const lt = t.livTipo || ''; if (lt === 'tec' || lt === 'ambos') o.push('tec'); if (lt === 'brinde' || lt === 'ambos') o.push('kit:brinde'); if (t.kitAluno) o.push('kit:aluno'); return o; }
+const eduKit = id => EDU().kits.find(x => x.id === id);
+const kitTxt = k => k && k.comp.length ? k.comp.map(c => (eduIt(c.item) || { nome: '?' }).nome + ' ' + c.q).join(' + ') : 'composição a definir';
+function eduMov(item, q, motivo, tid) {
+  const it = eduIt(item); if (!it || !q) return; it.qtd = (+it.qtd || 0) + q;
+  EDU().movs.unshift({ id: uid('mv'), data: HOJE, item, q, motivo, tid: tid || '', por: (typeof USER !== 'undefined' && USER) || '' });
+  if (EDU().movs.length > 3000) EDU().movs.length = 3000;
+}
+// o que um lançamento da turma tira do estoque
+function livNeeds(x) {
+  const n = +x.qtd || 0; if (!n || !x.src) return [];
+  const [k, id] = String(x.src).split(':');
+  if (k === 'k') { const kit = eduKit(id); return kit ? kit.comp.filter(c => eduIt(c.item)).map(c => ({ item: c.item, q: c.q * n })) : []; }
+  if (k === 'i' && eduIt(id)) return [{ item: id, q: n }];
+  return [];
+}
+// mantém a baixa do estoque igual ao que foi entregue (entrega, correção de quantidade, estorno)
+function livSync(t, x) {
+  const want = isDate(x.ent) ? livNeeds(x) : []; const cur = x.baixa || [];
+  const M = {}; for (const c of cur) M[c.item] = (M[c.item] || 0) - c.q; for (const c of want) M[c.item] = (M[c.item] || 0) + c.q;
+  const desc = livLbl(x) + ' — ' + t.nome; let neg = [];
+  for (const [item, d] of Object.entries(M)) if (d) { eduMov(item, -d, (d > 0 ? 'Entrega: ' : 'Estorno: ') + desc, t.id); const it = eduIt(item); if (it && it.qtd < 0) neg.push(it.nome + ' (' + it.qtd + ')'); }
+  if (want.length) x.baixa = want; else delete x.baixa;
+  if (Object.values(M).some(Boolean)) saveCfg();
+  return neg;
+}
+function livSrcOpts(x) {
+  const E = EDU(); let o = '<option value="">— não baixar do estoque —</option>';
+  const kt = rowKt(x);
+  if (kt) o += E.kits.filter(k => k.tipo === kt).map(k => `<option value="k:${k.id}" ${x.src === 'k:' + k.id ? 'selected' : ''}>${esc(k.nome)}</option>`).join('');
+  const its = x.tp === 'tec' ? E.itens.filter(i => i.cat === 'livro') : x.tp === 'lbr' ? E.itens.filter(i => ['livbr', 'livro', 'brinde'].includes(i.cat)) : E.itens.filter(i => i.cat !== 'livro'); if (its.length) o += `<optgroup label="Itens">${its.map(i => `<option value="i:${i.id}" ${x.src === 'i:' + i.id ? 'selected' : ''}>${esc(i.nome)} (saldo ${i.qtd || 0})</option>`).join('')}</optgroup>`;
+  return o;
+}
+function livQtdPadrao(t) { const v = t.vagas || {}; const n = (+v.PSG || 0) + (+v.COM || 0); return n || ''; }
+function livrosCard(t) {
+  if (isPlanAct(t)) return '';
+  const rec = livRecebe(t); const L = t.livros || [];
+  const opts = [['tec', 'Livro técnico'], ['lbr', 'Livro brinde'], ...kitTipos().map(k => ['kit:' + k, kitTipoNome(k)])];
+  let h = `<div class="card" id="livcard"><div class="bar"><h2 class="grow" style="margin:0">Livros e kits</h2></div>
+   <div class="bar" style="gap:6px;flex-wrap:wrap"><span class="small"><b>Este curso recebe:</b></span>${opts.map(([v, l]) => `<label class="chk small livrec"><input type="checkbox" data-recebe="${esc(v)}" ${rec.includes(v) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}
+   ${rec.length ? '' : '<span class="small muted">— nada marcado = não recebe</span>'}<a class="link small" data-go="edu" title="Novos tipos de kit são criados na aba Kits do Estoque educacional">+ tipo de kit</a></div>`;
+  const btns = rec.map(v => v === 'tec' ? '<button class="sm" data-act="livAdd" data-tp="tec">+ Livro técnico</button>' : v === 'lbr' ? '<button class="sm" data-act="livAdd" data-tp="lbr">+ Livro brinde</button>' : `<button class="sm" data-act="livAdd" data-tp="kit" data-kt="${esc(v.slice(4))}">+ ${esc(kitTipoNome(v.slice(4)))}</button>`).join('');
+  if (!btns) return h + (L.length ? `<p class="small" style="color:var(--red)">Há ${L.length} item(ns) lançado(s), mas nada está marcado em “Este curso recebe”.</p>` : '') + (L.length ? '' : '</div>');
+  h += `<div class="bar" style="gap:6px">${btns}<span class="small muted">Ao preencher <b>Entregue em</b>, o estoque educacional é baixado sozinho (apagar a data devolve ao estoque).</span></div>`;
+  if (!L.length) return h + '<p class="small muted">Nenhum item lançado.</p></div>';
+  const ucs = t.ucs || [];
+  h += `<div class="tw" style="max-height:none"><table class="livtab"><tr><th>Tipo</th><th>Do estoque / o que vai</th><th>Título</th><th>UC</th><th class="num">Qtd</th><th>Entrega programada</th><th>Entregue em</th><th>Situação</th><th>Obs.</th><th></th></tr>
+   ${L.map((x, i) => { const [s, c] = livSit(x); const nd = livNeeds(x); const kit = String(x.src || '').startsWith('k:') ? eduKit(x.src.slice(2)) : null;
+     const falta = !isDate(x.ent) ? nd.filter(n => (eduIt(n.item).qtd || 0) < n.q).map(n => eduIt(n.item).nome) : [];
+     return `<tr class="${c === 'bad' ? 'livlate' : ''}"><td class="small nowrap">${esc(livLbl(x))}</td>
+    <td><select data-livf="src" data-i="${i}" style="max-width:230px">${livSrcOpts(x)}</select>${kit ? `<div class="small muted">Vai no kit: ${esc(kitTxt(kit))}</div>` : ''}${nd.length && +x.qtd ? `<div class="small ${falta.length ? '' : 'muted'}" ${falta.length ? 'style="color:var(--red)"' : ''}>${isDate(x.ent) ? 'Baixado' : 'Vai baixar'}: ${nd.map(n => esc(eduIt(n.item).nome) + ' ' + n.q).join(', ')}${falta.length ? ' — falta: ' + esc(falta.join(', ')) : ''}</div>` : ''}</td>
+    <td><input data-livf="tit" data-i="${i}" value="${esc(x.tit || '')}" placeholder="${x.tp === 'tec' || x.tp === 'lbr' ? 'Título do livro' : 'opcional'}" style="min-width:160px"></td>
+    <td><select data-livf="uc" data-i="${i}" style="max-width:170px"><option value="">— curso todo —</option>${ucs.map(u => `<option value="${esc(u.id)}" ${String(x.uc) === String(u.id) ? 'selected' : ''}>${esc((u.num ? u.num + ' · ' : '') + u.nome)}</option>`).join('')}</select></td>
+    <td class="num"><input type="number" min="0" data-livf="qtd" data-i="${i}" value="${esc(x.qtd ?? '')}" style="width:70px"></td>
+    <td><input type="date" data-livf="prev" data-i="${i}" value="${esc(x.prev || '')}"></td>
+    <td><input type="date" data-livf="ent" data-i="${i}" value="${esc(x.ent || '')}">${!isDate(x.ent) ? `<button class="sm" data-act="livHoje" data-i="${i}" title="Marcar entregue hoje e baixar o estoque">Entregar hoje</button>` : ''}</td>
+    <td><span class="pill ${c}">${s}</span></td>
+    <td><input data-livf="obs" data-i="${i}" value="${esc(x.obs || '')}" style="min-width:110px"></td>
+    <td><button class="sm dng" data-act="livDel" data-i="${i}" title="Excluir">✕</button></td></tr>`; }).join('')}</table></div></div>`;
+  return h;
+}
+Object.assign(ACT, {
+  livAdd: el => {
+    const t = curT(); t.livros = t.livros || []; const tp = el.dataset.tp; const kt = el.dataset.kt || ''; const r = R[t.id];
+    const k1 = tp === 'kit' ? EDU().kits.find(k => k.tipo === kt) : null;
+    t.livros.push({ id: uid('l'), tp, kt: tp === 'kit' ? kt : undefined, tit: '', src: k1 ? 'k:' + k1.id : '', uc: '', qtd: tp === 'tec' ? '' : livQtdPadrao(t), prev: (r && r.inicio) || '', ent: '', obs: '' });
+    saveT(t); refresh();
+  },
+  livDel: el => { const t = curT(); const x = t.livros[+el.dataset.i]; askConfirm(`Excluir <b>${esc(x.tit || livLbl(x))}</b>?${x.baixa ? ' O que foi baixado volta para o estoque.' : ''}`, () => { if (x.baixa) { x.ent = ''; livSync(t, x); } t.livros.splice(+el.dataset.i, 1); if (!t.livros.length) delete t.livros; saveT(t); closeModal(); refresh(); }, 'Excluir'); },
+  livHoje: el => { const t = curT(); const x = t.livros[+el.dataset.i]; x.ent = HOJE; const neg = livSync(t, x); saveT(t); refresh(); toast(neg.length ? 'Entregue, mas o estoque ficou negativo: ' + neg.join(', ') : 'Entrega registrada' + (x.baixa ? ' e estoque baixado' : '')); },
+});
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.matches) return;
+  if (el.matches('[data-livtipo]')) { const t = curT(); if (el.value) t.livTipo = el.value; else delete t.livTipo; saveT(t); refresh(); return; }
+  if (el.matches('[data-recebe]')) { const t = curT(); const v = el.dataset.recebe; let rec = livRecebe(t).filter(x => x !== v); if (el.checked) rec.push(v); t.recebe = rec; delete t.livTipo; delete t.kitAluno; saveT(t); refresh(); return; }
+  if (el.matches('[data-kitaluno]')) { const t = curT(); if (el.checked) t.kitAluno = true; else delete t.kitAluno; saveT(t); refresh(); return; }
+  if (el.matches('[data-livf]')) {
+    const t = curT(); const x = t.livros[+el.dataset.i]; const k = el.dataset.livf; let v = el.value;
+    if (k === 'qtd') v = v === '' ? '' : Math.max(0, parseInt(v) || 0); else if (typeof v === 'string') v = v.trim();
+    x[k] = v;
+    if (k === 'uc' && v && !x.prevManual) { const d = livUcIni(t, v); if (d) x.prev = d; }
+    if (k === 'prev') x.prevManual = true;
+    if (k === 'src' && !x.tit && v.startsWith('i:')) { const it = eduIt(v.slice(2)); if (it) x.tit = it.nome; }
+    const neg = ['ent', 'qtd', 'src'].includes(k) ? livSync(t, x) : [];
+    saveT(t); refresh();
+    if (k === 'ent') toast(isDate(v) ? (neg.length ? 'Estoque ficou negativo: ' + neg.join(', ') : 'Entrega registrada' + (x.baixa ? ' e estoque baixado' : '')) : 'Entrega desfeita — itens voltaram ao estoque');
+    else if (neg.length) toast('Estoque ficou negativo: ' + neg.join(', '));
+  }
+});
+// ----- Estoque: previsto a entregar e alerta de compra -----
+function eduPrevisto() { const P = {}; for (const t of Object.values(S.turmas)) for (const x of t.livros || []) if (!isDate(x.ent)) for (const n of livNeeds(x)) P[n.item] = (P[n.item] || 0) + n.q; return P; }
+function eduCompra() {
+  const P = eduPrevisto(); const out = [];
+  for (const it of EDU().itens) { const q = +it.qtd || 0, m = +it.min || 0, p = P[it.id] || 0;
+    if (q < 0 || (m > 0 && q <= m) || q - p < m || (p > 0 && q < p)) out.push({ it, q, m, p, motivo: q <= 0 && !m ? 'sem saldo' : q <= m && m ? 'abaixo do nível de segurança' : 'não dá para as entregas programadas' }); }
+  return out;
+}
+function eduSit(it, P) { const q = +it.qtd || 0, m = +it.min || 0, p = (P || {})[it.id] || 0; if (q < 0) return ['Negativo', 'bad']; if (m > 0 && q <= m) return ['Comprar', 'bad']; if (p > q || q - p < m) return ['Comprar (programado)', 'warn']; return ['OK', 'ok']; }
+function viewEdu() {
+  const E = EDU(); const tab = V.eduTab || 'itens'; const P = eduPrevisto(); const C = eduCompra();
+  let h = `<div class="pagehead"><h1>Estoque de materiais educacionais</h1><p class="muted">Kits, livros, brindes e outros materiais de consumo. As entregas lançadas nas turmas baixam o estoque sozinhas.</p></div>`;
+  if (C.length) h += `<div class="banner" style="background:#fef2f2;border-color:#fecaca">🛒 <b>${C.length} material(is) para comprar:</b> ${C.map(c => `${esc(c.it.nome)} (saldo ${c.q}${c.m ? ', mínimo ' + c.m : ''}${c.p ? ', a entregar ' + c.p : ''})`).join(' · ')}</div>`;
+  h += `<div class="tabs">${[['itens', 'Materiais'], ['kits', 'Kits'], ['movs', 'Movimentações']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-set="eduTab" data-v="${k}">${l}</button>`).join('')}</div>`;
+  if (tab === 'kits') return h + eduKitsHtml();
+  if (tab === 'movs') return h + eduMovsHtml();
+  const fc = V.eduCat || '';
+  h += `<div class="bar filters"><button class="pri" data-act="eduAdd">+ Material</button><select data-in="eduCat"><option value="">Todas as especificidades</option>${EDU_CAT.map(([k, l]) => `<option value="${k}" ${fc === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button data-act="eduXls">Baixar Excel</button>
+   <span class="small muted">Nível de segurança = quantidade mínima; abaixo dela (ou sem saldo para as entregas programadas) o sistema pede compra.</span></div>`;
+  const L = E.itens.filter(i => !fc || i.cat === fc);
+  if (!L.length) return h + '<div class="card empty">Nenhum material cadastrado.</div>';
+  h += `<div class="card"><div class="tw" style="max-height:none"><table class="edutab"><tr><th>Material</th><th>Especificidade</th><th class="num">Saldo</th><th class="num">Nível de segurança</th><th class="num">A entregar</th><th>Situação</th><th>Compõe os kits</th><th>Obs.</th><th></th></tr>
+   ${L.map(it => { const i = E.itens.indexOf(it); const [s, c] = eduSit(it, P); const ks = E.kits.filter(k => k.comp.some(x => x.item === it.id)).map(k => k.nome + ' (' + k.comp.find(x => x.item === it.id).q + ')'); return `<tr>
+    <td><input data-eduf="nome" data-i="${i}" value="${esc(it.nome)}" style="min-width:180px"></td>
+    <td><select data-eduf="cat" data-i="${i}">${EDU_CAT.map(([k, l]) => `<option value="${k}" ${it.cat === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+    <td class="num"><b style="font-size:16px">${it.qtd || 0}</b></td>
+    <td class="num"><input type="number" min="0" data-eduf="min" data-i="${i}" value="${esc(it.min ?? 0)}" style="width:80px"></td>
+    <td class="num">${P[it.id] || ''}</td>
+    <td><span class="pill ${c}">${s}</span></td>
+    <td class="small"><span class="muted">${esc(ks.join(', ')) || 'nenhum'}</span> <button class="sm" data-act="eduItKits" data-id="${it.id}" title="Escolher os kits que levam este material">✎</button></td>
+    <td><input data-eduf="obs" data-i="${i}" value="${esc(it.obs || '')}" style="min-width:120px"></td>
+    <td class="nowrap"><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="in">+ Entrada</button><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="out">− Saída</button><button class="sm" data-act="eduMovM" data-id="${it.id}" data-d="set" title="Corrigir o saldo (inventário)">=</button><button class="sm dng" data-act="eduDel" data-i="${i}">✕</button></td></tr>`; }).join('')}</table></div></div>`;
+  return h;
+}
+function eduKitsHtml() {
+  const E = EDU();
+  let h = `<div class="bar filters"><button class="pri" data-act="eduKitAdd">+ Kit</button><span class="small muted">Monte cada kit com os materiais do estoque. Na turma, ao lançar um kit e marcar a entrega, cada material é baixado (quantidade do kit × número de kits).</span></div>`;
+  h += `<datalist id="kitTiposDL">${kitTipos().map(t => `<option value="${esc(kitTipoNome(t))}">`).join('')}</datalist><p class="small muted">Tipo de kit: escolha <b>Kit bolsista</b>, <b>Kit aluno</b> ou digite um novo (ex.: Kit evento). Cada tipo aparece no cadastro do curso em “Este curso recebe”.</p>`;
+  return h + `<div class="cmgrid">${E.kits.map((k, ki) => { const pode = k.comp.length ? Math.min(...k.comp.map(c => Math.floor(((eduIt(c.item) || {}).qtd || 0) / (c.q || 1)))) : 0; return `<div class="card">
+   <div class="bar" style="margin:0 0 6px"><input data-kitf="nome" data-k="${ki}" value="${esc(k.nome)}" style="flex:1;font-weight:700"><input data-kitf="tipo" data-k="${ki}" list="kitTiposDL" value="${esc(kitTipoNome(k.tipo))}" title="Tipo de kit (escolha ou digite um novo, ex.: Kit evento)" style="width:170px"><button class="sm dng" data-act="eduKitDel" data-k="${ki}">✕</button></div>
+   <table class="plain">${k.comp.map((c, ci) => `<tr><td><select data-kitc="item" data-k="${ki}" data-c="${ci}">${E.itens.map(it => `<option value="${it.id}" ${c.item === it.id ? 'selected' : ''}>${esc(it.nome)}</option>`).join('')}</select></td><td class="num"><input type="number" min="1" data-kitc="q" data-k="${ki}" data-c="${ci}" value="${c.q}" style="width:64px"> por kit</td><td><button class="sm" data-act="eduKitCDel" data-k="${ki}" data-c="${ci}">✕</button></td></tr>`).join('') || '<tr><td class="small muted">Sem materiais — inclua abaixo.</td></tr>'}</table>
+   <div class="bar" style="margin-top:6px"><button class="sm" data-act="eduKitCAdd" data-k="${ki}">+ Material no kit</button><span class="grow"></span><span class="small ${pode ? 'muted' : ''}" ${pode ? '' : 'style="color:var(--red)"'}>Dá para montar <b>${pode}</b> kit(s) com o saldo</span></div></div>`; }).join('')}</div>`;
+}
+function eduMovsHtml() {
+  const E = EDU(); const fi = V.eduMi || ''; const L = E.movs.filter(m => !fi || m.item === fi).slice(0, 400);
+  let h = `<div class="bar filters"><select data-in="eduMi"><option value="">Todos os materiais</option>${E.itens.map(i => `<option value="${i.id}" ${fi === i.id ? 'selected' : ''}>${esc(i.nome)}</option>`).join('')}</select></div>`;
+  if (!L.length) return h + '<div class="card empty">Nenhuma movimentação.</div>';
+  return h + `<div class="card"><div class="tw" style="max-height:none"><table><tr><th>Data</th><th>Material</th><th class="num">Quantidade</th><th>Motivo</th><th>Por</th></tr>${L.map(m => `<tr ${m.tid && S.turmas[m.tid] ? `data-open="${m.tid}" style="cursor:pointer"` : ''}><td class="nowrap">${br(m.data)}</td><td>${esc((eduIt(m.item) || { nome: '(excluído)' }).nome)}</td><td class="num" style="color:${m.q < 0 ? 'var(--red)' : '#15803d'}"><b>${m.q > 0 ? '+' : ''}${m.q}</b></td><td class="small">${esc(m.motivo || '')}</td><td class="small muted">${esc(m.por || '')}</td></tr>`).join('')}</table></div></div>`;
+}
+Object.assign(ACT, {
+  eduAdd: () => { EDU().itens.push({ id: uid('e'), nome: 'Novo material', cat: V.eduCat || 'outro', qtd: 0, min: 0 }); saveCfg(); refresh(); },
+  eduDel: el => { const E = EDU(); const it = E.itens[+el.dataset.i]; const uso = E.kits.filter(k => k.comp.some(c => c.item === it.id)).map(k => k.nome); askConfirm(`Excluir <b>${esc(it.nome)}</b>?${uso.length ? ' Ele sai também dos kits: ' + esc(uso.join(', ')) + '.' : ''}`, () => { E.itens.splice(+el.dataset.i, 1); for (const k of E.kits) k.comp = k.comp.filter(c => c.item !== it.id); saveCfg(); closeModal(); refresh(); }, 'Excluir'); },
+  eduMovM: el => {
+    const it = eduIt(el.dataset.id); const d = el.dataset.d;
+    MCTX = { ok: () => { const q = parseInt($('#modal [data-mq]').value); if (isNaN(q) || q < 0) return toast('Informe a quantidade'); const mot = $('#modal [data-mm]').value.trim();
+      const delta = d === 'in' ? q : d === 'out' ? -q : q - (+it.qtd || 0); if (!delta) return closeModal();
+      eduMov(it.id, delta, (d === 'in' ? 'Entrada' : d === 'out' ? 'Saída' : 'Ajuste de inventário') + (mot ? ': ' + mot : ''), ''); saveCfg(); closeModal(); refresh(); toast(it.nome + ': saldo ' + it.qtd); } };
+    modal(`<h2>${d === 'in' ? 'Entrada' : d === 'out' ? 'Saída' : 'Corrigir saldo'} · ${esc(it.nome)}</h2><p class="small muted">Saldo atual: <b>${it.qtd || 0}</b></p>
+     <label class="f">${d === 'set' ? 'Saldo contado' : 'Quantidade'}<input type="number" min="0" data-mq></label>
+     <label class="f" style="margin-top:8px">Motivo / observação<input data-mm placeholder="${d === 'in' ? 'Ex.: compra NF 1234' : d === 'out' ? 'Ex.: evento de boas-vindas' : 'Ex.: inventário de dezembro'}"></label>
+     <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+    setTimeout(() => { const i = $('#modal [data-mq]'); if (i) i.focus(); }, 50);
+  },
+  eduItKits: el => {
+    const it = eduIt(el.dataset.id); const E = EDU();
+    MCTX = { ok: () => {
+      for (const k of E.kits) { const cb = $('#modal [data-ikk="' + k.id + '"]'); const q = Math.max(1, parseInt(($('#modal [data-ikq="' + k.id + '"]') || {}).value) || 1); const c = k.comp.find(x => x.item === it.id);
+        if (cb.checked) { if (c) c.q = q; else k.comp.push({ item: it.id, q }); } else if (c) k.comp = k.comp.filter(x => x.item !== it.id); }
+      saveCfg(); closeModal(); refresh(); toast('Kits atualizados'); } };
+    modal(`<h2>Kits que levam ${esc(it.nome)}</h2><p class="small muted">Marque os kits de entrega que têm este material e a quantidade por kit. Para criar outro kit ou tipo de kit, use a aba Kits.</p>
+     <table class="plain">${E.kits.map(k => { const c = k.comp.find(x => x.item === it.id); return `<tr><td><label class="chk"><input type="checkbox" data-ikk="${k.id}" ${c ? 'checked' : ''}><span><b>${esc(k.nome)}</b> <span class="small muted">${esc(kitTipoNome(k.tipo))}</span></span></label></td><td class="num"><input type="number" min="1" data-ikq="${k.id}" value="${c ? c.q : 1}" style="width:64px"> por kit</td></tr>`; }).join('') || '<tr><td class="muted">Nenhum kit cadastrado.</td></tr>'}</table>
+     <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+  },
+  eduKitAdd: () => { EDU().kits.push({ id: uid('k'), nome: 'Novo kit', tipo: 'brinde', comp: [] }); saveCfg(); refresh(); },
+  eduKitDel: el => { const E = EDU(); const k = E.kits[+el.dataset.k]; const uso = Object.values(S.turmas).filter(t => (t.livros || []).some(x => x.src === 'k:' + k.id)).length; askConfirm(`Excluir o kit <b>${esc(k.nome)}</b>?${uso ? ` Ele está lançado em ${uso} turma(s); essas entregas deixam de baixar o estoque.` : ''}`, () => { E.kits.splice(+el.dataset.k, 1); saveCfg(); closeModal(); refresh(); }, 'Excluir'); },
+  eduKitCAdd: el => { const E = EDU(); if (!E.itens.length) return toast('Cadastre os materiais primeiro'); E.kits[+el.dataset.k].comp.push({ item: E.itens[0].id, q: 1 }); saveCfg(); refresh(); },
+  eduKitCDel: el => { EDU().kits[+el.dataset.k].comp.splice(+el.dataset.c, 1); saveCfg(); refresh(); },
+  eduXls: () => { const P = eduPrevisto(); const rows = [['Material', 'Especificidade', 'Saldo', 'Nível de segurança', 'A entregar', 'Situação', 'Observação']].concat(EDU().itens.map(it => [it.nome, (EDU_CAT.find(c => c[0] === it.cat) || ['', ''])[1], it.qtd || 0, it.min || 0, P[it.id] || 0, eduSit(it, P)[0], it.obs || ''])); xlsSave('Estoque educacional.xlsx', [{ name: 'Estoque', rows, widths: [36, 24, 10, 14, 12, 18, 30] }]); },
+});
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.matches) return;
+  if (el.matches('[data-eduf]')) { const it = EDU().itens[+el.dataset.i]; const k = el.dataset.eduf; it[k] = k === 'min' ? Math.max(0, parseInt(el.value) || 0) : el.value.trim(); saveCfg(); refresh(); }
+  if (el.matches('[data-kitf]')) { const k = EDU().kits[+el.dataset.k]; const f = el.dataset.kitf; const v = f === 'tipo' ? kitTipoVal(el.value) : el.value.trim(); if (f === 'tipo' && !v) return toast('Informe o tipo do kit'); k[f] = v; saveCfg(); refresh(); }
+  if (el.matches('[data-kitc]')) { const c = EDU().kits[+el.dataset.k].comp[+el.dataset.c]; if (el.dataset.kitc === 'q') c.q = Math.max(1, parseInt(el.value) || 1); else c.item = el.value; saveCfg(); refresh(); }
+});
+// menu, rota, avisos
+{ const i = NAV_ADM.findIndex(x => x[0] === 'livros') + 1; NAV_ADM.splice(i, 0, ['edu', 'Estoque educacional', '📦']); ADM_VIEWS.add('edu'); }
+MICON.edu = '📦';
+{ const rs = renderShell; if (typeof rs === 'function') renderShell = function () { const r = rs.apply(this, arguments); try { const n = canWrite() && S.cfg ? eduCompra().length : 0; const b = document.querySelector('#side [data-go="edu"]'); if (b && n && !b.querySelector('.badge')) b.insertAdjacentHTML('beforeend', `<span class="badge">${n}</span>`); } catch (e) { } return r; }; }
+{ const vi = viewInicio; viewInicio = function () { const h = vi(); if (!canWrite() || !S.cfg) return h; const C = eduCompra(); if (!C.length) return h; return `<div class="banner" style="background:#fef2f2;border-color:#fecaca">🛒 <b>Estoque educacional:</b> ${C.length} material(is) para comprar — ${C.slice(0, 4).map(c => esc(c.it.nome)).join(', ')}${C.length > 4 ? '…' : ''}. <a class="link" data-go="edu">Ver estoque ›</a></div>` + h; }; }
+{ const va = viewAlertas; viewAlertas = function () { const h = va(); const C = canWrite() && S.cfg ? eduCompra() : []; if (!C.length) return h; return h.replace('<h1>Alertas</h1>', `<h1>Alertas</h1><div class="card" style="border-left:4px solid var(--red)"><b>🛒 Comprar — estoque educacional (${C.length})</b><div class="small" style="margin-top:4px">${C.map(c => `${esc(c.it.nome)}: saldo ${c.q}${c.m ? ' · mínimo ' + c.m : ''}${c.p ? ' · a entregar ' + c.p : ''} <span class="muted">(${c.motivo})</span>`).join('<br>')}</div><a class="link small" data-go="edu">Abrir estoque educacional ›</a></div>`); }; }
+// público: o estoque educacional não vai para a consulta
+{ const pd = pubData; pubData = function () { const d = pd(); if (d && d.cfg) delete d.cfg.edu; if (d && d.turmas) for (const t of Object.values(d.turmas)) { delete t.livros; } return d; }; }
+// manual
+{ const s = MANUAL.find(x => x.id === 'livros'); if (s) { s.t = 'Livros e kits'; s.h = `
+<ol class="msteps"><li>Abra a turma em <b>Turmas e UCs</b> e desça até <b>Livros, kits e brindes</b>.</li>
+<li>Em <b>Este curso recebe</b>, marque o que a turma recebe: <b>Livro técnico</b>, <b>Livro brinde</b>, <b>Kit bolsista</b>, <b>Kit aluno</b> e qualquer outro tipo de kit criado no Estoque educacional. Nada marcado = não recebe.</li>
+<li>Clique no botão do tipo (ex.: <b>+ Kit bolsista</b>). Em <b>Do estoque / o que vai</b>, escolha o kit (ex.: Kit bolsista — Sacochila ou Ecobag): o sistema mostra o que vai no kit e quanto será baixado. Informe quantidade e <b>entrega programada</b>.</li>
+<li>Na entrega, preencha <b>Entregue em</b> ou clique em <b>Entregar hoje</b>: o estoque educacional é baixado na hora. Apagar a data devolve os itens.</li></ol>
+${ref('<p>Item com data programada passada e sem entrega gera o alerta <b>Livro/brinde</b>. A tela <b>Livros e brindes</b> mostra todas as entregas; o <b>Estoque educacional</b> mostra o saldo e o que ainda está programado para sair.</p>')}` }; }
+MANUAL.splice(MANUAL.findIndex(s => s.id === 'livros') + 1, 0, { id: 'edu', g: 'Gestão', t: 'Estoque de materiais educacionais', who: 'ed', h: `
+<ol class="msteps"><li>Abra <b>Estoque educacional</b> (menu Gestão). Aba <b>Materiais</b>: <b>+ Material</b>, nome e <b>especificidade</b> (material do kit bolsista, do kit aluno, livro técnico, brinde ou outro).</li>
+<li>Informe o <b>nível de segurança</b> (quantidade mínima). Use <b>+ Entrada</b> para compras, <b>− Saída</b> para retiradas avulsas e <b>=</b> para corrigir o saldo após inventário.</li>
+<li>Aba <b>Kits</b>: monte cada kit com os materiais e a quantidade por kit (já vêm Kit bolsista — Sacochila, Kit bolsista — Ecobag e Kit aluno). Em <b>Tipo</b>, escolha Kit bolsista, Kit aluno ou digite um tipo novo (ex.: Kit evento). Na aba Materiais, o ✎ em <b>Compõe os kits</b> marca de uma vez em quais kits o material entra. O quadro mostra quantos kits dá para montar com o saldo.</li>
+<li>Aba <b>Movimentações</b>: histórico de entradas, saídas e baixas das turmas.</li></ol>
+${ref('<p>As entregas marcadas nas turmas baixam o estoque sozinhas. Quando o saldo fica no nível de segurança ou abaixo — ou não dá para as entregas já programadas — aparece o aviso <b>🛒 Comprar</b> no Início, nos Alertas e no menu.</p>')}` });
+
+// ---------- Transformar aula presencial em EAD (contando na carga EAD da UC) ----------
+function eadConvModal(t, row) {
+  const r = R[t.id], u = r.units[row.ui], ds = row.ds;
+  const nE = r.split ? (u.nE || 0) : (u.chE ? (u.nE || 0) : 0);
+  const antes = r.aulas.filter(a => a.ui === row.ui && a.mod === 'EAD' && a.ds < ds).length;
+  const resta = Math.max(0, nE - antes);
+  const temE = nE > 0, podeE = temE && resta > 0;
+  const nomeUC = (u.num ? 'UC ' + u.num + ' · ' : '') + (u.nome || '');
+  MCTX = { ok: () => {
+    const op = ($('#modal input[name=eadop]:checked') || {}).value;
+    if (!op) return toast('Escolha uma opção');
+    const o = (t.ov || {})[ds] || {};
+    setOv(t, ds, { ead: true, eadP: op === 'P' ? true : undefined, uc: u.id, eadUc: o.uc ? undefined : true });
+    saveT(t); closeModal(); V.hl = ds; refresh();
+    toast(op === 'P' ? 'Aula em EAD, contando na carga presencial' : 'Aula em EAD, contando na carga EAD da UC');
+  } };
+  modal(`<h2>Transformar em EAD</h2>
+   <p class="small muted" style="margin-top:-6px">${WDL[wd(ds)]}, ${br(ds)} · ${esc(nomeUC)}</p>
+   <label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;cursor:pointer;${podeE ? '' : 'opacity:.55'}"><input style="margin-top:3px" type="radio" name="eadop" value="E" ${podeE ? 'checked' : 'disabled'}><span><b>Contar na carga EAD desta UC</b><br><span class="small muted">${temE ? `Carga EAD: ${nE} aula(s) · ${antes} antes desta data · ${resta ? `restam ${resta}` : 'nenhuma restante'}. A aula EAD que sobrar num dia fixo EAD fica livre.` : 'Esta UC não tem carga EAD cadastrada. Informe a carga EAD da UC para usar esta opção.'}</span></span></label>
+   <label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;cursor:pointer"><input style="margin-top:3px" type="radio" name="eadop" value="P" ${podeE ? '' : 'checked'}><span><b>Só mudar para EAD (continua na carga presencial)</b><br><span class="small muted">A aula acontece a distância, mas conta como aula presencial da UC.</span></span></label>
+   <p class="small muted">A UC fica fixada (📌) nesta data. Para desfazer, clique de novo em "EAD".</p>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Transformar</button></div>`);
+}
+
+// ---------- Arrastar: ordem das UCs e troca de UCs entre aulas ----------
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `.dragh{cursor:grab;user-select:none;touch-action:none;color:var(--mut);font-size:17px;padding:2px 5px;border-radius:6px;line-height:1;display:inline-block}
+.dragh:hover{background:#eef3f3;color:var(--ink,#123)}
+.dgsrc{opacity:.45}
+.dgover{outline:2px dashed var(--pri,#0f766e);outline-offset:-2px;background:#e9f6f4!important}
+tr.dgover td{background:#e9f6f4!important}
+.dgghost{position:fixed;z-index:9999;pointer-events:none;background:#0f766e;color:#fff;font-size:12px;padding:5px 9px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.2);max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.dragging{cursor:grabbing!important;user-select:none}`;
+  document.head.appendChild(st);
+  let D = null;
+  const alvo = (x, y) => { const el = document.elementFromPoint(x, y); const t = el && el.closest('[data-dgt]'); return t && D && t.dataset.dgt === D.tipo ? t : null; };
+  const limpa = () => { document.querySelectorAll('.dgover,.dgsrc').forEach(e => e.classList.remove('dgover', 'dgsrc')); if (D && D.g) D.g.remove(); document.body.classList.remove('dragging'); };
+  document.addEventListener('pointerdown', e => {
+    const h = e.target.closest('.dragh'); if (!h || !canWrite()) return;
+    e.preventDefault();
+    const src = h.closest('[data-dgt]');
+    D = { tipo: h.dataset.dg, i: h.dataset.i, ds: h.dataset.ds, src, x: e.clientX, y: e.clientY, on: false, over: null };
+  });
+  document.addEventListener('pointermove', e => {
+    if (!D) return;
+    if (!D.on) {
+      if (Math.abs(e.clientX - D.x) + Math.abs(e.clientY - D.y) < 6) return;
+      D.on = true; document.body.classList.add('dragging'); D.src.classList.add('dgsrc');
+      const g = D.g = document.createElement('div'); g.className = 'dgghost';
+      const t = curT(); if (t) { if (D.tipo === 'uc') { const u = t.ucs[+D.i]; g.textContent = 'Mover ' + (u.num ? 'UC ' + u.num + ' · ' : '') + (u.nome || ''); } else { const r = R[t.id], row = r.rows.find(x => x.ds === D.ds), u = row && r.units[row.ui]; g.textContent = brs(D.ds) + ' · ' + (u ? (u.num ? 'UC ' + u.num + ' · ' : '') + u.nome : 'aula'); } }
+      document.body.appendChild(g);
+    }
+    e.preventDefault();
+    D.g.style.left = (e.clientX + 14) + 'px'; D.g.style.top = (e.clientY + 10) + 'px';
+    const a = alvo(e.clientX, e.clientY);
+    if (a !== D.over) { if (D.over) D.over.classList.remove('dgover'); D.over = a && a !== D.src ? a : null; if (D.over) D.over.classList.add('dgover'); }
+    // rolagem automática perto das bordas
+    const m = 60, sc = document.scrollingElement; const main = document.querySelector('#main');
+    const dy = e.clientY < m ? -14 : e.clientY > innerHeight - m ? 14 : 0;
+    if (dy) { if (main && main.scrollHeight > main.clientHeight) main.scrollTop += dy; else sc.scrollTop += dy; }
+  }, { passive: false });
+  const fim = e => {
+    if (!D) return; const d = D; const over = d.over; limpa(); D = null;
+    if (!d.on || !over) return;
+    const t = curT(); if (!t) return;
+    if (d.tipo === 'uc') {
+      const de = +d.i, para = +over.dataset.i; if (de === para) return;
+      const [u] = t.ucs.splice(de, 1); t.ucs.splice(para, 0, u);
+      saveT(t); refresh(); toast('Ordem das UCs atualizada');
+    } else {
+      const a = d.ds, b = over.dataset.ds; const r = R[t.id];
+      const ra = r.rows.find(x => x.ds === a), rb = r.rows.find(x => x.ds === b);
+      if (!ra || !rb || ra.ui < 0 || rb.ui < 0) return;
+      const ua = r.units[ra.ui].id, ub = r.units[rb.ui].id;
+      if (ua === ub) return toast('As duas aulas já são da mesma UC');
+      setOv(t, a, { uc: ub }); setOv(t, b, { uc: ua });
+      saveT(t); V.hl = b; refresh(); toast('UCs trocadas entre ' + brs(a) + ' e ' + brs(b));
+    }
+  };
+  document.addEventListener('pointerup', fim);
+  document.addEventListener('pointercancel', () => { limpa(); D = null; });
+})();
+
+// ---------- Mapa de salas: arrastar turma para outra sala (mover, trocar ou juntar) ----------
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `.ochip[data-dgchip]{cursor:grab}
+td.oc.dgover{outline:2px dashed #0f766e;outline-offset:-2px;background:#e9f6f4!important}
+td.oc.dgbad{outline:2px dashed #b42318;outline-offset:-2px}
+.ochip.dgsrc{opacity:.4}`;
+  document.head.appendChild(st);
+  let D = null, ignoraClick = false;
+  const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest('td[data-occ-cell]'); };
+  const limpa = () => { document.querySelectorAll('td.dgover,td.dgbad,.ochip.dgsrc').forEach(e => e.classList.remove('dgover', 'dgbad', 'dgsrc')); if (D && D.g) D.g.remove(); document.body.classList.remove('dragging'); };
+  const inicia = () => {
+    D.on = true; document.body.classList.add('dragging'); D.chip.classList.add('dgsrc');
+    const g = D.g = document.createElement('div'); g.className = 'dgghost'; g.style.background = D.chip.style.background;
+    g.textContent = (S.turmas[D.tid] ? tName(S.turmas[D.tid]) : '') + ' · ' + (D.de === '—' ? 'sem sala' : D.de);
+    document.body.appendChild(g); g.style.left = (D.x + 14) + 'px'; g.style.top = (D.y + 10) + 'px';
+  };
+  document.addEventListener('pointerdown', e => {
+    const chip = e.target.closest('.ochip[data-dgchip]'); if (!chip || !canWrite() || e.button > 0) return;
+    const td = chip.closest('td[data-occ-cell]'); if (!td) return;
+    const [de, ds, k] = td.dataset.occCell.split('|');
+    D = { chip, tid: chip.dataset.tid, ds, k, de, td, x: e.clientX, y: e.clientY, on: false, over: null, touch: e.pointerType === 'touch' };
+    if (D.touch) D.timer = setTimeout(() => { if (D && !D.on) { inicia(); if (navigator.vibrate) navigator.vibrate(20); } }, 350);
+  });
+  document.addEventListener('touchmove', e => { if (D && D.on) e.preventDefault(); }, { passive: false });
+  document.addEventListener('pointermove', e => {
+    if (!D) return;
+    const dist = Math.abs(e.clientX - D.x) + Math.abs(e.clientY - D.y);
+    if (!D.on) { if (D.touch) { if (dist > 10) { clearTimeout(D.timer); D = null; } return; } if (dist < 6) return; inicia(); }
+    e.preventDefault();
+    D.g.style.left = (e.clientX + 14) + 'px'; D.g.style.top = (e.clientY + 10) + 'px';
+    const c = cellAt(e.clientX, e.clientY);
+    if (c !== D.over) {
+      if (D.over) D.over.classList.remove('dgover', 'dgbad');
+      D.over = c && c !== D.td ? c : null;
+      if (D.over) { const [s, ds] = D.over.dataset.occCell.split('|'); D.over.classList.add(s !== '—' && ds === D.ds ? 'dgover' : 'dgbad'); }
+    }
+    const w = document.querySelector('.occw'); if (w) { const r = w.getBoundingClientRect(); if (e.clientX > r.right - 50) w.scrollLeft += 14; else if (e.clientX < r.left + 170) w.scrollLeft -= 14; }
+    const dy = e.clientY < 60 ? -14 : e.clientY > innerHeight - 60 ? 14 : 0; if (dy) { const m = document.querySelector('#main'); if (m && m.scrollHeight > m.clientHeight) m.scrollTop += dy; else document.scrollingElement.scrollTop += dy; }
+  }, { passive: false });
+  document.addEventListener('pointerup', () => {
+    if (!D) return; clearTimeout(D.timer); const d = D; const over = d.over; limpa(); D = null;
+    if (!d.on) return;
+    ignoraClick = true; setTimeout(() => ignoraClick = false, 50);
+    if (!over) return;
+    const [para, ds] = over.dataset.occCell.split('|');
+    if (para === '—') return toast('Solte numa sala');
+    if (ds !== d.ds) return toast('Solte no mesmo dia: para mudar a data, use o cronograma da turma');
+    if (para === d.de) return;
+    arrastaSalaModal(S.turmas[d.tid], d.ds, d.de, para);
+  });
+  document.addEventListener('pointercancel', () => { if (D) clearTimeout(D.timer); limpa(); D = null; });
+  document.addEventListener('click', e => { if (ignoraClick) { e.preventDefault(); e.stopPropagation(); ignoraClick = false; } }, true);
+})();
+function arrastaSalaModal(t, ds, de, para) {
+  const r = R[t.id]; const row = r && r.aulas.find(x => x.ds === ds); if (!row) return;
+  const ocup = (IDX[ds] || []).concat(avItems(ds)).filter(({ t: o, row: x }) => o.id !== t.id && naSala(x) && x.sala === para && salaOv(x, row.a, row.b) > 0);
+  const outro = ocup.length === 1 && !String(ocup[0].t.id).startsWith('av:') ? ocup[0] : null;
+  const dw = WDL[wd(ds)].toLowerCase();
+  const nomeDe = de === '—' ? 'sem sala' : de;
+  let h = `<h2>${esc(tName(t))}: ${esc(nomeDe)} → ${esc(para)}</h2><p class="small muted" style="margin-top:-6px">${WDL[wd(ds)]}, ${br(ds)} · ${hm(row.a)}–${hm(row.b)} · ${esc(t.nome)}</p>`;
+  if (ocup.length) h += `<div class="banner" style="margin:8px 0">${esc(para)} já está ocupada neste horário por <b>${ocup.map(o => esc(o.t.nome)).join(', ')}</b>.</div>`;
+  else h += `<p class="small" style="color:var(--grn)">✓ ${esc(para)} está livre neste horário.</p>`;
+  h += `<label class="chk" style="margin:8px 0"><input type="checkbox" data-asrep><span>Repetir nas próximas ${dw}s desta turma${outro ? ' (e da outra, na troca)' : ''} em que a sala for a mesma</span></label>`;
+  h += `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">`;
+  if (outro) h += `<button class="pri" data-m="asTroca">⇄ Trocar as salas: ${esc(tName(t))} vai para ${esc(para)} e ${esc(tName(outro.t))} vai para ${esc(nomeDe)}</button>`;
+  h += `<button class="${outro ? '' : 'pri'}" data-m="asMove">${ocup.length ? `Colocar as duas turmas em ${esc(para)} (fica o alerta de sala ocupada)` : `Mover para ${esc(para)}`}</button>`;
+  h += `<button data-m="asMais">Escolher outras datas…</button></div>${syncChk(t, ds)}<div class="mact"><button data-m="close">Cancelar</button></div>`;
+  MCTX = { t, ds, de, para, outro };
+  modal(h);
+}
+function asDatas(tt, ds, sala) {
+  // aulas da turma no mesmo dia da semana, a partir de ds, que estão na sala indicada
+  const rep = !!($('#modal [data-asrep]') || {}).checked;
+  return R[tt.id].aulas.filter(x => naSala(x) && (x.ds === ds || (rep && x.ds > ds && wd(x.ds) === wd(ds))) && (x.sala || '—') === sala);
+}
+function asSet(tt, ds, sala) { setOv(tt, ds, { sala: sala === tt.sala ? undefined : sala, semSala: undefined }); }
+Object.assign(MACT, {
+  asMove: () => {
+    const { t, ds, de, para } = MCTX; const L = asDatas(t, ds, de);
+    for (const x of L) asSet(t, x.ds, para);
+    saveT(t); closeModal(); refresh(); toast(`${L.length} aula(s) de ${tName(t)} em ${para}`);
+  },
+  asTroca: () => {
+    const { t, ds, de, para, outro } = MCTX; const o = outro.t;
+    const L = asDatas(t, ds, de); const Ld = new Set(L.map(x => x.ds));
+    const M = asDatas(o, ds, para).filter(x => Ld.has(x.ds)); const Md = new Set(M.map(x => x.ds));
+    let n = 0;
+    for (const x of L) if (x.ds === ds || Md.has(x.ds)) { asSet(t, x.ds, para); n++; }
+    for (const x of M) { if (de === '—') setOv(o, x.ds, { sala: undefined, semSala: true }); else asSet(o, x.ds, de); }
+    saveT(t); saveT(o); closeModal(); refresh(); toast(`Salas trocadas em ${n} dia(s)`);
+  },
+  asMais: () => { const { t, ds, para } = MCTX; trocaSalaModal(t, ds, para); },
+});
+
+// ---------- Turma: dias diferentes por período, recessos próprios e dias não letivos desconsiderados ----------
+const WDSEL = [1, 2, 3, 4, 5, 6];
+function diasEspResumo(t) {
+  const n = (t.diasPer || []).length, m = (t.recT || []).length, k = (t.calIgn || []).length + (t.calIgnSem ? 1 : 0) + (t.calIgnFer ? 1 : 0);
+  return [n ? n + ' período(s) com dias diferentes' : '', m ? m + ' recesso(s) da turma' : '', k ? 'dias não letivos desconsiderados' : ''].filter(Boolean).join(' · ');
+}
+function naoLetivosDaTurma(t) {
+  // dias não letivos (da unidade) que cairiam em dia de aula da turma, do início ao fim (+60 dias)
+  const r = R[t.id]; if (!isDate(t.ini)) return [];
+  const fim = addD(isDate(r && r.fim) ? r.fim : addD(t.ini, 365), 60); const out = [];
+  let d = t.ini, g = 0;
+  while (d <= fim && g++ < 1500) {
+    if (diasTurma(t, d).includes(wd(d)) && !recTurma(t, d)) { const ci = calInfoAula(d, tm(t.hi), tm(t.hf)); if (ci) out.push([d, ci]); }
+    d = addD(d, 1);
+  }
+  return out;
+}
+function diasEspCard(t) {
+  const aberto = V.deOpen === t.id || (t.diasPer || []).length || (t.recT || []).length || (t.calIgn || []).length || t.calIgnSem || t.calIgnFer;
+  if (!aberto) return `<div class="bar" style="margin:-4px 0 10px"><button class="sm" data-act="deAbrir">📆 Dias especiais e recessos desta turma…</button><span class="small muted">aulas em outros dias num período, recessos próprios ou ter aula em dia não letivo</span></div>`;
+  const UP = typeof ucPeriodos === 'function' ? ucPeriodos(t) : {};
+  const per = (t.diasPer || []).map((p, i) => `<tr><td class="nowrap">${br(p.de)}</td><td class="nowrap">${isDate(p.ate) ? br(p.ate) : '<span class="muted">sem fim</span>'}</td><td>${(p.dias || []).map(Number).sort().map(x => `<span class="pill">${WD[x]}</span>`).join(' ') || '<span class="muted">nenhum dia (sem aula)</span>'}</td><td class="small muted">${esc(p.obs || '')}</td><td class="nowrap"><button class="sm" data-act="dePer" data-i="${i}">✎</button><button class="sm dng" data-act="dePerDel" data-i="${i}">✕</button></td></tr>`).join('');
+  const rec = (t.recT || []).map((x, i) => `<tr><td class="nowrap">${br(x.de)}</td><td class="nowrap">${br(isDate(x.ate) ? x.ate : x.de)}</td><td>${esc(x.mot || '')}</td><td class="nowrap"><button class="sm" data-act="deRec" data-i="${i}">✎</button><button class="sm dng" data-act="deRecDel" data-i="${i}">✕</button></td></tr>`).join('');
+  const NL = naoLetivosDaTurma(t);
+  const ign = new Set(t.calIgn || []);
+  const tipo = ci => ci.kind === 'parc' ? 'Expediente parcial' : ci.kind === 'sem' ? 'Sem aula / recesso' : /^Emenda/.test(ci.mot) ? 'Emenda' : 'Feriado';
+  const nl = NL.map(([d, ci]) => { const auto = (t.calIgnSem && ci.kind === 'sem') || (t.calIgnFer && ci.kind === 'fer'); return `<label class="tsd" style="min-width:230px" title="${esc(ci.mot)}"><input type="checkbox" data-deign="${d}" ${ign.has(d) || auto ? 'checked' : ''} ${auto ? 'disabled' : ''}><span>${WD[wd(d)]} ${br(d)} · <span class="small muted">${esc(tipo(ci))}: ${esc(ci.mot.replace(/^Sem aula: /, '').slice(0, 30))}</span></span></label>`; }).join('');
+  return `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">📆 Dias especiais e recessos desta turma</h2></div>
+   <h3 style="margin:6px 0">Períodos com dias de aula diferentes</h3>
+   <p class="small muted" style="margin-top:0">Entre as datas, a turma tem aula nos dias marcados no lugar dos dias normais (${(t.dias || []).map(d => WD[d]).join(' ') || '—'}). Ex.: curso só de segunda que, durante uma UC, tem aula todos os dias.</p>
+   ${per ? `<table class="plain"><tr><th>De</th><th>Até</th><th>Dias de aula</th><th>Obs.</th><th></th></tr>${per}</table>` : ''}
+   <div class="bar" style="margin:6px 0 12px"><button class="sm" data-act="dePer">+ Período com outros dias</button></div>
+   <h3 style="margin:6px 0">Recessos só desta turma</h3>
+   ${rec ? `<table class="plain"><tr><th>De</th><th>Até</th><th>Motivo</th><th></th></tr>${rec}</table>` : '<p class="small muted" style="margin:0">Nenhum. As aulas desses dias passam para a frente.</p>'}
+   <div class="bar" style="margin:6px 0 12px"><button class="sm" data-act="deRec">+ Recesso da turma</button></div>
+   <h3 style="margin:6px 0">Dias não letivos da unidade</h3>
+   <p class="small muted" style="margin-top:0">Marque para esta turma <b>ter aula mesmo assim</b> nesses dias.</p>
+   <div class="bar" style="margin:0 0 6px;flex-wrap:wrap"><label class="chk"><input type="checkbox" data-detg="calIgnSem" ${t.calIgnSem ? 'checked' : ''}><span>Desconsiderar todos os dias <b>“Sem aula” / recessos</b></span></label><label class="chk"><input type="checkbox" data-detg="calIgnFer" ${t.calIgnFer ? 'checked' : ''}><span>Desconsiderar todos os <b>feriados e emendas</b></span></label></div>
+   ${NL.length ? `<div class="tsdates" style="max-height:220px">${nl}</div>` : '<p class="small muted">Nenhum dia não letivo cai em dia de aula desta turma.</p>'}
+   </div>`;
+}
+function dePerModal(t, i) {
+  const p = i != null ? t.diasPer[i] : { de: '', ate: '', dias: [...WDSEL.slice(0, 5)], obs: '' };
+  const UP = ucPeriodos(t); const ucs = (t.ucs || []).filter(u => UP[u.id]);
+  MCTX = { ok: () => {
+    const de = $('#modal [data-dp=de]').value, ate = $('#modal [data-dp=ate]').value;
+    if (!isDate(de)) return toast('Informe a data inicial');
+    if (isDate(ate) && ate < de) return toast('A data final é antes da inicial');
+    const dias = [...document.querySelectorAll('#modal [data-dpw]:checked')].map(e => +e.dataset.dpw);
+    const np = { de, ate: isDate(ate) ? ate : '', dias, obs: $('#modal [data-dp=obs]').value.trim() };
+    t.diasPer = t.diasPer || []; if (i != null) t.diasPer[i] = np; else t.diasPer.push(np);
+    t.diasPer.sort((a, b) => a.de.localeCompare(b.de)); saveT(t); closeModal(); refresh(); toast('Período salvo: cronograma recalculado');
+  } };
+  modal(`<h2>Período com outros dias de aula</h2>
+   ${ucs.length ? `<label class="f">Usar as datas de uma UC (opcional)<select data-dp="uc"><option value="">—</option>${ucs.map(u => `<option value="${esc(u.id)}" data-de="${UP[u.id].ini}" data-ate="${UP[u.id].fim}">${esc((u.num ? 'UC ' + u.num + ' · ' : '') + u.nome)} (${brs(UP[u.id].ini)} a ${brs(UP[u.id].fim)})</option>`).join('')}</select></label>` : ''}
+   <div class="bar" style="margin:6px 0"><label class="f">De<input type="date" data-dp="de" value="${esc(p.de)}"></label><label class="f">Até<input type="date" data-dp="ate" value="${esc(p.ate)}"></label></div>
+   <div class="small muted">Dias de aula nesse período</div>
+   <div class="bar" style="margin:4px 0 8px">${WDSEL.map(w => `<label class="chk"><input type="checkbox" data-dpw="${w}" ${(p.dias || []).map(Number).includes(w) ? 'checked' : ''}><span>${WD[w]}</span></label>`).join('')}</div>
+   <label class="f">Observação<input data-dp="obs" value="${esc(p.obs || '')}" placeholder="ex.: intensivo da UC 3"></label>
+   <p class="small muted">Feriados e dias não letivos continuam valendo (a não ser que você os desconsidere para esta turma). Lembre: as datas da UC mudam quando a turma ganha dias, então confira o cronograma depois.</p>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+}
+function deRecModal(t, i) {
+  const x = i != null ? t.recT[i] : { de: '', ate: '', mot: '' };
+  MCTX = { ok: () => {
+    const de = $('#modal [data-dr=de]').value, ate = $('#modal [data-dr=ate]').value || de;
+    if (!isDate(de)) return toast('Informe a data inicial'); if (ate < de) return toast('A data final é antes da inicial');
+    const nx = { de, ate, mot: $('#modal [data-dr=mot]').value.trim() };
+    t.recT = t.recT || []; if (i != null) t.recT[i] = nx; else t.recT.push(nx);
+    t.recT.sort((a, b) => a.de.localeCompare(b.de)); saveT(t); closeModal(); refresh(); toast('Recesso salvo: aulas desses dias passaram para a frente');
+  } };
+  modal(`<h2>Recesso só desta turma</h2>
+   <div class="bar" style="margin:6px 0"><label class="f">De<input type="date" data-dr="de" value="${esc(x.de)}"></label><label class="f">Até<input type="date" data-dr="ate" value="${esc(x.ate)}"></label></div>
+   <label class="f">Motivo<input data-dr="mot" value="${esc(x.mot || '')}" placeholder="ex.: recesso de julho do curso"></label>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+}
+Object.assign(ACT, {
+  deAbrir: () => { V.deOpen = curT().id; refresh(); },
+  dePer: el => dePerModal(curT(), el.dataset.i != null ? +el.dataset.i : null),
+  dePerDel: el => { const t = curT(); t.diasPer.splice(+el.dataset.i, 1); if (!t.diasPer.length) delete t.diasPer; saveT(t); refresh(); },
+  deRec: el => deRecModal(curT(), el.dataset.i != null ? +el.dataset.i : null),
+  deRecDel: el => { const t = curT(); t.recT.splice(+el.dataset.i, 1); if (!t.recT.length) delete t.recT; saveT(t); refresh(); },
+});
+document.addEventListener('change', e => {
+  const el = e.target; const t = curT(); if (!t) return;
+  if (el.dataset.dp === 'uc') { const o = el.selectedOptions[0]; if (o && o.dataset.de) { $('#modal [data-dp=de]').value = o.dataset.de; $('#modal [data-dp=ate]').value = o.dataset.ate; } return; }
+  if (el.dataset.detg) { if (el.checked) t[el.dataset.detg] = true; else delete t[el.dataset.detg]; saveT(t); V.deOpen = t.id; return refresh(); }
+  if (el.dataset.deign) { const s = new Set(t.calIgn || []); if (el.checked) s.add(el.dataset.deign); else s.delete(el.dataset.deign); t.calIgn = [...s].sort(); if (!t.calIgn.length) delete t.calIgn; saveT(t); V.deOpen = t.id; return refresh(); }
+});
+
+// ---------- Centro de custo digitado (usa o da lista quando existir) ----------
+function ccDatalist() { return `<datalist id="ccDL">${(S.cfg.cc || []).slice().sort((a, b) => a.cod.localeCompare(b.cod)).map(c => `<option value="${esc(c.cod)}">${esc(c.desc || '')}</option>`).join('')}</datalist>`; }
+function ccResolve(v) {
+  v = String(v || '').trim(); if (!v) return '';
+  const L = S.cfg.cc || []; const cod = v.split(/\s+[—-]\s+/)[0].trim();
+  const f = L.find(c => c.cod === v) || L.find(c => c.cod === cod) || L.find(c => c.cod.replace(/\s/g, '').toLowerCase() === cod.replace(/\s/g, '').toLowerCase());
+  return f ? f.cod : cod;
+}
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.dataset || !el.dataset.tccin) return; const t = curT(); if (!t) return;
+  t.cc = ccResolve(el.value); if (!t.cc) delete t.cc; saveT(t); refresh();
+});
+// ---------- 70×30: filtro por docente (sem o gráfico de acompanhamento) ----------
+function view70(ano, H, docs) {
+  const mi = +V.mes.slice(5) - 1; const meta = +S.cfg.meta || 0.7, tol = +S.cfg.tol || 0.05;
+  const dn = V.d70 && DOCMAP[V.d70] ? V.d70 : '';
+  let h = `<div class="bar filters"><select data-in="d70"><option value="">Todos os docentes</option>${docs.map(d => `<option ${d.nome === dn ? 'selected' : ''}>${esc(d.nome)}</option>`).join('')}</select>${dn ? '' : `<select data-in="m70">${MESESL.map((m, i) => `<option value="${i}" ${i === mi ? 'selected' : ''}>${m}</option>`).join('')}</select>`}</div>
+   <p class="small muted">Meta de aula: ${Math.round(meta * 100)}% (± ${Math.round(tol * 100)} p.p.) · verde = na meta · vermelho = aula acima (falta planejamento) · amarelo = abaixo (folga para alocar) · Turmas marcadas como planejamento e as de centro de custo terminado em 4060.0 contam no planejamento (30%), não em aula.</p>`;
+  const linha = (lbl, d, i, extra) => {
+    const c = cargaDisponivel(d, ano)[i]; const a = r2(((H[d.nome] || {}).m || [])[i] || 0); const at = r2(((H[d.nome] || {}).pl || [])[i] || 0);
+    const p = c ? a / c : 0; const cls = !a ? 'no' : p > meta + tol ? 'hi' : p < meta - tol ? 'lo' : 'ok';
+    return { c, a, html: `<tr><td>${lbl}</td>${extra}<td class="num">${c}</td><td class="num">${a}</td><td class="num">${r2(Math.max(0, c - a))}${at ? ` <span class="small muted">(${at} em atividades)</span>` : ''}</td><td class="num c70 ${cls}">${c ? Math.round(p * 100) + '%' : ''}</td><td class="num">${c ? Math.round(Math.max(0, 1 - p) * 100) + '%' : ''}</td></tr>` };
+  };
+  if (dn) {
+    const d = DOCMAP[dn]; let tc = 0, ta = 0;
+    h += `<h2 style="margin:6px 0">${esc(dn)} <span class="small muted">${esc(d.funcao || '')} · ${ano}</span></h2><div class="tw"><table><tr><th>Mês</th><th class="num">Carga do mês (h)</th><th class="num">Aula (h)</th><th class="num">Planejamento (h) — inclui atividades</th><th class="num">% aula</th><th class="num">% plan.</th></tr>`;
+    for (let i = 0; i < 12; i++) { const L = linha(MESESL[i], d, i, ''); tc += L.c; ta += L.a; h += L.html; }
+    const p = tc ? ta / tc : 0; const cls = !ta ? 'no' : p > meta + tol ? 'hi' : p < meta - tol ? 'lo' : 'ok';
+    h += `<tr style="font-weight:700"><td>Ano</td><td class="num">${r2(tc)}</td><td class="num">${r2(ta)}</td><td class="num">${r2(Math.max(0, tc - ta))}</td><td class="num c70 ${cls}">${tc ? Math.round(p * 100) + '%' : ''}</td><td class="num">${tc ? Math.round(Math.max(0, 1 - p) * 100) + '%' : ''}</td></tr>`;
+    return h + '</table></div>';
+  }
+  h += `<div class="tw"><table><tr><th>Docente</th><th>Função</th><th class="num">Carga do mês (h)</th><th class="num">Aula (h)</th><th class="num">Planejamento (h) — inclui atividades</th><th class="num">% aula</th><th class="num">% plan.</th></tr>`;
+  for (const d of docs) h += linha(esc(d.nome), d, mi, `<td class="small">${esc(d.funcao)}</td>`).html;
+  return h + '</table></div>';
+}
+// ---------- Cronograma: filtro por docente e visões de mês e ano ----------
+const passDoc = row => !V.cDoc || (row.docs || []).includes(V.cDoc);
+function docSelCron() {
+  const ns = S.docentes.map(d => d.nome).sort((a, b) => a.localeCompare(b));
+  return `<select data-in="cDoc"><option value="">Todos os docentes</option>${ns.map(n => `<option ${n === V.cDoc ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+}
+function visTabs() { const v = V.cVis || 'semana'; return `<span class="segbtn">${[['semana', 'Semana'], ['mes', 'Mês'], ['ano', 'Ano']].map(([k, l]) => `<button class="${v === k ? 'pri' : ''}" data-set="cVis" data-v="${k}">${l}</button>`).join('')}</span>`; }
+(function () { const st = document.createElement('style'); st.textContent = `.segbtn{display:inline-flex;gap:0;margin-right:10px}.segbtn button{border-radius:0;margin:0}.segbtn button:first-child{border-radius:8px 0 0 8px}.segbtn button:last-child{border-radius:0 8px 8px 0}
+.mgrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin-bottom:16px}.mgrid .wh{padding:4px 6px}
+.mday{background:#fafbfc;border:1px dashed var(--line);border-radius:10px;padding:4px;min-height:70px;display:flex;flex-direction:column;gap:4px}.mday.out{opacity:.35}.mday.off{background:repeating-linear-gradient(45deg,#f1f3f6,#f1f3f6 6px,#e9ecf0 6px,#e9ecf0 12px)}.mday.today{border:2px solid var(--acc)}
+.mdn{font-size:11px;font-weight:700;color:#475467;display:flex;justify-content:space-between;gap:4px}.mdn .muted{font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wcard.mini{padding:4px 5px;font-size:11px}.wcard.mini .wt{font-size:11.5px}
+.mtit{margin:14px 0 6px}`; document.head.appendChild(st); })();
+function miniCard(t, row) {
+  const u = R[t.id].units[row.ui] || {}; const bad = canWrite() && row.al.length;
+  return `<div class="wcard mini ${row.ead ? 'isead' : ''} ${bad ? 'hasal' : ''}" style="border-left-color:${areaColor(t.area)}" data-open="${t.id}" data-ds="${row.ds}" title="${esc(t.nome + '\n' + (u.nome || '') + '\n' + hm(row.a) + '–' + hm(row.b) + ' · ' + (row.ead ? 'EAD' : row.sala || 'sem sala') + '\n' + (row.docs.join(', ') || 'sem docente'))}">
+   <div class="wt">${esc(tName(t))}</div><div class="wu"><span class="dot" style="background:${ucColor(row.ui)}"></span>${esc(u.num ? 'UC ' + u.num : short2(u.nome || ''))} · ${knTxt(row)}</div>
+   <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.ead ? '<b class="eadtag">EAD</b>' : esc(row.sala || 'sem sala')}</div>${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : ''}</div>`;
+}
+function cronItens(d) { return (IDX[d] || []).filter(({ t, row }) => passT(t) && passDoc(row)).sort((a, b) => a.row.a - b.row.a || a.t.nome.localeCompare(b.t.nome)); }
+function mesGrid(ym, cont) {
+  const d1 = ym + '-01'; let d = monday(d1); const fimM = addD(ym.slice(5) === '12' ? (+ym.slice(0, 4) + 1) + '-01-01' : ym.slice(0, 5) + String(+ym.slice(5) + 1).padStart(2, '0') + '-01', -1);
+  let h = `<div class="mgrid">${[1, 2, 3, 4, 5, 6].map(w => `<div class="wh"><b>${WD[w]}</b></div>`).join('')}`;
+  let lista = '';
+  while (d <= fimM) {
+    for (let i = 0; i < 6; i++) {
+      const x = addD(d, i); const fora = x.slice(0, 7) !== ym; const ci = calLbl(x); const L = fora ? [] : cronItens(x); cont.n += L.length;
+      h += `<div class="mday ${fora ? 'out' : ''} ${ci && !fora ? 'off' : ''} ${x === HOJE ? 'today' : ''}"><div class="mdn"><span>${+x.slice(8)}</span>${ci && !fora ? `<span class="muted" title="${esc(ci.mot)}">${esc(ci.mot)}</span>` : ''}</div>${L.map(({ t, row }) => miniCard(t, row)).join('')}</div>`;
+      if (L.length) lista += `<div class="wday"><div class="wdh ${x === HOJE ? 'today' : ''}"><b>${WDL[wd(x)]}</b> ${br(x)}${ci ? ` · <span class="muted">${esc(ci.mot)}</span>` : ''}<span class="pill" style="margin-left:auto">${L.length} aula${L.length === 1 ? '' : 's'}</span></div>${L.map(({ t, row }) => miniCard(t, row)).join('')}</div>`;
+    }
+    d = addD(d, 7);
+  }
+  return h + `</div><div class="wlist">${lista || '<div class="card empty">Sem aulas neste mês.</div>'}</div>`;
+}
+function viewCronMesAno() {
+  const vis = V.cVis; const ym = V.mes; const ano = +ym.slice(0, 4);
+  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select><input placeholder="Filtrar curso ou sigla" data-in="cq" value="${esc(V.cq || '')}" style="flex:1 1 160px">${docSelCron()}</div>
+  <div class="bar filters wkbar">${visTabs()}${vis === 'mes' ? mesNav() : `<button data-act="cAnoP">‹ ${ano - 1}</button><b style="align-self:center">${ano}</b><button data-act="cAnoN2">${ano + 1} ›</button>`}</div>`;
+  const cont = { n: 0 };
+  if (vis === 'mes') { const g = mesGrid(ym, cont); return h + (cont.n ? '' : '<div class="card empty">Nenhuma aula neste mês com esses filtros.</div>') + g; }
+  // ano: evita travar com tudo aberto
+  let tot = 0; for (const [d, L] of Object.entries(IDX)) if (d.slice(0, 4) === String(ano)) for (const { t, row } of L) if (passT(t) && passDoc(row)) tot++;
+  if (tot > 1500) return h + `<div class="card empty">São ${tot} aulas no ano com esses filtros. Escolha um curso, um docente ou uma área para ver o ano inteiro.</div>`;
+  if (!tot) return h + '<div class="card empty">Nenhuma aula neste ano com esses filtros.</div>';
+  for (let m = 1; m <= 12; m++) { const k = ano + '-' + String(m).padStart(2, '0'); const c = { n: 0 }; const g = mesGrid(k, c); if (c.n) h += `<h2 class="mtit">${MESESL[m - 1]} ${ano} <span class="small muted">· ${c.n} aula${c.n === 1 ? '' : 's'}</span></h2>` + g; }
+  return h;
+}
+Object.assign(ACT, { cAnoP: () => { V.mes = (+V.mes.slice(0, 4) - 1) + V.mes.slice(4); refresh(); }, cAnoN2: () => { V.mes = (+V.mes.slice(0, 4) + 1) + V.mes.slice(4); refresh(); } });
+// ---------- Turma: filtro por docente no cronograma de aulas ----------
+function tDocFiltro(t) { const [tid, n] = String(V.tDoc || '').split('|'); return tid === t.id ? n : ''; }
+function tDocSel(t) {
+  const r = R[t.id]; const ns = [...new Set(r.aulas.flatMap(a => a.docs || []))].sort((a, b) => a.localeCompare(b)); if (!ns.length) return '';
+  const cur = tDocFiltro(t);
+  return `<select data-in="tDoc" title="Mostrar só as aulas de um docente"><option value="">Todos os docentes</option>${ns.map(n => `<option value="${esc(t.id + '|' + n)}" ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+}
+// ---------- Centros de custo: baixar e importar planilha ----------
+{
+  const vc = viewCC;
+  viewCC = function () {
+    return vc().replace('<button class="pri" data-act="newCC">+ Centro de custo</button>', '<button data-act="ccXls">⬇ Baixar planilha</button><button data-act="ccImp">⇪ Importar planilha</button><button class="pri" data-act="newCC">+ Centro de custo</button>');
+  };
+}
+let CC_IMP = [];
+function ccParse(rows) {
+  rows = rows.map(r => r.map(c => String(c == null ? '' : c).trim())).filter(r => r.some(Boolean)); if (!rows.length) return [];
+  const H = rows[0].map(x => x.toLowerCase()); let cC = H.findIndex(h => /c[óo]d|centro|^cc/.test(h)), cD = H.findIndex(h => /descri|refer|nome|curso/.test(h));
+  let body = rows.slice(1); if (cC < 0) { cC = 0; cD = 1; body = rows; } if (cD < 0) cD = cC === 0 ? 1 : 0;
+  const m = new Map();
+  for (const r of body) { const cod = (r[cC] || '').trim(); if (!cod || /^(exemplo|ex\.)/i.test(cod)) continue; m.set(cod, (r[cD] || '').trim()); }
+  return [...m].map(([cod, desc]) => ({ cod, desc }));
+}
+function ccPrev() {
+  const L = S.cfg.cc || []; let nv = 0, at = 0, ig = 0;
+  for (const x of CC_IMP) { const e = L.find(c => c.cod === x.cod); if (!e) nv++; else if (x.desc && x.desc !== e.desc) at++; else ig++; }
+  const box = $('#modal [data-ccprev]'); if (box) box.innerHTML = CC_IMP.length ? `<p><b>${CC_IMP.length}</b> código(s) na planilha: <b>${nv}</b> novo(s), <b>${at}</b> com descrição atualizada, ${ig} já iguais.</p><div class="tw" style="max-height:220px"><table><tr><th>Código</th><th>Descrição</th><th></th></tr>${CC_IMP.slice(0, 300).map(x => { const e = L.find(c => c.cod === x.cod); return `<tr><td>${esc(x.cod)}</td><td>${esc(x.desc)}</td><td class="small">${!e ? '<span class="pill okv">novo</span>' : x.desc && x.desc !== e.desc ? '<span class="pill warn">atualiza</span>' : '<span class="muted">igual</span>'}</td></tr>`; }).join('')}</table></div>` : '<p class="muted">Nenhum código encontrado.</p>';
+}
+Object.assign(ACT, {
+  ccXls: () => {
+    const L = (S.cfg.cc || []).slice().sort((a, b) => a.cod.localeCompare(b.cod));
+    const uso = {}; for (const t of Object.values(S.turmas)) { const c = String(t.cc || '').trim(); if (c) (uso[c] = uso[c] || []).push(t.nome); }
+    const rows = [['Código orçamentário', 'Descrição / referência', 'Turmas que usam (só consulta)']];
+    for (const c of L) rows.push([c.cod, c.desc || '', (uso[c.cod] || []).join('; ')]);
+    for (const c of Object.keys(uso).sort()) if (!L.some(x => x.cod === c)) rows.push([c, '', (uso[c] || []).join('; ') + ' (não cadastrado)']);
+    xlsSave('Centros de custo.xlsx', [{ name: 'Centros de custo', rows, widths: [26, 50, 60] }]);
+  },
+  ccImp: () => {
+    CC_IMP = [];
+    MCTX = { ok: () => {
+      if (!CC_IMP.length) return toast('Escolha a planilha ou cole as linhas');
+      S.cfg.cc = S.cfg.cc || []; let nv = 0, at = 0;
+      for (const x of CC_IMP) { const e = S.cfg.cc.find(c => c.cod === x.cod); if (!e) { S.cfg.cc.push({ cod: x.cod, desc: x.desc }); nv++; } else if (x.desc && x.desc !== e.desc) { e.desc = x.desc; at++; } }
+      saveCfg(); closeModal(); refresh(); toast(`${nv} centro(s) de custo novo(s), ${at} atualizado(s)`);
+    } };
+    modal(`<h2>Importar centros de custo</h2><p class="small muted">Planilha com as colunas <b>Código orçamentário</b> e <b>Descrição / referência</b> (pode ser a baixada em “⬇ Baixar planilha”). Códigos novos são incluídos; os que já existem ganham a descrição da planilha. Nada é apagado.</p>
+     <label class="f">Arquivo Excel ou CSV<input type="file" accept=".xlsx,.xls,.csv" data-ccfile></label>
+     <label class="f">ou cole as linhas copiadas do Excel<textarea rows="4" data-ccpaste placeholder="072.0000.00000.0.0&#9;Técnico em Enfermagem"></textarea></label>
+     <div data-ccprev></div><div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Importar</button></div>`, true);
+  },
+});
+document.addEventListener('change', async e => {
+  const el = e.target;
+  if (el.dataset && el.dataset.ccfile != null && el.files && el.files[0]) {
+    const f = el.files[0];
+    if (/\.csv$/i.test(f.name)) { const tx = await f.text(); CC_IMP = ccParse(tx.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : l.includes(';') ? ';' : ','))); return ccPrev(); }
+    try { const X = await loadXLSX(); const wb = X.read(await f.arrayBuffer(), { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]]; CC_IMP = ccParse(X.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false })); ccPrev(); } catch (er) { toast('Não consegui ler: ' + er.message); }
+  }
+});
+document.addEventListener('input', e => { const el = e.target; if (el.dataset && el.dataset.ccpaste != null) { CC_IMP = ccParse(el.value.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : ';'))); ccPrev(); } });
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
