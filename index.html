@@ -444,7 +444,7 @@ function buildTurma(t) {
   for (const ds of Object.keys(ov)) {
     if (!isDate(ds) || ds < t.ini) continue;
     const o = ov[ds];
-    if (o.uc && uidx[o.uc] != null && isSlot(ds)) { if (split && isEadDay(ds, o)) lkE[uidx[o.uc]]++; else lkP[uidx[o.uc]]++; }
+    if (o.uc && uidx[o.uc] != null && isSlot(ds)) { if (split && isEadDay(ds, o) && !o.eadP) lkE[uidx[o.uc]]++; else lkP[uidx[o.uc]]++; }
     if ((o.uc || o.extra) && isSlot(ds) && ds > lastFixed) lastFixed = ds;
   }
   const allDone = () => units.every((u, i) => dP[i] >= nP[i] && dE[i] >= nE[i]);
@@ -462,9 +462,10 @@ function buildTurma(t) {
       else if (o.skip) { res.rows.push({ ds, w, type: 'skip', o }); }
       else {
         const ead = isEadDay(ds, o);
+        const cE = split && ead && !o.eadP; // aula EAD que consome a carga EAD da UC (eadP: EAD que conta na presencial)
         let ui = -1, locked = false;
-        if (o.uc && uidx[o.uc] != null) { ui = uidx[o.uc]; if (split && ead) lkE[ui]--; else lkP[ui]--; locked = true; }
-        else if (!split || !ead) {
+        if (o.uc && uidx[o.uc] != null) { ui = uidx[o.uc]; if (cE) lkE[ui]--; else lkP[ui]--; locked = true; }
+        else if (!cE) {
           // UC com dias da semana definidos tem prioridade nesses dias; as demais seguem a ordem nos outros dias
           for (let i = 0; i < units.length; i++) if (units[i].wd.length && units[i].wd.includes(w) && !(units[i].wdDe > ds) && dP[i] + lkP[i] < nP[i]) { ui = i; break; }
           if (ui < 0) for (let i = 0; i < units.length; i++) if (!units[i].wd.length && dP[i] + lkP[i] < nP[i]) { ui = i; break; }
@@ -474,13 +475,14 @@ function buildTurma(t) {
           for (let i = 0; i < units.length; i++) if (units[i].wd.length && units[i].wd.includes(w) && !(units[i].wdDe > ds) && dE[i] + lkE[i] < nE[i]) { ui = i; break; }
           if (ui < 0) for (let i = 0; i <= cur; i++) if (!units[i].wd.length && dE[i] + lkE[i] < nE[i]) { ui = i; break; }
         }
-        if (ui < 0 && !locked && !allDone()) { res.rows.push({ ds, w, type: 'off', kind: 'split', mot: split && ead ? 'Dia EAD sem carga EAD pendente na UC atual' : !restaP() ? 'Carga presencial concluída — restam aulas EAD' : 'Sem UC neste dia da semana (as UCs restantes têm dias definidos)' }); vazios++; ds = addD(ds, 1); continue; }
+        if (ui < 0 && !locked && !allDone()) { res.rows.push({ ds, w, type: 'off', kind: 'split', mot: cE ? 'Dia EAD sem carga EAD pendente na UC atual' : !restaP() ? 'Carga presencial concluída — restam aulas EAD' : 'Sem UC neste dia da semana (as UCs restantes têm dias definidos)' }); vazios++; ds = addD(ds, 1); continue; }
         vazios = 0;
         const row = { ds, w, type: 'aula', ui, locked, extra: !!o.extra, o, al: [] };
         if (ui >= 0) {
-          if (split && ead) dE[ui]++; else dP[ui]++;
+          if (cE) dE[ui]++; else dP[ui]++;
           row.k = done(ui); row.n = n[ui]; row.num = ++count;
-          if (split) { row.mod = ead ? 'EAD' : 'P'; row.kM = ead ? dE[ui] : dP[ui]; row.nM = ead ? nE[ui] : nP[ui]; }
+          if (split) { row.mod = cE ? 'EAD' : 'P'; row.kM = cE ? dE[ui] : dP[ui]; row.nM = cE ? nE[ui] : nP[ui]; }
+          row.conv = ead && +t.ead !== w; // aula de dia presencial transformada em EAD
           const u = units[ui];
           row.ead = ead; row.sinc = ead && !!(t.ucs && (t.ucs.find(x => x.id === u.id) || {}).sinc);
           row.sala = (row.ead && !row.sinc) ? EAD_SALA : o.semSala ? '' : (o.sala || t.sala || VSALA[t.id] || '');
@@ -961,7 +963,7 @@ function viewTurma() {
      ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${knTxt(row)}</span>
      <button class="ead ${row.ead ? 'on' : ''}" data-act="rEad" data-ds="${row.ds}">${row.ead ? (row.sinc ? 'EAD síncr.' : 'EAD') : 'Presencial'}</button>${salaSel}
      <div class="docs" data-act="rDocs" data-ds="${row.ds}">${docs}</div>
-     ${row.extra ? '<span class="pill">extra</span>' : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
+     ${row.extra ? '<span class="pill">extra</span>' : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
      <div class="al">${als}</div><button class="more" data-act="rMenu" data-ds="${row.ds}" title="Mais opções">⋯</button></div>`;
     if (row.al.length) h += `<div class="small almsgs" style="margin:-2px 0 4px 72px;color:var(--mut)">${row.al.map((a, k) => `<span class="${a.ok ? 'alok' : 'alpe'}" title="${esc(a.ok ? alvInfo(a) : '')}">${a.ok ? '✓ ' : ''}${esc(a.msg)}${a.ot && S.turmas[a.ot] ? ` <a class="alv alot" data-act="fixGo" data-t="${a.ot}" data-ds="${row.ds}" data-f="${a.tp}" title="Abrir a outra turma neste dia">abrir ${esc(S.turmas[a.ot].sigla || 'a outra turma')} ›</a>` : ''} <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="${k}">${a.ok ? '↺ pendente' : '✓ analisado'}</a></span>`).join(' · ')}${row.al.filter(a => !a.ok).length > 1 ? ` <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="all">✓ todos analisados</a>` : ''}</div>`;
   }
@@ -1227,7 +1229,7 @@ const ACT = {
         (t.ucs = t.ucs || []).push({ id: uid('u'), num: num || t.ucs.length + 1, nome, ch, doc: p[3] ? [p[3]] : [] }); n++; }
       saveT(t); closeModal(); refresh(); toast(n + ' UC(s) adicionada(s)'); } };
     modal(`<h2>Colar lista de UCs</h2><p class="small muted">Copie do Excel ou do plano de curso. Uma UC por linha, colunas separadas por tabulação ou ponto e vírgula:<br><b>Nome ; CH</b> &nbsp;ou&nbsp; <b>Nº ; Nome ; CH ; Docente</b></p><textarea rows="10" style="width:100%" placeholder="1;Realizar improvisação teatral;60\n2;Pesquisar a história do teatro;72"></textarea><div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Adicionar</button></div>`); },
-  rEad: (el) => { const t = curT(); const ds = el.dataset.ds; const row = R[t.id].rows.find(x => x.ds === ds); const def = +t.ead === wd(ds); const nv = !row.ead; setOv(t, ds, { ead: nv === def ? undefined : nv }); saveT(t); refresh(); },
+  rEad: (el) => { const t = curT(); const ds = el.dataset.ds; const row = R[t.id].rows.find(x => x.ds === ds); const def = +t.ead === wd(ds); const nv = !row.ead; if (nv && !def && row.ui >= 0) return eadConvModal(t, row); const o = (t.ov || {})[ds] || {}; setOv(t, ds, { ead: nv === def ? undefined : nv, eadP: undefined, uc: o.eadUc ? undefined : o.uc, eadUc: undefined }); saveT(t); refresh(); },
   rDocs: (el) => { const t = curT(); const ds = el.dataset.ds; const r = R[t.id]; const row = r.rows.find(x => x.ds === ds); const u = r.units[row.ui];
     docsModal('Docentes da aula ' + row.num, row.docs, ds, row.a, row.b, t.id, [['one', 'Só nesta aula'], ['next', 'Nesta e nas próximas aulas desta UC'], ['all', 'Em todas as aulas desta UC'], ['wk', 'Repetir em dias da semana escolhidos, num período (ex.: toda terça e quarta; cobrir um afastamento)']], (v, sc) => {
       if (sc === 'wk') { const n = wkAplica(t, v, u.id); if (n < 0) return; saveT(t); closeModal(); refresh(); return toast(n + ' aula(s) com o novo docente'); }
@@ -4354,6 +4356,10 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-eadconv', t: 'Transformar aula presencial em EAD', h: `
+${P(`Abra a turma em ${caminho('Turmas e UCs')} e localize a aula no <b>Cronograma de aulas</b>.`, `Clique no botão <b>Presencial</b> da aula.`, `Escolha <b>Contar na carga EAD desta UC</b> (a aula consome uma das aulas EAD da UC; o dia fixo EAD que sobrar fica livre) ou <b>Só mudar para EAD</b> (continua contando como presencial).`, `Clique em <b>Transformar</b>. A aula fica com 📌 e a etiqueta <b>→ EAD</b>.`)}
+${dica('Para desfazer, clique em <b>EAD</b> na mesma aula: ela volta a ser presencial e a sequência é recalculada.')}` },
+
   { id: 'cad-docente', t: 'Novo docente, escala e férias', h: `
 ${P(`Clique em ${caminho('Docentes e escalas')} e em <b>+ Docente</b>.`,
  `Na janela, preencha <b>Nome</b>, <b>Função</b> e <b>Carga contratual (h/semana)</b>.`,
@@ -5029,6 +5035,30 @@ MANUAL.splice(MANUAL.findIndex(s => s.id === 'livros') + 1, 0, { id: 'edu', g: '
 <li>Aba <b>Kits</b>: monte cada kit com os materiais e a quantidade por kit (já vêm Kit brinde — Sacochila, Kit brinde — Ecobag e Kit aluno). Em <b>Tipo</b>, escolha Kit brinde, Kit aluno ou digite um tipo novo (ex.: Kit evento). Na aba Materiais, o ✎ em <b>Compõe os kits</b> marca de uma vez em quais kits o material entra. O quadro mostra quantos kits dá para montar com o saldo.</li>
 <li>Aba <b>Movimentações</b>: histórico de entradas, saídas e baixas das turmas.</li></ol>
 ${ref('<p>As entregas marcadas nas turmas baixam o estoque sozinhas. Quando o saldo fica no nível de segurança ou abaixo — ou não dá para as entregas já programadas — aparece o aviso <b>🛒 Comprar</b> no Início, nos Alertas e no menu.</p>')}` });
+
+// ---------- Transformar aula presencial em EAD (contando na carga EAD da UC) ----------
+function eadConvModal(t, row) {
+  const r = R[t.id], u = r.units[row.ui], ds = row.ds;
+  const nE = r.split ? (u.nE || 0) : (u.chE ? (u.nE || 0) : 0);
+  const antes = r.aulas.filter(a => a.ui === row.ui && a.mod === 'EAD' && a.ds < ds).length;
+  const resta = Math.max(0, nE - antes);
+  const temE = nE > 0, podeE = temE && resta > 0;
+  const nomeUC = (u.num ? 'UC ' + u.num + ' · ' : '') + (u.nome || '');
+  MCTX = { ok: () => {
+    const op = ($('#modal input[name=eadop]:checked') || {}).value;
+    if (!op) return toast('Escolha uma opção');
+    const o = (t.ov || {})[ds] || {};
+    setOv(t, ds, { ead: true, eadP: op === 'P' ? true : undefined, uc: u.id, eadUc: o.uc ? undefined : true });
+    saveT(t); closeModal(); V.hl = ds; refresh();
+    toast(op === 'P' ? 'Aula em EAD, contando na carga presencial' : 'Aula em EAD, contando na carga EAD da UC');
+  } };
+  modal(`<h2>Transformar em EAD</h2>
+   <p class="small muted" style="margin-top:-6px">${WDL[wd(ds)]}, ${br(ds)} · ${esc(nomeUC)}</p>
+   <label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;cursor:pointer;${podeE ? '' : 'opacity:.55'}"><input style="margin-top:3px" type="radio" name="eadop" value="E" ${podeE ? 'checked' : 'disabled'}><span><b>Contar na carga EAD desta UC</b><br><span class="small muted">${temE ? `Carga EAD: ${nE} aula(s) · ${antes} antes desta data · ${resta ? `restam ${resta}` : 'nenhuma restante'}. A aula EAD que sobrar num dia fixo EAD fica livre.` : 'Esta UC não tem carga EAD cadastrada. Informe a carga EAD da UC para usar esta opção.'}</span></span></label>
+   <label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;cursor:pointer"><input style="margin-top:3px" type="radio" name="eadop" value="P" ${podeE ? '' : 'checked'}><span><b>Só mudar para EAD (continua na carga presencial)</b><br><span class="small muted">A aula acontece a distância, mas conta como aula presencial da UC.</span></span></label>
+   <p class="small muted">A UC fica fixada (📌) nesta data. Para desfazer, clique de novo em "EAD".</p>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Transformar</button></div>`);
+}
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
