@@ -926,7 +926,7 @@ function viewTurma() {
     t.ucs.forEach((u, i) => {
       const p = r.prog[i] || { n: 0, done: 0 };
       const st = p.done > p.n ? 'bad' : p.done < p.n ? 'warn' : 'ok';
-      h += `<tr><td><span class="dot" style="background:${ucColor(i)}"></span></td><td><input class="nu" data-uf="num" data-i="${i}" value="${esc(u.num)}"></td><td><input data-uf="nome" data-i="${i}" value="${esc(u.nome)}" style="min-width:200px"><div class="small ucwd" data-act="ucDias" data-i="${i}" title="Dias da semana desta UC">${(u.wd || []).length ? `📅 Só ${(u.wd || []).map(Number).sort().map(x => WD[x]).join(", ")}${u.wdDe ? ' a partir de ' + br(u.wdDe) : ''}` : '<span class="muted">📅 Todos os dias da turma</span>'}</div></td>
+      h += `<tr data-dgt="uc" data-i="${i}"><td class="nowrap">${canWrite() ? `<span class="dragh" data-dg="uc" data-i="${i}" title="Arraste para mudar a ordem">⠿</span>` : ''}<span class="dot" style="background:${ucColor(i)}"></span></td><td><input class="nu" data-uf="num" data-i="${i}" value="${esc(u.num)}"></td><td><input data-uf="nome" data-i="${i}" value="${esc(u.nome)}" style="min-width:200px"><div class="small ucwd" data-act="ucDias" data-i="${i}" title="Dias da semana desta UC">${(u.wd || []).length ? `📅 Só ${(u.wd || []).map(Number).sort().map(x => WD[x]).join(", ")}${u.wdDe ? ' a partir de ' + br(u.wdDe) : ''}` : '<span class="muted">📅 Todos os dias da turma</span>'}</div></td>
       <td class="num"><input class="ch" type="number" min="0" step="any" data-ucp="${i}" value="${esc(r2((+u.ch || 0) - (+u.chE || 0)))}"></td><td class="num"><input class="ch" type="number" min="0" step="any" data-uce="${i}" value="${esc(u.chE || '')}" placeholder="0" title="${!(+t.ead) ? 'Defina o dia fixo EAD da turma para usar a carga EAD' : 'Dada nos dias EAD'}">${+u.chE ? `<div class="small muted">total ${r2(+u.ch)} h</div>` : ''}${+u.chE || +t.ead ? `<label class="chk small" title="EAD síncrona: aula ao vivo, o docente precisa de sala"><input type="checkbox" data-ucsinc="${i}" ${u.sinc ? 'checked' : ''}><span>síncrona (sala)</span></label>` : ''}</td><td class="num"><input class="ch" style="width:62px" type="number" min="0" step="0.25" data-uf="h" data-i="${i}" value="${esc(u.h || '')}" placeholder="${r.units[i] ? r.units[i].hA : ''}" title="${r.units[i] && r.units[i].auto ? 'Automático: estágio no período da noite conta 3 h' : 'Vazio = horário da turma'}"></td><td class="num">${p.n}${r.split && p.nE ? `<div class="small muted">${p.nP} + ${p.nE} EAD${r.units[i] && r.units[i].hE !== r.units[i].hA ? ' (' + fmtH(r.units[i].hE) + ' h)' : ''}</div>` : ''}</td>
       <td><div class="docs" data-act="ucDocs" data-i="${i}" style="display:flex;gap:3px;flex-wrap:wrap;cursor:pointer;min-width:140px">${(u.doc || []).filter(Boolean).map(n => `<span class="dchip">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docente</span>'}</div></td>
       <td class="nowrap"><span class="pill ${st}">${p.done}/${p.n}</span>${r.split && p.nE ? `<div class="small muted">pres. ${p.dP}/${p.nP} · EAD ${p.dE}/${p.nE}</div>` : ''}</td>
@@ -958,7 +958,7 @@ function viewTurma() {
     const docs = row.docs.map(n => `<span class="dchip ${dst[n] || ''}">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docentes</span>';
     const salaSel = !naSala(row) ? `<span style="width:150px"></span>` : `<select class="sala" data-act="rSala" data-ds="${row.ds}">${opt(salaNames(), row.sala, '— sala —')}</select>`;
     const als = [...new Set(row.al.map(a => a.tp))].map(tp => { const okT = row.al.filter(a => a.tp === tp).every(a => a.ok); return `<span class="at ${okT ? 'okv' : tp}" title="${esc(row.al.filter(a => a.tp === tp).map(a => (a.ok ? '✓ ' : '') + a.msg).join('\n'))}">${okT ? '✓ ' : ''}${ALT[tp]}</span>`; }).join('');
-    h += `<div class="row" id="r-${row.ds}">${dt}<span class="no">#${row.num}</span>
+    h += `<div class="row" id="r-${row.ds}" data-dgt="aula" data-ds="${row.ds}">${canWrite() ? `<span class="dragh" data-dg="aula" data-ds="${row.ds}" title="Arraste até outra aula para trocar as UCs">⠿</span>` : ''}${dt}<span class="no">#${row.num}</span>
      <select class="uc" style="border-left-color:${ucColor(row.ui)}" data-act="rUC" data-ds="${row.ds}">${ucOpts(row.ui, row.locked)}</select>
      ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${knTxt(row)}</span>
      <button class="ead ${row.ead ? 'on' : ''}" data-act="rEad" data-ds="${row.ds}">${row.ead ? (row.sinc ? 'EAD síncr.' : 'EAD') : 'Presencial'}</button>${salaSel}
@@ -4349,7 +4349,7 @@ ${P(`Abra ${caminho('Turmas e UCs')} e clique na turma. Desça até o quadro <b>
  `Para incluir, clique em <b>+ UC</b>: preencha nº, nome, <b>CH presencial</b> e, se houver, <b>CH EAD</b>. Marque <b>síncrona (sala)</b> se a parte EAD precisa de sala para o docente.`,
  `Para os docentes, clique na área de docentes da UC: escolha até <b>10 docentes</b> (botão <b>+ Mais docentes</b>) e onde aplicar — em todas as aulas, mantendo trocas já feitas, ou só em dias da semana de um período (cobrir afastamento).`,
  `Se a UC acontece só em alguns dias, clique em <b>📅 Todos os dias da turma</b> (abaixo do nome), marque os dias e, se quiser, <b>A partir de</b>. Clique em <b>Aplicar</b>.`,
- `Use as setas ↑ ↓ para mudar a ordem e ✕ para excluir uma UC. Tudo salva sozinho.`)}
+ `Para mudar a ordem, <b>arraste a UC pela alça ⠿</b> (à esquerda da linha) até a posição desejada, ou use as setas ↑ ↓. ✕ exclui a UC. Tudo salva sozinho.`, `No <b>Cronograma de aulas</b>, arraste uma aula pela alça ⠿ e solte sobre outra aula: as duas trocam de UC e ficam fixadas (📌). Para desfazer, use <b>↺ voltar à sequência automática</b> na lista de UC da aula.`)}
 ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; UCs com dias definidos ocupam só esses dias. Os docentes entram nas aulas, nas horas, no 70×30, no rateio e na agenda.</p>')}` },
 
   { id: 'cad-extra', t: 'Aula extra ou reposição', h: `
@@ -5059,6 +5059,66 @@ function eadConvModal(t, row) {
    <p class="small muted">A UC fica fixada (📌) nesta data. Para desfazer, clique de novo em "EAD".</p>
    <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Transformar</button></div>`);
 }
+
+// ---------- Arrastar: ordem das UCs e troca de UCs entre aulas ----------
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `.dragh{cursor:grab;user-select:none;touch-action:none;color:var(--mut);font-size:17px;padding:2px 5px;border-radius:6px;line-height:1;display:inline-block}
+.dragh:hover{background:#eef3f3;color:var(--ink,#123)}
+.dgsrc{opacity:.45}
+.dgover{outline:2px dashed var(--pri,#0f766e);outline-offset:-2px;background:#e9f6f4!important}
+tr.dgover td{background:#e9f6f4!important}
+.dgghost{position:fixed;z-index:9999;pointer-events:none;background:#0f766e;color:#fff;font-size:12px;padding:5px 9px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.2);max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.dragging{cursor:grabbing!important;user-select:none}`;
+  document.head.appendChild(st);
+  let D = null;
+  const alvo = (x, y) => { const el = document.elementFromPoint(x, y); const t = el && el.closest('[data-dgt]'); return t && D && t.dataset.dgt === D.tipo ? t : null; };
+  const limpa = () => { document.querySelectorAll('.dgover,.dgsrc').forEach(e => e.classList.remove('dgover', 'dgsrc')); if (D && D.g) D.g.remove(); document.body.classList.remove('dragging'); };
+  document.addEventListener('pointerdown', e => {
+    const h = e.target.closest('.dragh'); if (!h || !canWrite()) return;
+    e.preventDefault();
+    const src = h.closest('[data-dgt]');
+    D = { tipo: h.dataset.dg, i: h.dataset.i, ds: h.dataset.ds, src, x: e.clientX, y: e.clientY, on: false, over: null };
+  });
+  document.addEventListener('pointermove', e => {
+    if (!D) return;
+    if (!D.on) {
+      if (Math.abs(e.clientX - D.x) + Math.abs(e.clientY - D.y) < 6) return;
+      D.on = true; document.body.classList.add('dragging'); D.src.classList.add('dgsrc');
+      const g = D.g = document.createElement('div'); g.className = 'dgghost';
+      const t = curT(); if (t) { if (D.tipo === 'uc') { const u = t.ucs[+D.i]; g.textContent = 'Mover ' + (u.num ? 'UC ' + u.num + ' · ' : '') + (u.nome || ''); } else { const r = R[t.id], row = r.rows.find(x => x.ds === D.ds), u = row && r.units[row.ui]; g.textContent = brs(D.ds) + ' · ' + (u ? (u.num ? 'UC ' + u.num + ' · ' : '') + u.nome : 'aula'); } }
+      document.body.appendChild(g);
+    }
+    e.preventDefault();
+    D.g.style.left = (e.clientX + 14) + 'px'; D.g.style.top = (e.clientY + 10) + 'px';
+    const a = alvo(e.clientX, e.clientY);
+    if (a !== D.over) { if (D.over) D.over.classList.remove('dgover'); D.over = a && a !== D.src ? a : null; if (D.over) D.over.classList.add('dgover'); }
+    // rolagem automática perto das bordas
+    const m = 60, sc = document.scrollingElement; const main = document.querySelector('#main');
+    const dy = e.clientY < m ? -14 : e.clientY > innerHeight - m ? 14 : 0;
+    if (dy) { if (main && main.scrollHeight > main.clientHeight) main.scrollTop += dy; else sc.scrollTop += dy; }
+  }, { passive: false });
+  const fim = e => {
+    if (!D) return; const d = D; const over = d.over; limpa(); D = null;
+    if (!d.on || !over) return;
+    const t = curT(); if (!t) return;
+    if (d.tipo === 'uc') {
+      const de = +d.i, para = +over.dataset.i; if (de === para) return;
+      const [u] = t.ucs.splice(de, 1); t.ucs.splice(para, 0, u);
+      saveT(t); refresh(); toast('Ordem das UCs atualizada');
+    } else {
+      const a = d.ds, b = over.dataset.ds; const r = R[t.id];
+      const ra = r.rows.find(x => x.ds === a), rb = r.rows.find(x => x.ds === b);
+      if (!ra || !rb || ra.ui < 0 || rb.ui < 0) return;
+      const ua = r.units[ra.ui].id, ub = r.units[rb.ui].id;
+      if (ua === ub) return toast('As duas aulas já são da mesma UC');
+      setOv(t, a, { uc: ub }); setOv(t, b, { uc: ua });
+      saveT(t); V.hl = b; refresh(); toast('UCs trocadas entre ' + brs(a) + ' e ' + brs(b));
+    }
+  };
+  document.addEventListener('pointerup', fim);
+  document.addEventListener('pointercancel', () => { limpa(); D = null; });
+})();
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
