@@ -5410,6 +5410,59 @@ function tDocSel(t) {
   const cur = tDocFiltro(t);
   return `<select data-in="tDoc" title="Mostrar só as aulas de um docente"><option value="">Todos os docentes</option>${ns.map(n => `<option value="${esc(t.id + '|' + n)}" ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
 }
+// ---------- Centros de custo: baixar e importar planilha ----------
+{
+  const vc = viewCC;
+  viewCC = function () {
+    return vc().replace('<button class="pri" data-act="newCC">+ Centro de custo</button>', '<button data-act="ccXls">⬇ Baixar planilha</button><button data-act="ccImp">⇪ Importar planilha</button><button class="pri" data-act="newCC">+ Centro de custo</button>');
+  };
+}
+let CC_IMP = [];
+function ccParse(rows) {
+  rows = rows.map(r => r.map(c => String(c == null ? '' : c).trim())).filter(r => r.some(Boolean)); if (!rows.length) return [];
+  const H = rows[0].map(x => x.toLowerCase()); let cC = H.findIndex(h => /c[óo]d|centro|^cc/.test(h)), cD = H.findIndex(h => /descri|refer|nome|curso/.test(h));
+  let body = rows.slice(1); if (cC < 0) { cC = 0; cD = 1; body = rows; } if (cD < 0) cD = cC === 0 ? 1 : 0;
+  const m = new Map();
+  for (const r of body) { const cod = (r[cC] || '').trim(); if (!cod || /^(exemplo|ex\.)/i.test(cod)) continue; m.set(cod, (r[cD] || '').trim()); }
+  return [...m].map(([cod, desc]) => ({ cod, desc }));
+}
+function ccPrev() {
+  const L = S.cfg.cc || []; let nv = 0, at = 0, ig = 0;
+  for (const x of CC_IMP) { const e = L.find(c => c.cod === x.cod); if (!e) nv++; else if (x.desc && x.desc !== e.desc) at++; else ig++; }
+  const box = $('#modal [data-ccprev]'); if (box) box.innerHTML = CC_IMP.length ? `<p><b>${CC_IMP.length}</b> código(s) na planilha: <b>${nv}</b> novo(s), <b>${at}</b> com descrição atualizada, ${ig} já iguais.</p><div class="tw" style="max-height:220px"><table><tr><th>Código</th><th>Descrição</th><th></th></tr>${CC_IMP.slice(0, 300).map(x => { const e = L.find(c => c.cod === x.cod); return `<tr><td>${esc(x.cod)}</td><td>${esc(x.desc)}</td><td class="small">${!e ? '<span class="pill okv">novo</span>' : x.desc && x.desc !== e.desc ? '<span class="pill warn">atualiza</span>' : '<span class="muted">igual</span>'}</td></tr>`; }).join('')}</table></div>` : '<p class="muted">Nenhum código encontrado.</p>';
+}
+Object.assign(ACT, {
+  ccXls: () => {
+    const L = (S.cfg.cc || []).slice().sort((a, b) => a.cod.localeCompare(b.cod));
+    const uso = {}; for (const t of Object.values(S.turmas)) { const c = String(t.cc || '').trim(); if (c) (uso[c] = uso[c] || []).push(t.nome); }
+    const rows = [['Código orçamentário', 'Descrição / referência', 'Turmas que usam (só consulta)']];
+    for (const c of L) rows.push([c.cod, c.desc || '', (uso[c.cod] || []).join('; ')]);
+    for (const c of Object.keys(uso).sort()) if (!L.some(x => x.cod === c)) rows.push([c, '', (uso[c] || []).join('; ') + ' (não cadastrado)']);
+    xlsSave('Centros de custo.xlsx', [{ name: 'Centros de custo', rows, widths: [26, 50, 60] }]);
+  },
+  ccImp: () => {
+    CC_IMP = [];
+    MCTX = { ok: () => {
+      if (!CC_IMP.length) return toast('Escolha a planilha ou cole as linhas');
+      S.cfg.cc = S.cfg.cc || []; let nv = 0, at = 0;
+      for (const x of CC_IMP) { const e = S.cfg.cc.find(c => c.cod === x.cod); if (!e) { S.cfg.cc.push({ cod: x.cod, desc: x.desc }); nv++; } else if (x.desc && x.desc !== e.desc) { e.desc = x.desc; at++; } }
+      saveCfg(); closeModal(); refresh(); toast(`${nv} centro(s) de custo novo(s), ${at} atualizado(s)`);
+    } };
+    modal(`<h2>Importar centros de custo</h2><p class="small muted">Planilha com as colunas <b>Código orçamentário</b> e <b>Descrição / referência</b> (pode ser a baixada em “⬇ Baixar planilha”). Códigos novos são incluídos; os que já existem ganham a descrição da planilha. Nada é apagado.</p>
+     <label class="f">Arquivo Excel ou CSV<input type="file" accept=".xlsx,.xls,.csv" data-ccfile></label>
+     <label class="f">ou cole as linhas copiadas do Excel<textarea rows="4" data-ccpaste placeholder="072.0000.00000.0.0&#9;Técnico em Enfermagem"></textarea></label>
+     <div data-ccprev></div><div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Importar</button></div>`, true);
+  },
+});
+document.addEventListener('change', async e => {
+  const el = e.target;
+  if (el.dataset && el.dataset.ccfile != null && el.files && el.files[0]) {
+    const f = el.files[0];
+    if (/\.csv$/i.test(f.name)) { const tx = await f.text(); CC_IMP = ccParse(tx.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : l.includes(';') ? ';' : ','))); return ccPrev(); }
+    try { const X = await loadXLSX(); const wb = X.read(await f.arrayBuffer(), { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]]; CC_IMP = ccParse(X.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false })); ccPrev(); } catch (er) { toast('Não consegui ler: ' + er.message); }
+  }
+});
+document.addEventListener('input', e => { const el = e.target; if (el.dataset && el.dataset.ccpaste != null) { CC_IMP = ccParse(el.value.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : ';'))); ccPrev(); } });
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
