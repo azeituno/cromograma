@@ -399,7 +399,7 @@ const isPlanAct = t => t.plan === true || ccPlan(t.cc);
 function hAulaUC(t, u, H) { if (+u.h > 0) return Math.min(+u.h, H || +u.h); if (isEstagio(u.nome) && t.per === 'Noite' && H > 3) return 3; return H; }
 function unitsOf(t) {
   const H = horasAula(t);
-  if (t.ucs && t.ucs.length) return t.ucs.map(u => { const hA = hAulaUC(t, u, H); const ch = +u.ch || 0, chE = Math.min(ch, Math.max(0, +u.chE || 0)); const hE = +t.hEad > 0 ? +t.hEad : hA; const nE = hE ? Math.max(0, Math.ceil(chE / hE - 1e-9)) : 0, nP = hA ? Math.max(0, Math.ceil((ch - chE) / hA - 1e-9)) : 0; return { id: u.id, num: u.num, nome: u.nome, ch, chE, doc: u.doc || [], wd: (u.wd || []).map(Number), wdDe: u.wdDe || '', hA, hE, auto: !(+u.h > 0) && hA !== H, n: chE ? nP + nE : (hA ? Math.max(0, Math.ceil(ch / hA - 1e-9)) : 0), nP, nE }; });
+  if (t.ucs && t.ucs.length) return t.ucs.map(u => { const hA = hAulaUC(t, u, H); const ch = +u.ch || 0, chE = Math.min(ch, Math.max(0, +u.chE || 0)); const hE = +t.hEad > 0 ? +t.hEad : hA; const cl = x => t.chExata ? Math.round(x * 1e4) / 1e4 : Math.ceil(x - 1e-9); const nE = hE ? Math.max(0, cl(chE / hE)) : 0, nP = hA ? Math.max(0, cl((ch - chE) / hA)) : 0; return { id: u.id, num: u.num, nome: u.nome, ch, chE, doc: u.doc || [], wd: (u.wd || []).map(Number), wdDe: u.wdDe || '', hA, hE, auto: !(+u.h > 0) && hA !== H, n: chE ? nP + nE : (hA ? Math.max(0, cl(ch / hA)) : 0), nP, nE }; });
   if (+t.aulasTot > 0) return [{ id: '_', num: '', nome: t.nome || 'Curso', ch: r2((+t.aulasTot) * H), doc: t.docPad || [], wd: [], wdDe: '', hA: H, n: +t.aulasTot, solo: true }];
   return [];
 }
@@ -412,7 +412,9 @@ function situacao(t) {
   return 'OK';
 }
 
-const knTxt = row => row.mod ? (row.mod === 'EAD' ? 'EAD ' : 'Pres. ') + row.kM + '/' + row.nM : row.k + '/' + row.n;
+const knN = x => { const v = Math.round(x * 100) / 100; return Number.isInteger(v) ? String(v) : String(v.toFixed(2)).replace(/0$/, '').replace('.', ','); };
+const knFr = (k, n) => !Number.isInteger(Math.round(k * 1e4) / 1e4) || !Number.isInteger(Math.round(n * 1e4) / 1e4);
+const knTxt = row => { const k = row.mod ? row.kM : row.k, n = row.mod ? row.nM : row.n, p = row.mod ? (row.mod === 'EAD' ? 'EAD ' : 'Pres. ') : ''; return p + (knFr(k, n) && row.hU ? knN(k * row.hU) + '/' + knN(n * row.hU) + ' h' : knN(k) + '/' + knN(n)); };
 // dias de aula da turma numa data: períodos com dias diferentes (t.diasPer) substituem os dias normais
 function diasTurma(t, ds) { for (const p of t.diasPer || []) if (isDate(p.de) && ds >= p.de && (!isDate(p.ate) || ds <= p.ate)) return (p.dias || []).map(Number); return (t.dias || []).map(Number); }
 // recesso próprio da turma e dias não letivos que a turma desconsidera
@@ -436,7 +438,7 @@ function buildTurma(t) {
   res.split = split;
   const n = units.map(u => u.n);
   const nP = units.map(u => split ? u.nP : u.n), nE = units.map(u => split ? u.nE : 0);
-  res.total = n.reduce((a, b) => a + b, 0);
+  res.total = Math.ceil(n.reduce((a, b) => a + b, 0) - 1e-6);
   res.ch = r2(units.reduce((s, u) => s + (split ? u.nP * (u.hA || H) + u.nE * (u.hE || u.hA || H) : u.n * (u.hA || H)), 0));
   const dP = units.map(() => 0), dE = units.map(() => 0);
   const done = i => dP[i] + dE[i];
@@ -464,8 +466,9 @@ function buildTurma(t) {
     if (o.uc && uidx[o.uc] != null && isSlot(ds)) { if (split && isEadDay(ds, o) && !o.eadP) lkE[uidx[o.uc]]++; else lkP[uidx[o.uc]]++; }
     if ((o.uc || o.extra) && isSlot(ds) && ds > lastFixed) lastFixed = ds;
   }
-  const allDone = () => units.every((u, i) => dP[i] >= nP[i] && dE[i] >= nE[i]);
-  const restaP = () => units.some((u, i) => dP[i] < nP[i]);
+  const EPS = 1e-6;
+  const allDone = () => units.every((u, i) => dP[i] >= nP[i] - EPS && dE[i] >= nE[i] - EPS);
+  const restaP = () => units.some((u, i) => dP[i] < nP[i] - EPS);
   let count = res.real, ds = t.ini, guard = 0, vazios = 0;
   const lim = addD(t.ini, 365 * 6);
   while (ds <= lim && guard++ < 5000) {
@@ -484,19 +487,26 @@ function buildTurma(t) {
         if (o.uc && uidx[o.uc] != null) { ui = uidx[o.uc]; if (cE) lkE[ui]--; else lkP[ui]--; locked = true; }
         else if (!cE) {
           // UC com dias da semana definidos tem prioridade nesses dias; as demais seguem a ordem nos outros dias
-          for (let i = 0; i < units.length; i++) if (units[i].wd.length && units[i].wd.includes(w) && !(units[i].wdDe > ds) && dP[i] + lkP[i] < nP[i]) { ui = i; break; }
-          if (ui < 0) for (let i = 0; i < units.length; i++) if (!units[i].wd.length && dP[i] + lkP[i] < nP[i]) { ui = i; break; }
+          for (let i = 0; i < units.length; i++) if (units[i].wd.length && units[i].wd.includes(w) && !(units[i].wdDe > ds) && dP[i] + lkP[i] < nP[i] - EPS) { ui = i; break; }
+          if (ui < 0) for (let i = 0; i < units.length; i++) if (!units[i].wd.length && dP[i] + lkP[i] < nP[i] - EPS) { ui = i; break; }
         } else {
           // dia EAD: UC já iniciada (até a UC presencial atual) com carga EAD pendente
-          let cur = units.findIndex((u, i) => !u.wd.length && dP[i] + lkP[i] < nP[i]); if (cur < 0) cur = units.length - 1;
-          for (let i = 0; i < units.length; i++) if (units[i].wd.length && units[i].wd.includes(w) && !(units[i].wdDe > ds) && dE[i] + lkE[i] < nE[i]) { ui = i; break; }
-          if (ui < 0) for (let i = 0; i <= cur; i++) if (!units[i].wd.length && dE[i] + lkE[i] < nE[i]) { ui = i; break; }
+          let cur = units.findIndex((u, i) => !u.wd.length && dP[i] + lkP[i] < nP[i] - EPS); if (cur < 0) cur = units.length - 1;
+          for (let i = 0; i < units.length; i++) if (units[i].wd.length && units[i].wd.includes(w) && !(units[i].wdDe > ds) && dE[i] + lkE[i] < nE[i] - EPS) { ui = i; break; }
+          if (ui < 0) for (let i = 0; i <= cur; i++) if (!units[i].wd.length && dE[i] + lkE[i] < nE[i] - EPS) { ui = i; break; }
         }
         if (ui < 0 && !locked && !allDone()) { res.rows.push({ ds, w, type: 'off', kind: 'split', mot: cE ? 'Dia EAD sem carga EAD pendente na UC atual' : !restaP() ? 'Carga presencial concluída — restam aulas EAD' : 'Sem UC neste dia da semana (as UCs restantes têm dias definidos)' }); vazios++; ds = addD(ds, 1); continue; }
         vazios = 0;
         const row = { ds, w, type: 'aula', ui, locked, extra: !!o.extra, o, al: [] };
         if (ui >= 0) {
-          if (cE) dE[ui]++; else dP[ui]++;
+          // horas desta aula: ajuste do dia (o.h) ou padrão; com carga exata, a última aula da UC fica só com o que falta
+          const uu = units[ui], hU = (cE ? (uu.hE || uu.hA || H) : (ead && +t.hEad > 0 ? +t.hEad : (uu.hA || H)));
+          let hh = +o.h > 0 ? +o.h : hU;
+          const falta = cE ? nE[ui] - dE[ui] : nP[ui] - dP[ui];
+          if (t.chExata && !(+o.h > 0) && falta > EPS && falta < 1 - EPS) hh = Math.round(falta * hU * 100) / 100;
+          const inc = hU ? hh / hU : 1;
+          if (cE) dE[ui] = Math.round((dE[ui] + inc) * 1e4) / 1e4; else dP[ui] = Math.round((dP[ui] + inc) * 1e4) / 1e4;
+          row.hAula = hh; row.hAj = +o.h > 0; row.hU = hU;
           row.k = done(ui); row.n = n[ui]; row.num = ++count;
           if (split) { row.mod = cE ? 'EAD' : 'P'; row.kM = cE ? dE[ui] : dP[ui]; row.nM = cE ? nE[ui] : nP[ui]; }
           row.conv = ead && +t.ead !== w; // aula de dia presencial transformada em EAD
@@ -504,7 +514,7 @@ function buildTurma(t) {
           row.ead = ead; row.sinc = ead && !!(t.ucs && (t.ucs.find(x => x.id === u.id) || {}).sinc);
           row.sala = (row.ead && !row.sinc) ? EAD_SALA : o.semSala ? '' : (o.sala || t.sala || VSALA[t.id] || '');
           row.docs = (o.doc ? o.doc : u.doc || []).filter(Boolean); row.est = /est[aá]gio/i.test(u.nome || '');
-          row.h = (ead && +t.hEad > 0) ? +t.hEad : (u.hA || H); row.a = tm(t.hi); row.b = ead ? row.a + Math.round(row.h * 60) : Math.min(tm(t.hf), row.a + Math.round(row.h * 60));
+          row.h = row.hAula; row.a = tm(t.hi); row.b = (ead || row.hAj) ? row.a + Math.round(row.h * 60) : Math.min(tm(t.hf), row.a + Math.round(row.h * 60));
           res.aulas.push(row);
         }
         res.rows.push(row);
@@ -513,7 +523,8 @@ function buildTurma(t) {
     ds = addD(ds, 1);
   }
   res.prog = units.map((u, i) => ({ n: n[i], done: done(i), real: realDone[i], prog: done(i) - realDone[i], nP: nP[i], nE: nE[i], dP: dP[i], dE: dE[i] }));
-  res.over = units.map((u, i) => done(i) > n[i] || dP[i] > nP[i] || dE[i] > nE[i] ? i : -1).filter(i => i >= 0);
+  res.over = units.map((u, i) => done(i) > n[i] + EPS || dP[i] > nP[i] + EPS || dE[i] > nE[i] + EPS ? i : -1).filter(i => i >= 0);
+  res.chProg = r2(res.aulas.reduce((s, a) => s + (a.h || 0), 0) + (+t.real || 0) * H);
   res.falta = units.map((u, i) => done(i) < n[i] ? i : -1).filter(i => i >= 0);
   res.fim = res.aulas.length ? res.aulas[res.aulas.length - 1].ds : '';
   res.inicio = res.aulas.length ? res.aulas[0].ds : '';
@@ -637,7 +648,7 @@ function computeAll(S) {
   }
   for (const t of Object.values(S.turmas)) {
     const r = R[t.id];
-    for (const i of r.over) ALERTS.push({ tp: 'uc', msg: 'UC "' + r.units[i].nome + '" com ' + r.prog[i].done + ' aulas (previstas ' + r.prog[i].n + ')', t, row: null });
+    for (const i of r.over) ALERTS.push({ tp: 'uc', msg: 'UC "' + r.units[i].nome + '" com ' + knN(r.prog[i].done) + ' aulas (previstas ' + knN(r.prog[i].n) + ')', t, row: null });
     if (r.sit !== 'OK') ALERTS.push({ tp: 'sit', msg: r.sit, t, row: null });
     else if (!String(t.cc || '').trim()) ALERTS.push({ tp: 'cc', msg: 'Turma sem centro de custo (fica fora do rateio por CC)', t, row: null });
   }
@@ -942,10 +953,10 @@ function viewTurma() {
    <label class="f">Dia fixo EAD<select data-tf="ead">${opt([['0', 'Nenhum'], ['1', 'Segunda'], ['2', 'Terça'], ['3', 'Quarta'], ['4', 'Quinta'], ['5', 'Sexta'], ['6', 'Sábado']], t.ead || 0)}</select></label>
    ${t.ucs && t.ucs.length ? '' : `<label class="f">Total de aulas (sem UCs)<input type="number" min="0" data-tf="aulasTot" value="${esc(t.aulasTot || '')}"></label>`}
    <div class="f w2"><span class="small muted">Dias de aula</span><div class="chips">${[1, 2, 3, 4, 5, 6].map(d => `<span class="chip ${(t.dias || []).includes(d) ? 'on' : ''}" data-act="dia" data-d="${d}">${WD[d]}</span>`).join('')}</div></div>
-   <div class="f w2"><span class="small muted">Contagem no 70×30 e no rateio</span><label class="chkline"><input type="checkbox" data-tfc="plan" ${isPlanAct(t) ? 'checked' : ''} ${ccPlan(t.cc) ? 'disabled' : ''}><span>Entra no <b>planejamento (30%)</b>, não conta como aula${ccPlan(t.cc) ? ' <span class="small muted">— automático: centro de custo termina em 4060.0</span>' : ''}</span></label></div>
+   <div class="f w2"><span class="small muted">Contagem no 70×30 e no rateio</span><label class="chkline"><input type="checkbox" data-tfc="plan" ${isPlanAct(t) ? 'checked' : ''} ${ccPlan(t.cc) ? 'disabled' : ''}><span>Entra no <b>planejamento (30%)</b>, não conta como aula${ccPlan(t.cc) ? ' <span class="small muted">— automático: centro de custo termina em 4060.0</span>' : ''}</span></label><label class="chk" style="margin-top:6px" title="O curso precisa ter exatamente a carga horária das UCs: a última aula de cada UC fica só com as horas que faltam"><input type="checkbox" data-tchx ${t.chExata ? 'checked' : ''}><span><b>Carga horária exata</b> (sem horas a mais ou a menos)</span></label></div>
    <label class="f w2">Observações<input data-tf="obs" value="${esc(t.obs)}"></label>
   </div><datalist id="ccl">${(S.cfg.cc || []).map(c => `<option value="${esc(c.cod)}">${esc(c.desc)}</option>`).join('')}</datalist>
-  <div class="bar small" style="margin:10px 0 0">${r.sit === 'OK' ? `<span class="pill ok">${r.total} aulas · ${r2(r.ch)} h · ${r.H} h por aula${r.units.some(u => u.hA !== r.H) ? ' (algumas UCs com hora diferente)' : ''}</span>${isPlanAct(t) ? '<span class="pill warn">conta no planejamento (30%)</span>' : ''}<span class="pill">Término previsto: <b>${br(r.fim)}</b></span>${nal ? `<span class="pill bad">${nal} alerta(s)</span>` : '<span class="pill ok">sem alertas</span>'}` : `<span class="pill warn">${esc(r.sit)}</span>`}</div></div>`;
+  <div class="bar small" style="margin:10px 0 0">${r.sit === 'OK' ? `<span class="pill ok">${r.total} aulas · ${r2(r.ch)} h · ${r.H} h por aula${r.units.some(u => u.hA !== r.H) ? ' (algumas UCs com hora diferente)' : ''}</span>${chResumo(t, r)}${isPlanAct(t) ? '<span class="pill warn">conta no planejamento (30%)</span>' : ''}<span class="pill">Término previsto: <b>${br(r.fim)}</b></span>${nal ? `<span class="pill bad">${nal} alerta(s)</span>` : '<span class="pill ok">sem alertas</span>'}` : `<span class="pill warn">${esc(r.sit)}</span>`}</div></div>`;
   h += copiaCard(t);
   if (!t.copia) h += diasEspCard(t);
   h += analiseCard(t);
@@ -958,11 +969,11 @@ function viewTurma() {
     const UP = ucPeriodos(t);
     t.ucs.forEach((u, i) => {
       const p = r.prog[i] || { n: 0, done: 0 };
-      const st = p.done > p.n ? 'bad' : p.done < p.n ? 'warn' : 'ok';
+      const st = p.done > p.n + 1e-6 ? 'bad' : p.done < p.n - 1e-6 ? 'warn' : 'ok';
       h += `<tr data-dgt="uc" data-i="${i}"><td class="nowrap">${canWrite() ? `<span class="dragh" data-dg="uc" data-i="${i}" title="Arraste para mudar a ordem">⠿</span>` : ''}<span class="dot" style="background:${ucColor(i)}"></span></td><td><input class="nu" data-uf="num" data-i="${i}" value="${esc(u.num)}"></td><td><input data-uf="nome" data-i="${i}" value="${esc(u.nome)}" style="min-width:200px"><div class="small ucwd" data-act="ucDias" data-i="${i}" title="Dias da semana desta UC">${(u.wd || []).length ? `📅 Só ${(u.wd || []).map(Number).sort().map(x => WD[x]).join(", ")}${u.wdDe ? ' a partir de ' + br(u.wdDe) : ''}` : '<span class="muted">📅 Todos os dias da turma</span>'}</div></td>
-      <td class="num"><input class="ch" type="number" min="0" step="any" data-ucp="${i}" value="${esc(r2((+u.ch || 0) - (+u.chE || 0)))}"></td><td class="num"><input class="ch" type="number" min="0" step="any" data-uce="${i}" value="${esc(u.chE || '')}" placeholder="0" title="${!(+t.ead) ? 'Defina o dia fixo EAD da turma para usar a carga EAD' : 'Dada nos dias EAD'}">${+u.chE ? `<div class="small muted">total ${r2(+u.ch)} h</div>` : ''}${+u.chE || +t.ead ? `<label class="chk small" title="EAD síncrona: aula ao vivo, o docente precisa de sala"><input type="checkbox" data-ucsinc="${i}" ${u.sinc ? 'checked' : ''}><span>síncrona (sala)</span></label>` : ''}</td><td class="num"><input class="ch" style="width:62px" type="number" min="0" step="0.25" data-uf="h" data-i="${i}" value="${esc(u.h || '')}" placeholder="${r.units[i] ? r.units[i].hA : ''}" title="${r.units[i] && r.units[i].auto ? 'Automático: estágio no período da noite conta 3 h' : 'Vazio = horário da turma'}"></td><td class="num">${p.n}${r.split && p.nE ? `<div class="small muted">${p.nP} + ${p.nE} EAD${r.units[i] && r.units[i].hE !== r.units[i].hA ? ' (' + fmtH(r.units[i].hE) + ' h)' : ''}</div>` : ''}</td>
+      <td class="num"><input class="ch" type="number" min="0" step="any" data-ucp="${i}" value="${esc(r2((+u.ch || 0) - (+u.chE || 0)))}"></td><td class="num"><input class="ch" type="number" min="0" step="any" data-uce="${i}" value="${esc(u.chE || '')}" placeholder="0" title="${!(+t.ead) ? 'Defina o dia fixo EAD da turma para usar a carga EAD' : 'Dada nos dias EAD'}">${+u.chE ? `<div class="small muted">total ${r2(+u.ch)} h</div>` : ''}${+u.chE || +t.ead ? `<label class="chk small" title="EAD síncrona: aula ao vivo, o docente precisa de sala"><input type="checkbox" data-ucsinc="${i}" ${u.sinc ? 'checked' : ''}><span>síncrona (sala)</span></label>` : ''}</td><td class="num"><input class="ch" style="width:62px" type="number" min="0" step="0.25" data-uf="h" data-i="${i}" value="${esc(u.h || '')}" placeholder="${r.units[i] ? r.units[i].hA : ''}" title="${r.units[i] && r.units[i].auto ? 'Automático: estágio no período da noite conta 3 h' : 'Vazio = horário da turma'}"></td><td class="num">${knN(p.n)}${r.split && p.nE ? `<div class="small muted">${knN(p.nP)} + ${knN(p.nE)} EAD${r.units[i] && r.units[i].hE !== r.units[i].hA ? ' (' + fmtH(r.units[i].hE) + ' h)' : ''}</div>` : ''}</td>
       <td><div class="docs" data-act="ucDocs" data-i="${i}" style="display:flex;gap:3px;flex-wrap:wrap;cursor:pointer;min-width:140px">${(u.doc || []).filter(Boolean).map(n => `<span class="dchip">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docente</span>'}</div></td>
-      <td class="nowrap"><span class="pill ${st}">${p.done}/${p.n}</span>${r.split && p.nE ? `<div class="small muted">pres. ${p.dP}/${p.nP} · EAD ${p.dE}/${p.nE}</div>` : ''}</td>
+      <td class="nowrap"><span class="pill ${st}">${knFr(p.done, p.n) && r.units[i] ? knN(p.done * (r.units[i].hA || r.H)) + '/' + knN(p.n * (r.units[i].hA || r.H)) + ' h' : knN(p.done) + '/' + knN(p.n)}</span>${r.split && p.nE ? `<div class="small muted">pres. ${knN(p.dP)}/${knN(p.nP)} · EAD ${knN(p.dE)}/${knN(p.nE)}</div>` : ''}</td>
       ${ucPerCells(t, u, UP)}
       <td class="nowrap"><button class="sm" data-act="ucUp" data-i="${i}" title="Subir">↑</button><button class="sm" data-act="ucDn" data-i="${i}" title="Descer">↓</button><button class="sm dng" data-act="ucDel" data-i="${i}" title="Excluir">✕</button></td></tr>`;
     });
@@ -998,7 +1009,7 @@ function viewTurma() {
      ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${knTxt(row)}</span>
      <button class="ead ${row.ead ? 'on' : ''}" data-act="rEad" data-ds="${row.ds}">${row.ead ? (row.sinc ? 'EAD síncr.' : 'EAD') : 'Presencial'}</button>${salaSel}
      <div class="docs" data-act="rDocs" data-ds="${row.ds}">${docs}</div>
-     ${row.extra ? '<span class="pill">extra</span>' : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
+     ${row.extra ? '<span class="pill">extra</span>' : ''}${row.hAula != null && Math.abs(row.hAula - (row.ead && +t.hEad > 0 ? +t.hEad : ((r.units[row.ui] || {}).hA || r.H))) > 1e-6 ? `<span class="pill" style="background:#fff4e5;color:#b54708" title="${row.hAj ? 'Carga desta aula alterada à mão' : 'Última aula da UC com só as horas que faltam (carga exata)'}">⏱ ${fmtH(row.hAula)} h</span>` : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
      <div class="al">${als}</div><button class="more" data-act="rMenu" data-ds="${row.ds}" title="Mais opções">⋯</button></div>`;
     if (row.al.length) h += `<div class="small almsgs" style="margin:-2px 0 4px 72px;color:var(--mut)">${row.al.map((a, k) => `<span class="${a.ok ? 'alok' : 'alpe'}" title="${esc(a.ok ? alvInfo(a) : '')}">${a.ok ? '✓ ' : ''}${esc(a.msg)}${a.ot && S.turmas[a.ot] ? ` <a class="alv alot" data-act="fixGo" data-t="${a.ot}" data-ds="${a.od || row.ds}" data-f="${a.tp === 'inter' ? '' : a.tp}" title="Abrir a outra turma neste dia">abrir ${esc(S.turmas[a.ot].sigla || 'a outra turma')} ›</a>` : ''} <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="${k}">${a.ok ? '↺ pendente' : '✓ analisado'}</a></span>`).join(' · ')}${row.al.filter(a => !a.ok).length > 1 ? ` <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="all">✓ todos analisados</a>` : ''}</div>`;
   }
@@ -1265,6 +1276,7 @@ const ACT = {
     MCTX = { t, ds, ok: () => aulaInfoModal(t, ds) };
     modal(`<h2>Aula de ${br(ds)} (${WDL[wd(ds)]})</h2>
      <div class="bar" style="flex-direction:column;align-items:stretch">
+      <button data-m="aulaH">⏱ Alterar a carga horária desta aula <span class="small muted">— hoje ${fmtH((R[t.id].rows.find(x => x.ds === ds) || {}).h || 0)} h</span></button>
       <button data-m="skip">Cancelar a aula deste dia <span class="small muted">— o curso termina uma aula depois</span></button>
       <div class="bar" style="margin:0"><span>Mover para</span><input type="date" data-mv><button data-m="move">Mover</button></div>
       ${o.extra ? '<button data-m="rmExtra" class="dng">Remover esta aula extra</button>' : ''}
@@ -4392,6 +4404,10 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-chaula', t: 'Carga horária de uma aula e carga exata do curso', h: `
+${P(`Na turma, no <b>Cronograma de aulas</b>, clique em <b>⋯</b> na aula e em <b>⏱ Alterar a carga horária desta aula</b>. Informe as horas (ex.: 2 ou 1,5) e salve. A aula ganha a etiqueta ⏱ e a UC passa a contar horas: o que faltar entra nas próximas aulas.`, `Para várias aulas, use <b>✎ Alterar várias aulas</b> → <b>Carga horária de cada aula</b>.`, `Para cursos que precisam da carga horária exata, marque <b>Carga horária exata (sem horas a mais ou a menos)</b> no cadastro da turma. A última aula de cada UC fica só com as horas que faltam e o cabeçalho mostra “carga exata: ✓”.`)}
+${dica('Sem a marcação de carga exata, a última aula da UC continua inteira (como antes). A regra de análise “Carga horária programada diferente da carga das UCs” confere os cursos com carga exata.')}` },
+
   { id: 'cad-analise', t: 'Análise do curso (regras de conferência)', h: `
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}. O quadro <b>🔍 Análise do curso</b> mostra se o cronograma passou nas regras ou quantas falhas tem. Clique em <b>Ver análise</b>: cada falha é um link que leva à aula.`, `Para ver todos os cursos de uma vez, use <b>🔍 Analisar cursos</b> no topo da lista de turmas.`, `Em <b>⚙ Regras de análise</b>, ative ou desative regras e clique em <b>+ Nova regra</b>: escolha o tipo (ex.: aula EAD antes da presencial, N aulas EAD seguidas, última aula da UC em EAD, aula sem docente ou sem sala, intervalo maior que N dias, dia da semana não permitido, UC com mais de N docentes, item de conferência manual), o parâmetro e as áreas em que vale.`, `Regras de conferência manual aparecem como caixinhas na análise de cada curso; marque quando conferir.`)}
 ${dica('A regra “Aula EAD da UC antes da primeira aula presencial da mesma UC” já vem ativa e não se aplica às UCs de Projeto integrador (campo “Não aplicar às UCs cujo nome contém”, que você pode editar em cada regra). Se precisar de um tipo de regra que ainda não existe, peça a inclusão.')}` },
@@ -5685,9 +5701,10 @@ ACT.tLote = () => {
     if (ac === 'doc') { closeModal(); return docsModal('Docentes de ' + L.length + ' aula(s)', (r.aulas.find(a => a.ds === L[0]) || {}).docs || [], L[0], tm(t.hi), tm(t.hf), t.id, null, v => { set({ doc: v }); saveT(t); closeModal(); refresh(); toast(L.length + ' aula(s) com os novos docentes'); }); }
     if (ac === 'sala') { const s = $('#modal [data-lts]').value; if (!s) return toast('Escolha a sala'); set(s === '__sem' ? { sala: undefined, semSala: true } : { sala: s === t.sala ? undefined : s, semSala: undefined }); }
     if (ac === 'uc') { const u = $('#modal [data-ltu]').value; if (!u) return toast('Escolha a UC'); set({ uc: u }); }
+    if (ac === 'h') { const v = $('#modal [data-lth]').value.replace(',', '.'); if (!(+v > 0)) return toast('Informe as horas'); set({ h: +v }); }
     if (ac === 'ead') set({ ead: true }); if (ac === 'pres') set({ ead: false, eadP: undefined });
     if (ac === 'skip') set({ skip: true });
-    if (ac === 'auto') set({ uc: undefined, doc: undefined, sala: undefined, semSala: undefined, ead: undefined, eadP: undefined });
+    if (ac === 'auto') set({ uc: undefined, doc: undefined, sala: undefined, semSala: undefined, ead: undefined, eadP: undefined, h: undefined });
     saveT(t); closeModal(); refresh(); toast(L.length + ' aula(s) alterada(s)');
   } };
   const rad = (v, l, extra) => `<label style="display:flex;gap:8px;align-items:center;margin:5px 0"><input type="radio" name="ltac" value="${v}"><span>${l}</span>${extra || ''}</label>`;
@@ -5698,13 +5715,14 @@ ACT.tLote = () => {
    ${rad('doc', 'Trocar os docentes…')}
    ${rad('sala', 'Trocar a sala para', `<select data-lts><option value="">—</option>${salas.map(s => `<option>${esc(s)}</option>`).join('')}<option value="__sem">Sem sala</option></select>`)}
    ${(t.ucs || []).length ? rad('uc', 'Fixar a UC', `<select data-ltu><option value="">—</option>${t.ucs.map(u => `<option value="${esc(u.id)}">${esc((u.num ? 'UC ' + u.num + ' · ' : '') + u.nome)}</option>`).join('')}</select>`) : ''}
+   ${rad('h', 'Carga horária de cada aula', `<input data-lth inputmode="decimal" placeholder="h" style="width:70px"> h`)}
    ${rad('ead', 'Transformar em EAD')}${rad('pres', 'Transformar em presencial')}
    ${rad('skip', 'Cancelar as aulas <span class="small muted">(passam para o fim)</span>')}
    ${rad('auto', 'Desfazer ajustes <span class="small muted">(volta UC, docentes, sala e EAD ao automático)</span>')}
    <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Aplicar</button></div>`, true);
   dpRender('lote');
 };
-document.addEventListener('change', e => { const el = e.target; if (el.closest && el.closest('#modal') && (el.dataset.lts != null || el.dataset.ltu != null)) { const r = el.closest('label').querySelector('input[type=radio]'); if (r) r.checked = true; } });
+document.addEventListener('change', e => { const el = e.target; if (el.closest && el.closest('#modal') && (el.dataset.lts != null || el.dataset.ltu != null || el.dataset.lth != null)) { const r = el.closest('label').querySelector('input[type=radio]'); if (r) r.checked = true; } });
 // ---------- Turma: cronograma em formato de calendário ----------
 function tCalHtml(t) {
   const r = R[t.id]; const rows = r.rows.filter(x => (!tDocFiltro(t) || (x.docs || []).includes(tDocFiltro(t))) && tFilOk(t, x.ds) && tFilUC(t, x));
@@ -5872,6 +5890,44 @@ document.addEventListener('change', e => {
   if (el.dataset.rg === 'tipo') { const b = $('#modal [data-rgp]'); if (b && MCTX.campos) b.innerHTML = MCTX.campos(el.value); return; }
   if (el.dataset.anchk) { const t = curT(); if (!t) return; t.chk = t.chk || {}; if (el.checked) t.chk[el.dataset.anchk] = true; else delete t.chk[el.dataset.anchk]; saveT(t); refresh(); }
 });
+
+// ---------- Carga horária de uma aula e carga horária exata do curso ----------
+function chResumo(t, r) {
+  const prev = r2(r.units.reduce((s, u) => s + (+u.ch || 0), 0)); const prog = r.chProg != null ? r.chProg : prev;
+  const aj = r.aulas.filter(a => a.hAj).length; let h = '';
+  if (t.chExata) h += ` <span class="pill ${Math.abs(prog - prev) < 0.01 ? 'ok' : 'bad'}" title="Carga das UCs: ${fmtH(prev)} h · programada: ${fmtH(prog)} h">carga exata: ${Math.abs(prog - prev) < 0.01 ? '✓ ' + fmtH(prev) + ' h' : fmtH(prog) + ' h de ' + fmtH(prev) + ' h'}</span>`;
+  if (aj) h += ` <span class="pill" style="background:#fff4e5;color:#b54708">⏱ ${aj} aula(s) com carga alterada</span>`;
+  return h;
+}
+function aulaHModal(t, dsList) {
+  const r = R[t.id]; const L = dsList.map(d => r.aulas.find(a => a.ds === d)).filter(Boolean); if (!L.length) return toast('Sem aula nessas datas');
+  const atual = L[0].h, ini = hm(L[0].a);
+  MCTX = { ok: () => {
+    const v = $('#modal [data-ah]').value.replace(',', '.'); const pad = $('#modal [data-ahpad]').checked;
+    if (!pad && !(+v > 0 && +v <= 16)) return toast('Informe as horas (ex.: 2 ou 1,5)');
+    for (const a of L) setOv(t, a.ds, { h: pad ? undefined : +v });
+    saveT(t); closeModal(); refresh(); toast(L.length + ' aula(s) com carga ' + (pad ? 'padrão' : fmtH(+v) + ' h'));
+  } };
+  modal(`<h2>Carga horária ${L.length > 1 ? 'de ' + L.length + ' aulas' : 'da aula de ' + br(L[0].ds)}</h2>
+   <p class="small muted" style="margin-top:-4px">${esc(t.nome)} · início ${ini} · hoje ${fmtH(atual)} h</p>
+   <label class="f">Horas desta aula<input data-ah inputmode="decimal" value="${L[0].hAj ? String(atual).replace('.', ',') : ''}" placeholder="ex.: 2 ou 1,5"></label>
+   <div class="small muted" data-ahfim style="margin:4px 0"></div>
+   <label class="chk"><input type="checkbox" data-ahpad><span>Voltar à carga padrão</span></label>
+   <p class="small muted">A UC conta as horas: com menos horas nesta aula, a UC ganha o que faltar nas próximas aulas; com mais horas, termina antes.${t.chExata ? ' Como o curso tem <b>carga exata</b>, a última aula da UC fica só com as horas que faltam.' : ''}</p>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+  const upd = () => { const v = +($('#modal [data-ah]').value.replace(',', '.')); const f = $('#modal [data-ahfim]'); if (f) f.textContent = v > 0 ? `Termina às ${hm(L[0].a + Math.round(v * 60))}` : ''; };
+  $('#modal [data-ah]').addEventListener('input', upd); upd();
+}
+MACT.aulaH = () => { const { t, ds } = MCTX; aulaHModal(t, [ds]); };
+document.addEventListener('change', e => { const el = e.target; if (el.dataset && el.dataset.tchx != null) { const t = curT(); if (!t) return; if (el.checked) t.chExata = true; else delete t.chExata; saveT(t); refresh(); } });
+// regra de análise: carga horária diferente da prevista
+REG_TIPOS.chDif = { nome: 'Carga horária programada diferente da carga das UCs (cursos com carga exata)' };
+{ const an = analisa; analisa = function (t) {
+  const out = an(t); const r = R[t.id]; if (!r || !t.chExata) return out;
+  for (const g of regras()) if (g.tipo === 'chDif' && regVale(g, t)) { const prev = r2(r.units.reduce((s, u) => s + (+u.ch || 0), 0)); if (Math.abs((r.chProg || 0) - prev) >= 0.01) out.push({ g, msg: `Programadas ${fmtH(r.chProg)} h; a carga das UCs é ${fmtH(prev)} h`, ds: null }); }
+  return out;
+}; }
+{ const L = regras; regras = function () { const R0 = L(); if (!R0.some(g => g.tipo === 'chDif')) R0.push({ id: 'r-chdif', tipo: 'chDif', nome: '', ativo: true, areas: [] }); return R0; }; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
