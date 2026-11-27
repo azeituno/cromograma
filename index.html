@@ -515,6 +515,8 @@ function buildTurma(t) {
           row.sala = (row.ead && !row.sinc) ? EAD_SALA : o.semSala ? '' : (o.sala || t.sala || VSALA[t.id] || '');
           row.docs = (o.doc ? o.doc : u.doc || []).filter(Boolean); row.est = /est[aá]gio/i.test(u.nome || '');
           row.h = row.hAula; row.a = tm(t.hi); row.b = (ead || row.hAj) ? row.a + Math.round(row.h * 60) : Math.min(tm(t.hf), row.a + Math.round(row.h * 60));
+          // horário de cada docente dentro da aula (ex.: 8h–10h um docente, 10h–12h outro): ajuste da aula ou da UC
+          { const tu = (t.ucs || []).find(x => x.id === u.id) || {}; const DH = o.docH || tu.docH; if (DH) { const dj = {}; for (const nm of row.docs) { const j = DH[nm]; if (!j) continue; const a = Math.max(row.a, tm(j.hi) == null ? row.a : tm(j.hi)), b = Math.min(row.b, tm(j.hf) == null ? row.b : tm(j.hf)); if (b > a && (a !== row.a || b !== row.b)) dj[nm] = [a, b]; else if (b <= a) dj[nm] = [row.a, row.a]; } if (Object.keys(dj).length) row.dj = dj; } }
           res.aulas.push(row);
         }
         res.rows.push(row);
@@ -569,6 +571,7 @@ const compTipo = c => (c.tipo === 'Outros' && c.outro) ? c.outro : (c.tipo || 'C
 // desligamento: docente inativo a partir de d.desl
 const deslDe = (d, ds) => !!(d && isDate(d.desl) && ds >= d.desl);
 function inFerias(d, ds) { return (d.fer || []).find(f => isDate(f.ini) && isDate(f.fim) && f.ini <= ds && ds <= f.fim); }
+const docIv = (row, nome) => (row.dj && row.dj[nome]) || [row.a, row.b];
 function escalaCheck(d, w, a, b, ds) {
   const iv = escIvs(d, w, ds); const E = escOn(d, ds);
   if (!E || !Object.keys(E).length) return null;
@@ -591,16 +594,16 @@ function computeAll(S) {
   // interjornada: descanso mínimo entre o fim do último trabalho de um dia e o início do primeiro no dia seguinte
   { const H = +((S.cfg || {}).interj) || 11; const J = {};
     for (const ds of Object.keys(IDX)) for (const { t, row } of IDX[ds]) for (const nome of row.docs) {
-      const o = (J[nome] = J[nome] || {})[ds] = J[nome][ds] || { a: null, b: null };
-      if (o.a == null || row.a < o.a.row.a) o.a = { t, row }; if (o.b == null || row.b > o.b.row.b) o.b = { t, row }; }
+      const o = (J[nome] = J[nome] || {})[ds] = J[nome][ds] || { a: null, b: null }; const [ia, ib] = docIv(row, nome); if (ib <= ia) continue;
+      if (o.a == null || ia < o.a.v) o.a = { t, row, v: ia }; if (o.b == null || ib > o.b.v) o.b = { t, row, v: ib }; }
     for (const nome of Object.keys(J)) for (const ds of Object.keys(J[nome])) {
       const ant = J[nome][addD(ds, -1)]; if (!ant) continue; const hoje = J[nome][ds];
-      const desc = (1440 - ant.b.row.b) + hoje.a.row.a; if (desc >= H * 60) continue;
+      const desc = (1440 - ant.b.v) + hoje.a.v; if (desc >= H * 60) continue;
       const hh = Math.floor(desc / 60), mm = desc % 60;
       const dur = hh + 'h' + (mm ? String(mm).padStart(2, '0') : '');
       const ad = (row, msg, t, ot, od) => { row.al.push({ tp: 'inter', msg, ot, od }); ALERTS.push({ tp: 'inter', msg, t, row, ot, od }); };
-      ad(hoje.a.row, nome + ': só ' + dur + ' de descanso após ' + ant.b.t.nome + ' (' + WD[wd(ant.b.row.ds)] + ' até ' + hm(ant.b.row.b) + ') — interjornada mínima de ' + H + 'h', hoje.a.t, ant.b.t.id, ant.b.row.ds);
-      ad(ant.b.row, nome + ': só ' + dur + ' de descanso até ' + hoje.a.t.nome + ' (' + WD[wd(ds)] + ' às ' + hm(hoje.a.row.a) + ') — interjornada mínima de ' + H + 'h', ant.b.t, hoje.a.t.id, ds);
+      ad(hoje.a.row, nome + ': só ' + dur + ' de descanso após ' + ant.b.t.nome + ' (' + WD[wd(ant.b.row.ds)] + ' até ' + hm(ant.b.v) + ') — interjornada mínima de ' + H + 'h', hoje.a.t, ant.b.t.id, ant.b.row.ds);
+      ad(ant.b.row, nome + ': só ' + dur + ' de descanso até ' + hoje.a.t.nome + ' (' + WD[wd(ds)] + ' às ' + hm(hoje.a.v) + ') — interjornada mínima de ' + H + 'h', ant.b.t, hoje.a.t.id, ds);
     } }
   for (const ds of Object.keys(IDX)) {
     const L = IDX[ds];
@@ -610,18 +613,19 @@ function computeAll(S) {
         const d = DOCMAP[nome];
         if (!d) { add(A.row, 'cad', nome + ' não está no cadastro de docentes', A.t); continue; }
         const f = inFerias(d, ds);
-        const cp = !f && compDe(d, ds, A.row.a, A.row.b);
+        const [ia, ib] = docIv(A.row, nome); if (ib <= ia) continue;
+        const cp = !f && compDe(d, ds, ia, ib);
         if (cp) add(A.row, 'comp', nome + ' em ' + compTipo(cp) + (compTipo(cp) === 'Compensação' ? ' de horas' : '') + ' (' + compTxt(cp) + ')', A.t);
         if (deslDe(d, ds)) add(A.row, 'desl', nome + ' desligado(a) desde ' + br(d.desl), A.t);
         if (f) add(A.row, 'fer', nome + ' em ' + (f.tipo || 'férias').toLowerCase() + ' (' + brs(f.ini) + '–' + brs(f.fim) + ')', A.t);
-        const e = escalaCheck(d, A.row.w, A.row.a, A.row.b, A.row.ds);
-        if (e) add(A.row, 'esc', nome + (e === 'fora' ? ' fora da escala' : ' parcialmente fora da escala') + ' (' + WD[A.row.w] + ' ' + hm(A.row.a) + '–' + hm(A.row.b) + ')', A.t);
+        const e = escalaCheck(d, A.row.w, ia, ib, A.row.ds);
+        if (e) add(A.row, 'esc', nome + (e === 'fora' ? ' fora da escala' : ' parcialmente fora da escala') + ' (' + WD[A.row.w] + ' ' + hm(ia) + '–' + hm(ib) + ')', A.t);
       }
       for (let j = i + 1; j < L.length; j++) {
         const B = L[j];
         if (!overlap(A.row.a, A.row.b, B.row.a, B.row.b)) continue;
         const vin = vinculadas(A.t, B.t);
-        if (!vin) for (const nome of A.row.docs) if (B.row.docs.includes(nome)) {
+        if (!vin) for (const nome of A.row.docs) if (B.row.docs.includes(nome) && overlap(...docIv(A.row, nome), ...docIv(B.row, nome)) > 0) {
           add(A.row, 'conf', nome + ' também em ' + B.t.nome + ' (horas divididas no rateio)', A.t, B.t.id);
           add(B.row, 'conf', nome + ' também em ' + A.t.nome + ' (horas divididas no rateio)', B.t, A.t.id);
         }
@@ -638,12 +642,13 @@ function computeAll(S) {
     for (const it of L) for (const nome of new Set(it.row.docs)) (porDoc[nome] = porDoc[nome] || []).push(it.row);
     for (const [nome, rows] of Object.entries(porDoc)) {
       if (rows.length < 2) continue;
-      const pts = [...new Set(rows.flatMap(x => [x.a, x.b]))].sort((a, b) => a - b);
-      for (const x of rows) {
-        const dur = x.b - x.a; if (dur <= 0) continue; let ef = 0, dup = false;
-        for (let k = 0; k < pts.length - 1; k++) { const p = pts[k], q = pts[k + 1]; if (p < x.a || q > x.b) continue; const c = rows.filter(y => y.a <= p && y.b >= q).length; ef += (q - p) / c; if (c > 1) dup = true; }
+      const IV = rows.map(x => docIv(x, nome));
+      const pts = [...new Set(IV.flat())].sort((a, b) => a - b);
+      rows.forEach((x, xi) => {
+        const [xa, xb] = IV[xi]; const dur = xb - xa; if (dur <= 0) return; let ef = 0, dup = false;
+        for (let k = 0; k < pts.length - 1; k++) { const p = pts[k], q = pts[k + 1]; if (p < xa || q > xb) continue; const c = IV.filter(y => y[0] <= p && y[1] >= q).length; ef += (q - p) / c; if (c > 1) dup = true; }
         if (dup) { x.sh = x.sh || {}; x.sh[nome] = ef / dur; }
-      }
+      });
     }
   }
   for (const t of Object.values(S.turmas)) {
@@ -678,7 +683,8 @@ function horasDocentesBase(S, ano) {
       const plan = isPlanAct(t);
       for (const nome of new Set(row.docs)) {
         const o = out[nome] = out[nome] || { m: Array(12).fill(0), pl: Array(12).fill(0), t: {} };
-        const h = row.h * (row.sh && row.sh[nome] != null ? row.sh[nome] : 1);
+        const iv = docIv(row, nome); const fr = row.b > row.a ? (iv[1] - iv[0]) / (row.b - row.a) : 1;
+        const h = row.h * fr * (row.sh && row.sh[nome] != null ? row.sh[nome] : 1);
         if (plan) o.pl[m] += h; else o.m[m] += h;
         (o.t[t.id] = o.t[t.id] || Array(12).fill(0))[m] += h;
       }
@@ -972,7 +978,7 @@ function viewTurma() {
       const st = p.done > p.n + 1e-6 ? 'bad' : p.done < p.n - 1e-6 ? 'warn' : 'ok';
       h += `<tr data-dgt="uc" data-i="${i}"><td class="nowrap">${canWrite() ? `<span class="dragh" data-dg="uc" data-i="${i}" title="Arraste para mudar a ordem">⠿</span>` : ''}<span class="dot" style="background:${ucColor(i)}"></span></td><td><input class="nu" data-uf="num" data-i="${i}" value="${esc(u.num)}"></td><td><input data-uf="nome" data-i="${i}" value="${esc(u.nome)}" style="min-width:200px"><div class="small ucwd" data-act="ucDias" data-i="${i}" title="Dias da semana desta UC">${(u.wd || []).length ? `📅 Só ${(u.wd || []).map(Number).sort().map(x => WD[x]).join(", ")}${u.wdDe ? ' a partir de ' + br(u.wdDe) : ''}` : '<span class="muted">📅 Todos os dias da turma</span>'}</div></td>
       <td class="num"><input class="ch" type="number" min="0" step="any" data-ucp="${i}" value="${esc(r2((+u.ch || 0) - (+u.chE || 0)))}"></td><td class="num"><input class="ch" type="number" min="0" step="any" data-uce="${i}" value="${esc(u.chE || '')}" placeholder="0" title="${!(+t.ead) ? 'Defina o dia fixo EAD da turma para usar a carga EAD' : 'Dada nos dias EAD'}">${+u.chE ? `<div class="small muted">total ${r2(+u.ch)} h</div>` : ''}${+u.chE || +t.ead ? `<label class="chk small" title="EAD síncrona: aula ao vivo, o docente precisa de sala"><input type="checkbox" data-ucsinc="${i}" ${u.sinc ? 'checked' : ''}><span>síncrona (sala)</span></label>` : ''}</td><td class="num"><input class="ch" style="width:62px" type="number" min="0" step="0.25" data-uf="h" data-i="${i}" value="${esc(u.h || '')}" placeholder="${r.units[i] ? r.units[i].hA : ''}" title="${r.units[i] && r.units[i].auto ? 'Automático: estágio no período da noite conta 3 h' : 'Vazio = horário da turma'}"></td><td class="num">${knN(p.n)}${r.split && p.nE ? `<div class="small muted">${knN(p.nP)} + ${knN(p.nE)} EAD${r.units[i] && r.units[i].hE !== r.units[i].hA ? ' (' + fmtH(r.units[i].hE) + ' h)' : ''}</div>` : ''}</td>
-      <td><div class="docs" data-act="ucDocs" data-i="${i}" style="display:flex;gap:3px;flex-wrap:wrap;cursor:pointer;min-width:140px">${(u.doc || []).filter(Boolean).map(n => `<span class="dchip">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docente</span>'}</div></td>
+      <td><div class="docs" data-act="ucDocs" data-i="${i}" style="display:flex;gap:3px;flex-wrap:wrap;cursor:pointer;min-width:140px">${(u.doc || []).filter(Boolean).map(n => `<span class="dchip">${esc(short(n))}${u.docH && u.docH[n] ? ` <span class="small">${esc(u.docH[n].hi || '')}–${esc(u.docH[n].hf || '')}</span>` : ''}</span>`).join('') || '<span class="muted small">+ docente</span>'}</div>${(u.doc || []).filter(Boolean).length > 1 ? `<div class="small" style="margin-top:3px"><a href="#" data-act="ucDocH" data-i="${i}">⏱ ${u.docH && Object.keys(u.docH).length ? 'horários por docente' : 'dividir horário entre docentes'}</a></div>` : ''}</td>
       <td class="nowrap"><span class="pill ${st}">${knFr(p.done, p.n) && r.units[i] ? knN(p.done * (r.units[i].hA || r.H)) + '/' + knN(p.n * (r.units[i].hA || r.H)) + ' h' : knN(p.done) + '/' + knN(p.n)}</span>${r.split && p.nE ? `<div class="small muted">pres. ${knN(p.dP)}/${knN(p.nP)} · EAD ${knN(p.dE)}/${knN(p.nE)}</div>` : ''}</td>
       ${ucPerCells(t, u, UP)}
       <td class="nowrap"><button class="sm" data-act="ucUp" data-i="${i}" title="Subir">↑</button><button class="sm" data-act="ucDn" data-i="${i}" title="Descer">↓</button><button class="sm dng" data-act="ucDel" data-i="${i}" title="Excluir">✕</button></td></tr>`;
@@ -1001,7 +1007,7 @@ function viewTurma() {
     if (row.ui < 0) { h += `<div class="row livre" id="r-${row.ds}">${dt}<span class="no">—</span><select class="uc" data-act="rUC" data-ds="${row.ds}">${ucOpts(-1, false)}</select><span class="small muted grow">Dia livre: as UCs já fecharam antes de uma aula fixada mais à frente. Escolha uma UC ou cancele o dia.</span><button class="more" data-act="rMenu" data-ds="${row.ds}">⋯</button></div>`; continue; }
     const u = r.units[row.ui];
     const PRI = { conf: 4, desl: 4, fer: 3, comp: 3, esc: 2, cad: 1 }; const dst = {}; for (const n of row.docs) for (const a of row.al) if (a.msg.startsWith(n) && PRI[a.tp] && (!dst[n] || PRI[a.tp] > PRI[dst[n]])) dst[n] = a.tp;
-    const docs = row.docs.map(n => `<span class="dchip ${dst[n] || ''}">${esc(short(n))}</span>`).join('') || '<span class="muted small">+ docentes</span>';
+    const docs = row.docs.map(n => `<span class="dchip ${dst[n] || ''}">${esc(short(n))}${row.dj && row.dj[n] ? ` <span class="small">${hm(row.dj[n][0])}–${hm(row.dj[n][1])}</span>` : ''}</span>`).join('') || '<span class="muted small">+ docentes</span>';
     const salaSel = !naSala(row) ? `<span style="width:150px"></span>` : `<select class="sala" data-act="rSala" data-ds="${row.ds}">${opt(salaNames(), row.sala, '— sala —')}</select>`;
     const als = [...new Set(row.al.map(a => a.tp))].map(tp => { const okT = row.al.filter(a => a.tp === tp).every(a => a.ok); return `<span class="at ${okT ? 'okv' : tp}" title="${esc(row.al.filter(a => a.tp === tp).map(a => (a.ok ? '✓ ' : '') + a.msg).join('\n'))}">${okT ? '✓ ' : ''}${ALT[tp]}</span>`; }).join('');
     h += `<div class="row" id="r-${row.ds}" data-dgt="aula" data-ds="${row.ds}">${canWrite() ? `<span class="dragh" data-dg="aula" data-ds="${row.ds}" title="Arraste até outra aula para trocar as UCs">⠿</span>` : ''}${dt}<span class="no">#${row.num}</span>
@@ -1276,6 +1282,7 @@ const ACT = {
     MCTX = { t, ds, ok: () => aulaInfoModal(t, ds) };
     modal(`<h2>Aula de ${br(ds)} (${WDL[wd(ds)]})</h2>
      <div class="bar" style="flex-direction:column;align-items:stretch">
+      ${((R[t.id].rows.find(x => x.ds === ds) || {}).docs || []).length > 1 ? '<button data-m="aulaDocH">⏱ Horário de cada docente nesta aula <span class="small muted">— ex.: 8h–10h um, 10h–12h outro</span></button>' : ''}
       <button data-m="aulaH">⏱ Alterar a carga horária desta aula <span class="small muted">— hoje ${fmtH((R[t.id].rows.find(x => x.ds === ds) || {}).h || 0)} h</span></button>
       <button data-m="skip">Cancelar a aula deste dia <span class="small muted">— o curso termina uma aula depois</span></button>
       <div class="bar" style="margin:0"><span>Mover para</span><input type="date" data-mv><button data-m="move">Mover</button></div>
@@ -4408,6 +4415,10 @@ ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula 
 ${P(`Na turma, no <b>Cronograma de aulas</b>, clique em <b>⋯</b> na aula e em <b>⏱ Alterar a carga horária desta aula</b>. Informe as horas (ex.: 2 ou 1,5) e salve. A aula ganha a etiqueta ⏱ e a UC passa a contar horas: o que faltar entra nas próximas aulas.`, `Para várias aulas, use <b>✎ Alterar várias aulas</b> → <b>Carga horária de cada aula</b>.`, `Para cursos que precisam da carga horária exata, marque <b>Carga horária exata (sem horas a mais ou a menos)</b> no cadastro da turma. A última aula de cada UC fica só com as horas que faltam e o cabeçalho mostra “carga exata: ✓”.`)}
 ${dica('Sem a marcação de carga exata, a última aula da UC continua inteira (como antes). A regra de análise “Carga horária programada diferente da carga das UCs” confere os cursos com carga exata.')}` },
 
+  { id: 'cad-dochor', t: 'Docentes em horários diferentes na mesma aula', h: `
+${P(`<b>Para todas as aulas da UC:</b> em ${caminho('Turmas e UCs')}, na tabela de UCs, coloque os docentes da UC e clique em <b>⏱ dividir horário entre docentes</b> (aparece quando a UC tem 2 ou mais docentes). Informe o horário de cada um (ex.: 08:00–10:00 e 10:00–12:00) ou use <b>Dividir ao meio</b>.`, `<b>Só para uma aula:</b> no cronograma, clique em <b>⋯</b> na aula e em <b>⏱ Horário de cada docente nesta aula</b>.`, `Cada docente passa a contar só as horas do seu horário no <b>70×30</b> e no <b>rateio</b>. Conflitos, escala, compensações e interjornada também usam o horário de cada um.`)}
+${dica('Docente sem horário informado fica a aula toda. O horário aparece ao lado do nome do docente na aula.')}` },
+
   { id: 'cad-analise', t: 'Análise do curso (regras de conferência)', h: `
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}. O quadro <b>🔍 Análise do curso</b> mostra se o cronograma passou nas regras ou quantas falhas tem. Clique em <b>Ver análise</b>: cada falha é um link que leva à aula.`, `Para ver todos os cursos de uma vez, use <b>🔍 Analisar cursos</b> no topo da lista de turmas.`, `Em <b>⚙ Regras de análise</b>, ative ou desative regras e clique em <b>+ Nova regra</b>: escolha o tipo (ex.: aula EAD antes da presencial, N aulas EAD seguidas, última aula da UC em EAD, aula sem docente ou sem sala, intervalo maior que N dias, dia da semana não permitido, UC com mais de N docentes, item de conferência manual), o parâmetro e as áreas em que vale.`, `Regras de conferência manual aparecem como caixinhas na análise de cada curso; marque quando conferir.`)}
 ${dica('A regra “Aula EAD da UC antes da primeira aula presencial da mesma UC” já vem ativa e não se aplica às UCs de Projeto integrador (campo “Não aplicar às UCs cujo nome contém”, que você pode editar em cada regra). Se precisar de um tipo de regra que ainda não existe, peça a inclusão.')}` },
@@ -5928,6 +5939,32 @@ REG_TIPOS.chDif = { nome: 'Carga horária programada diferente da carga das UCs 
   return out;
 }; }
 { const L = regras; regras = function () { const R0 = L(); if (!R0.some(g => g.tipo === 'chDif')) R0.push({ id: 'r-chdif', tipo: 'chDif', nome: '', ativo: true, areas: [] }); return R0; }; }
+// ---------- Horário de cada docente dentro da aula (divide as horas no 70×30 e no rateio) ----------
+function docHModal(titulo, nomes, cur, a, b, nota, salvar) {
+  cur = cur || {};
+  MCTX = { ok: () => {
+    const out = {}; let erro = '';
+    for (const n of nomes) { const hi = $(`#modal [data-dhi="${CSS.escape(n)}"]`).value, hf = $(`#modal [data-dhf="${CSS.escape(n)}"]`).value; if (!hi && !hf) continue; if (hi && hf && tm(hf) <= tm(hi)) erro = n; out[n] = { hi, hf }; }
+    if (erro) return toast('Horário inválido para ' + erro);
+    salvar(Object.keys(out).length ? out : undefined); closeModal(); refresh(); toast('Horários dos docentes salvos');
+  } };
+  modal(`<h2>${esc(titulo)}</h2><p class="small muted" style="margin-top:-4px">Aula das ${hm(a)} às ${hm(b)}. Informe o horário de cada docente; quem ficar em branco fica a aula toda. As horas de cada um no 70×30 e no rateio seguem esse horário.</p>
+   <table class="plain">${nomes.map(n => `<tr><td>${esc(n)}</td><td class="nowrap"><input type="time" data-dhi="${esc(n)}" value="${esc((cur[n] || {}).hi || '')}" style="width:auto"> às <input type="time" data-dhf="${esc(n)}" value="${esc((cur[n] || {}).hf || '')}" style="width:auto"></td></tr>`).join('')}</table>
+   ${nomes.length === 2 ? `<button class="sm" data-m="dhMeio" data-a="${a}" data-b="${b}">Dividir ao meio (${hm(a)}–${hm(Math.round((a + b) / 2))} / ${hm(Math.round((a + b) / 2))}–${hm(b)})</button>` : ''}
+   ${nota ? `<p class="small muted">${nota}</p>` : ''}
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+  MCTX.nomes = nomes;
+}
+MACT.dhMeio = el => { const a = +el.dataset.a, b = +el.dataset.b, m = Math.round((a + b) / 2); const [n1, n2] = MCTX.nomes; const set = (n, x, y) => { $(`#modal [data-dhi="${CSS.escape(n)}"]`).value = hm(x); $(`#modal [data-dhf="${CSS.escape(n)}"]`).value = hm(y); }; set(n1, a, m); set(n2, m, b); };
+ACT.ucDocH = el => {
+  const t = curT(), u = t.ucs[+el.dataset.i]; const H = horasAula(t); const a = tm(t.hi), b = Math.min(tm(t.hf), a + Math.round(hAulaUC(t, u, H) * 60));
+  docHModal('Horário dos docentes — ' + (u.num ? 'UC ' + u.num + ' · ' : '') + u.nome, (u.doc || []).filter(Boolean), u.docH, a, b, 'Vale para todas as aulas desta UC. Para uma aula só, use ⋯ → Horário de cada docente nesta aula.', v => { if (v) u.docH = v; else delete u.docH; saveT(t); });
+};
+MACT.aulaDocH = () => {
+  const { t, ds } = MCTX; const row = R[t.id].rows.find(x => x.ds === ds); if (!row) return;
+  const o = (t.ov || {})[ds] || {}; const tu = (t.ucs || []).find(x => x.id === (R[t.id].units[row.ui] || {}).id) || {};
+  docHModal('Horário dos docentes — aula de ' + br(ds), row.docs, o.docH || tu.docH, row.a, row.b, 'Vale só para esta aula.', v => { setOv(t, ds, { docH: v }); saveT(t); });
+};
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
