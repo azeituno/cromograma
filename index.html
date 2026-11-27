@@ -2119,7 +2119,7 @@ function viewOcupacao() {
       cells += `<td class="oc ${off ? 'off' : ''} ${conf ? 'conf' : ''} ${one ? 'wide' : ''}" ${canWrite() && s !== EAD_SALA ? `data-occ-cell="${esc(s)}|${d}|${k}" title="Clique para reservar, trocar sala ou ver a aula"` : ''}>${L.map(({ t, row }) => `<span class="ochip" style="background:${areaColor(t.area)}" ${canWrite() ? `data-act="aulaInfo" data-tid="${t.id}"${String(t.id).startsWith('av:') ? '' : ' data-dgchip'}` : `data-open="${t.id}"`} data-ds="${d}" title="${esc(t.nome + ' · ' + hm(row.a) + '–' + hm(row.b) + (row.docs.length ? '\n' + row.docs.join(', ') : '') + (temMat(row.o) ? '\nMateriais: ' + matTxt(row.o) : '') + (infoTxt(row.o) ? '\n' + infoTxt(row.o) : ''))}">${temMat(row.o) ? '📦 ' : ''}${esc(one ? short2(tName(t)) : tSig(t))}</span>${one && row.docs.length ? `<div class="small muted">${esc(short(row.docs[0]))}</div>` : ''}`).join('')}</td>`;
     } }
     const p = avail ? Math.round(100 * used / avail) : 0;
-    return `<tr><td class="stk"><b>${esc(label)}</b>${info ? `<div class="small muted">${esc(info)}</div>` : ''}</td>${cells}<td class="num"><div class="obar"><i style="width:${Math.min(100, p)}%"></i></div><span class="small">${p}%</span></td></tr>`;
+    return `<tr><td class="stk"><b>${esc(label)}</b>${canWrite() && s !== EAD_SALA && s !== '—' ? ` <button class="sm" data-act="salaEd" data-s="${esc(s)}" title="Editar ou excluir a sala" style="padding:1px 6px;margin-left:4px">✎</button>` : ''}${info ? `<div class="small muted">${esc(info)}</div>` : ''}</td>${cells}<td class="num"><div class="obar"><i style="width:${Math.min(100, p)}%"></i></div><span class="small">${p}%</span></td></tr>`;
   };
   for (const s of salas) { const c = (S.cfg.salas || []).find(x => x.nome === s) || {}; h += rowFor(s, s, [c.tipo, c.cap ? c.cap + ' lugares' : ''].filter(Boolean).join(' · ')); }
   h += rowFor('—', 'Sem sala definida', 'aulas presenciais sem sala') + rowFor(EAD_SALA, 'EAD / Externa', '');
@@ -2736,7 +2736,7 @@ function viewMapa() {
   if (tab === 'arq') return h + viewArquivos();
   if (tab === 'busca') return h + viewBuscaRes();
   const modo = V.oMode || 'semana';
-  const seg = `<div class="bar filters" style="margin-bottom:4px"><div class="seg">${[['semana', 'Semana'], ['mes', 'Mês']].map(([k, l]) => `<button class="${modo === k ? 'on' : ''}" data-set="oMode" data-v="${k}">${l}</button>`).join('')}</div></div>`;
+  const seg = `<div class="bar filters" style="margin-bottom:4px"><div class="seg">${[['semana', 'Semana'], ['mes', 'Mês']].map(([k, l]) => `<button class="${modo === k ? 'on' : ''}" data-set="oMode" data-v="${k}">${l}</button>`).join('')}</div>${canWrite() ? '<span class="grow"></span><button class="pri" data-act="salaEd" data-s="">+ Sala</button><span class="small muted">✎ ao lado do nome edita a sala</span>' : ''}</div>`;
   return h + seg + (modo === 'mes' ? viewOcupMes() : viewOcupacao());
 }
 function viewOcupMes() {
@@ -2760,7 +2760,7 @@ function viewOcupMes() {
       }).join('') + '</td>';
     }
     const p = avail ? Math.round(100 * used / avail) : 0;
-    return `<tr><td class="stk"><b>${esc(label)}</b>${info ? `<div class="small muted">${esc(info)}</div>` : ''}</td>${cells}<td class="num"><div class="obar"><i style="width:${Math.min(100, p)}%"></i></div><span class="small">${p}%</span></td></tr>`;
+    return `<tr><td class="stk"><b>${esc(label)}</b>${canWrite() && s !== EAD_SALA && s !== '—' ? ` <button class="sm" data-act="salaEd" data-s="${esc(s)}" title="Editar ou excluir a sala" style="padding:1px 6px;margin-left:4px">✎</button>` : ''}${info ? `<div class="small muted">${esc(info)}</div>` : ''}</td>${cells}<td class="num"><div class="obar"><i style="width:${Math.min(100, p)}%"></i></div><span class="small">${p}%</span></td></tr>`;
   };
   for (const s of salas) { const c = (S.cfg.salas || []).find(x => x.nome === s) || {}; h += rowFor(s, s, [c.tipo, c.cap ? c.cap + ' lugares' : ''].filter(Boolean).join(' · ')); }
   if (days.some(d => 'MTN'.split('').some(k => occ['—|' + d + '|' + k]))) h += rowFor('—', 'Sem sala definida', 'aulas presenciais sem sala');
@@ -4430,6 +4430,9 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
   { id: 'cad-extra', t: 'Aula extra ou reposição', h: `
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
+
+  { id: 'cad-salamapa', t: 'Incluir ou editar salas pelo Mapa de salas', h: `
+${P(`Em ${caminho('Mapa de salas')} → <b>Ocupação</b> (semana ou mês), clique em <b>+ Sala</b> para incluir: informe nome, tipo, capacidade e se aparece no cartaz impresso.`, `Para editar, clique no <b>✎</b> ao lado do nome da sala. Se mudar o nome, as turmas e aulas que usam a sala passam a usar o nome novo.`, `Para excluir, use <b>Excluir sala</b> na mesma janela; as aulas que estavam nela ficam como “sem sala”.`)}` },
 
   { id: 'cad-menu', t: 'Usar a tela inteira (recolher o menu lateral)', h: `
 ${P(`No computador, clique em <b>« Recolher menu</b> (no alto do menu lateral) ou no <b>☰</b> no canto superior esquerdo: o menu some e a página usa a tela toda.`, `Para mostrar o menu de novo, clique no <b>☰</b>. O sistema lembra a sua escolha neste aparelho.`)}` },
@@ -6157,6 +6160,40 @@ REG_TIPOS.piUC = { nome: 'Aulas de PI (Projeto Integrador) diferentes das previs
   }, true);
 })();
 { const rs = renderShell; renderShell = function () { const r = rs.apply(this, arguments); const s = document.getElementById('side'); if (s && !s.querySelector('#sideTg')) s.insertAdjacentHTML('afterbegin', '<button id="sideTg" title="Recolher o menu (use ☰ no topo para mostrar de novo)">« Recolher menu</button>'); return r; }; }
+// ---------- Incluir / editar / excluir sala direto no Mapa de salas ----------
+function salaRenomeia(old, nv) {
+  for (const tt of Object.values(S.turmas)) { let ch = false; if (tt.sala === old) { tt.sala = nv; ch = true; } for (const o of Object.values(tt.ov || {})) if (o.sala === old) { o.sala = nv; ch = true; } if (ch) saveT(tt); }
+  for (const v of (typeof AVS === 'function' ? AVS() : [])) if (v.sala === old) v.sala = nv;
+}
+ACT.salaEd = el => {
+  const nome0 = el.dataset.s || ''; S.cfg.salas = S.cfg.salas || [];
+  const i = S.cfg.salas.findIndex(x => x.nome === nome0); const s = i >= 0 ? S.cfg.salas[i] : { nome: nome0, tipo: '', cap: '' };
+  const uso = nome0 ? Object.values(S.turmas).filter(t => t.sala === nome0 || Object.values(t.ov || {}).some(o => o.sala === nome0)).length : 0;
+  MCTX = { ok: () => {
+    const nome = $('#modal [data-se=nome]').value.trim(); if (!nome) return toast('Informe o nome da sala');
+    if (nome !== nome0 && S.cfg.salas.some(x => x.nome === nome)) return toast('Já existe uma sala com esse nome');
+    const ns = Object.assign({}, s, { nome, tipo: $('#modal [data-se=tipo]').value.trim(), cap: $('#modal [data-se=cap]').value });
+    ns.cartaz = $('#modal [data-se=cz]').checked;
+    if (i >= 0) S.cfg.salas[i] = ns; else S.cfg.salas.push(ns);
+    if (nome0 && nome !== nome0) salaRenomeia(nome0, nome);
+    saveCfg(); closeModal(); refresh(); toast(i >= 0 ? 'Sala atualizada' : 'Sala incluída');
+  } };
+  MCTX.del = () => {
+    if (i < 0) return closeModal();
+    askConfirm(`Excluir a sala <b>${esc(nome0)}</b>?${uso ? ` Ela está em ${uso} turma(s): as aulas ficam como “sem sala”.` : ''}`, () => {
+      S.cfg.salas.splice(i, 1);
+      for (const tt of Object.values(S.turmas)) { let ch = false; if (tt.sala === nome0) { tt.sala = ''; ch = true; } for (const o of Object.values(tt.ov || {})) if (o.sala === nome0) { delete o.sala; ch = true; } if (ch) saveT(tt); }
+      saveCfg(); closeModal(); refresh(); toast('Sala excluída');
+    }, 'Excluir');
+  };
+  modal(`<h2>${i >= 0 ? 'Editar sala' : 'Nova sala'}</h2>
+   <div class="grid"><label class="f w2">Nome da sala<input data-se="nome" value="${esc(s.nome)}" placeholder="ex.: Sala 12 (1768)"></label><label class="f">Tipo<input data-se="tipo" value="${esc(s.tipo || '')}" placeholder="ex.: Laboratório"></label><label class="f">Capacidade<input type="number" min="0" data-se="cap" value="${esc(s.cap || '')}"></label></div>
+   <label class="chk" style="margin-top:6px"><input type="checkbox" data-se="cz" ${salaNoCartaz(s) ? 'checked' : ''}><span>Aparece no cartaz de ocupação impresso</span></label>
+   ${uso ? `<p class="small muted">Usada em ${uso} turma(s). Se mudar o nome, as turmas e aulas passam a usar o nome novo.</p>` : ''}
+   <div class="mact">${i >= 0 ? '<button class="dng" data-m="salaDel">Excluir sala</button>' : ''}<button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+  setTimeout(() => { const n = $('#modal [data-se=nome]'); if (n) { n.focus(); n.select(); } }, 50);
+};
+MACT.salaDel = () => MCTX.del();
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
