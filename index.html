@@ -353,7 +353,7 @@ function buildCal(cfg) {
     const c = (f.cons || '').toLowerCase();
     if (c === 'sim') sim[f.data] = (f.nome || 'Feriado').trim();
     else if (c.startsWith('sem aula')) sem[f.data] = (f.nome || 'Sem aula').trim();
-    else if (c.startsWith('reuni')) { const a = tm(f.hi), b = tm(f.hf); reun[f.data] = { nome: (f.nome || 'Reunião pedagógica').trim(), a: a == null ? 0 : a, b: b == null ? 1440 : b, hi: f.hi || '', hf: f.hf || '' }; }
+    else if (c.startsWith('reuni')) { const a = tm(f.hi), b = tm(f.hf); reun[f.data] = { nome: (f.nome || 'Reunião pedagógica').trim(), pers: (f.pers || []).filter(Boolean), a: a == null ? 0 : a, b: b == null ? 1440 : b, hi: f.hi || '', hf: f.hf || '' }; }
     else if (c.startsWith('expediente')) { const a = tm(f.hi), b = tm(f.hf); parc[f.data] = { nome: (f.nome || 'Expediente parcial').trim(), a: a == null ? 0 : a, b: b == null ? 1440 : b, sa: !!f.semAula }; }
   }
   const folga = {};
@@ -381,8 +381,11 @@ function calParc(ds) {
 }
 const calLbl = ds => calInfo(ds) || calParc(ds) || calReun(ds);
 // para uma aula das a às b: o dia tira a aula? (expediente parcial tira a aula se menos da metade dela cabe no horário de funcionamento)
-function calReun(ds) { const r = (CAL.reun || {})[ds]; return r ? { carga: true, mot: r.nome + (r.hi || r.hf ? ' (' + (r.hi || '…') + '–' + (r.hf || '…') + ')' : ''), kind: 'reun', a: r.a, b: r.b } : null; }
-function calInfoAula(ds, a, b) { const ci = calInfo(ds); if (ci) return ci; const rp = calReun(ds); if (rp && (a == null || overlap(a, b, rp.a, rp.b) > 0)) return rp; const p = calParc(ds); if (p && (p.sa || (a != null && b > a && overlap(a, b, p.a, p.b) < (b - a) / 2))) return p; return null; }
+// período de uma aula pelo horário de início: antes de 12h manhã, antes de 18h tarde, depois noite
+const perHora = a => a == null ? '' : a < 720 ? 'Manhã' : a < 1080 ? 'Tarde' : 'Noite';
+const rpPerTxt = L => L.length === 3 ? 'dia todo' : L.length === 2 ? L[0] + ' e ' + L[1] : L[0];
+function calReun(ds) { const r = (CAL.reun || {})[ds]; if (!r) return null; const p = r.pers && r.pers.length ? ' (' + rpPerTxt(r.pers) + ')' : r.hi || r.hf ? ' (' + (r.hi || '…') + '–' + (r.hf || '…') + ')' : ''; return { carga: true, mot: r.nome + p, kind: 'reun', a: r.a, b: r.b, pers: r.pers }; }
+function calInfoAula(ds, a, b) { const ci = calInfo(ds); if (ci) return ci; const rp = calReun(ds); if (rp && (a == null || (rp.pers.length ? rp.pers.includes(perHora(a)) : overlap(a, b, rp.a, rp.b) > 0))) return rp; const p = calParc(ds); if (p && (p.sa || (a != null && b > a && overlap(a, b, p.a, p.b) < (b - a) / 2))) return p; return null; }
 // escala do docente no dia, recortada pelo expediente parcial
 function escIvsDia(d, ds, per) { const w = wd(ds); const E = escOn(d, ds); const iv = per ? ivs(E && E[w + per]) : escIvs(d, w, ds); const p = calParc(ds); if (!p) return iv; return iv.map(([x, y]) => [Math.max(x, p.a), Math.min(y, p.b)]).filter(([x, y]) => y > x); }
 
@@ -1051,14 +1054,14 @@ function viewCal() {
   const L = (S.cfg.fer || []).map((f, i) => ({ ...f, i })).sort((a, b) => (a.data || '').localeCompare(b.data || ''));
   const anoF = V.calAno || S.cfg.ano;
   let h = `<h1>Dias letivos e não letivos</h1>
-  <div class="card small">Regras (iguais às da planilha): <b>Sim</b> = feriado, sem aula e sem carga, com emenda automática (feriado na terça → emenda segunda; quinta → sexta e sábado; sexta → sábado). <b>Sem aula (conta carga)</b> = sem aula, mas conta na carga do docente (recesso, planejamento). <b>Expediente parcial</b> = a unidade funciona só parte do dia (ex.: Quarta-feira de Cinzas, abre às 14:00): informe o horário; a escala dentro dele conta carga e a escala fora dele é suspensa (diminui a carga no 70×30 e no rateio). As aulas fora do horário não acontecem; marque <b>Sem aula no dia</b> se houver só expediente, sem nenhuma aula. <b>Reunião pedagógica</b> = informe o período da reunião: as aulas nesse horário não acontecem (as de outros períodos do dia seguem normais), conta carga do docente e a reunião aparece em destaque no calendário de Eventos. <b>Não</b> = desconsiderado. Domingos nunca têm aula.</div>
-  <div class="bar"><button class="pri" data-act="addFer">+ Dia</button><button data-act="addFerRange">+ Período (recesso)</button><button data-act="rpAno">+ Reuniões pedagógicas do ano</button><button class="sm dng" data-act="rpDel" title="Excluir todas as reuniões pedagógicas do ano exibido">✕ Reuniões do ano</button><span class="grow"></span><span class="small muted">Ano:</span><input type="number" style="width:90px" data-in="calAno" value="${anoF}"></div>
+  <div class="card small">Regras (iguais às da planilha): <b>Sim</b> = feriado, sem aula e sem carga, com emenda automática (feriado na terça → emenda segunda; quinta → sexta e sábado; sexta → sábado). <b>Sem aula (conta carga)</b> = sem aula, mas conta na carga do docente (recesso, planejamento). <b>Expediente parcial</b> = a unidade funciona só parte do dia (ex.: Quarta-feira de Cinzas, abre às 14:00): informe o horário; a escala dentro dele conta carga e a escala fora dele é suspensa (diminui a carga no 70×30 e no rateio). As aulas fora do horário não acontecem; marque <b>Sem aula no dia</b> se houver só expediente, sem nenhuma aula. <b>Reunião pedagógica</b> = marque o período da reunião (manhã, tarde e/ou noite): as aulas desse período não acontecem (as de outros períodos do dia seguem normais), conta carga do docente e a reunião aparece em destaque no calendário de Eventos. <b>Não</b> = desconsiderado. Domingos nunca têm aula.</div>
+  <div class="bar"><button class="pri" data-act="addFer">+ Dia</button><button data-act="addFerRange">+ Período (recesso)</button><button data-act="rpAno">+ Reuniões pedagógicas</button><button class="sm dng" data-act="rpDel" title="Excluir todas as reuniões pedagógicas do ano exibido">✕ Reuniões do ano</button><span class="grow"></span><span class="small muted">Ano:</span><input type="number" style="width:90px" data-in="calAno" value="${anoF}"></div>
   <div class="tw"><table><tr><th>Data</th><th>Dia</th><th>Descrição</th><th>Tipo</th><th>Considerar?</th><th>Efeito</th><th></th></tr>`;
   for (const f of L) {
     if (String(f.data || '').slice(0, 4) != anoF && f.data) continue;
-    const ef = f.cons === 'Sim' ? (wd(f.data) === 2 ? 'Feriado + emenda segunda' : wd(f.data) === 4 ? 'Feriado + emenda sex e sáb' : wd(f.data) === 5 ? 'Feriado + emenda sábado' : 'Feriado') : /sem aula/i.test(f.cons || '') ? 'Sem aula, conta carga' : /reuni/i.test(f.cons || '') ? 'Reunião: sem aula ' + (f.hi || f.hf ? 'das ' + (f.hi || '00:00') + ' às ' + (f.hf || '23:59') : 'no dia todo') + ' (conta carga); vai para Eventos em destaque' : /expediente/i.test(f.cons || '') ? 'Expediente ' + (f.hi ? 'a partir das ' + f.hi : '') + (f.hi && f.hf ? ' ' : '') + (f.hf ? 'até ' + f.hf : '') + ' (conta carga); escala fora disso suspensa; ' + (f.semAula ? 'sem aula no dia' : 'aulas só no horário de expediente') : 'Desconsiderado';
+    const ef = f.cons === 'Sim' ? (wd(f.data) === 2 ? 'Feriado + emenda segunda' : wd(f.data) === 4 ? 'Feriado + emenda sex e sáb' : wd(f.data) === 5 ? 'Feriado + emenda sábado' : 'Feriado') : /sem aula/i.test(f.cons || '') ? 'Sem aula, conta carga' : /reuni/i.test(f.cons || '') ? 'Reunião: sem aula ' + ((f.pers || []).length ? (f.pers.length === 3 ? 'no dia todo' : 'no período: ' + f.pers.join(', ')) : f.hi || f.hf ? 'das ' + (f.hi || '00:00') + ' às ' + (f.hf || '23:59') : 'no dia todo (marque o período)') + ' (conta carga); vai para Eventos em destaque' : /expediente/i.test(f.cons || '') ? 'Expediente ' + (f.hi ? 'a partir das ' + f.hi : '') + (f.hi && f.hf ? ' ' : '') + (f.hf ? 'até ' + f.hf : '') + ' (conta carga); escala fora disso suspensa; ' + (f.semAula ? 'sem aula no dia' : 'aulas só no horário de expediente') : 'Desconsiderado';
     h += `<tr><td><input type="date" data-ff="data" data-i="${f.i}" value="${esc(f.data)}"></td><td>${f.data ? WD[wd(f.data)] : ''}</td><td><input data-ff="nome" data-i="${f.i}" value="${esc(f.nome)}"></td><td><input data-ff="tipo" data-i="${f.i}" value="${esc(f.tipo)}" style="width:120px"></td>
-    <td><select data-ff="cons" data-i="${f.i}">${opt(['Sim', 'Sem aula (conta carga)', 'Expediente parcial', 'Reunião pedagógica', 'Não'], f.cons)}</select>${/reuni/i.test(f.cons || '') ? `<div class="small" style="margin-top:4px;display:flex;gap:4px;align-items:center">sem aula das <input type="time" data-ff="hi" data-i="${f.i}" value="${esc(f.hi || '')}" style="width:auto"> às <input type="time" data-ff="hf" data-i="${f.i}" value="${esc(f.hf || '')}" style="width:auto"></div>` : ''}${/expediente/i.test(f.cons || '') ? `<div class="small" style="margin-top:4px;display:flex;gap:4px;align-items:center">abre <input type="time" data-ff="hi" data-i="${f.i}" value="${esc(f.hi || '')}" style="width:auto"> fecha <input type="time" data-ff="hf" data-i="${f.i}" value="${esc(f.hf || '')}" style="width:auto"></div><label class="chk small" style="margin-top:4px"><input type="checkbox" data-fsa="${f.i}" ${f.semAula ? 'checked' : ''}><span>Sem aula no dia (só expediente)</span></label>` : ''}</td><td class="small muted">${ef}</td><td><button class="sm dng" data-act="delFer" data-i="${f.i}">✕</button></td></tr>`;
+    <td><select data-ff="cons" data-i="${f.i}">${opt(['Sim', 'Sem aula (conta carga)', 'Expediente parcial', 'Reunião pedagógica', 'Não'], f.cons)}</select>${/reuni/i.test(f.cons || '') ? `<div class="small" style="margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">sem aula: ${['Manhã', 'Tarde', 'Noite'].map(p => `<label class="chk"><input type="checkbox" data-fper="${f.i}" value="${p}" ${(f.pers || []).includes(p) ? 'checked' : ''}><span>${p}</span></label>`).join('')}</div>` : ''}${/expediente/i.test(f.cons || '') ? `<div class="small" style="margin-top:4px;display:flex;gap:4px;align-items:center">abre <input type="time" data-ff="hi" data-i="${f.i}" value="${esc(f.hi || '')}" style="width:auto"> fecha <input type="time" data-ff="hf" data-i="${f.i}" value="${esc(f.hf || '')}" style="width:auto"></div><label class="chk small" style="margin-top:4px"><input type="checkbox" data-fsa="${f.i}" ${f.semAula ? 'checked' : ''}><span>Sem aula no dia (só expediente)</span></label>` : ''}</td><td class="small muted">${ef}</td><td><button class="sm dng" data-act="delFer" data-i="${f.i}">✕</button></td></tr>`;
   }
   return h + '</table></div>';
 }
@@ -1379,7 +1382,8 @@ document.addEventListener('change', e => {
       const old = c.cod; for (const t of Object.values(S.turmas)) if (t.cc === old) { t.cc = v; saveT(t); } }
     c[k] = v; saveCfg(); return refresh(); }
   if (el.dataset.tcc) { const tt = S.turmas[el.dataset.tcc]; tt.cc = el.value; saveT(tt); return refresh(); }
-  if (el.dataset.ff != null) { const f = S.cfg.fer[+el.dataset.i]; f[el.dataset.ff] = el.value; if (el.dataset.ff === 'cons' && /^reuni/i.test(el.value) && !f.hi && !f.hf && isDate(f.data)) { const w = wd(f.data); if (w === 4) { f.hi = '18:00'; f.hf = '22:30'; } else if (w === 5) { f.hi = '13:00'; f.hf = '18:00'; } if (!f.nome) f.nome = 'Reunião pedagógica'; } saveCfg(); return refresh(); }
+  if (el.dataset.fper != null) { const f = S.cfg.fer[+el.dataset.fper]; const L = new Set(f.pers || []); if (el.checked) L.add(el.value); else L.delete(el.value); f.pers = ['Manhã', 'Tarde', 'Noite'].filter(x => L.has(x)); delete f.hi; delete f.hf; saveCfg(); return refresh(); }
+  if (el.dataset.ff != null) { const f = S.cfg.fer[+el.dataset.i]; f[el.dataset.ff] = el.value; if (el.dataset.ff === 'cons' && /^reuni/i.test(el.value) && !f.nome) f.nome = 'Reunião pedagógica'; saveCfg(); return refresh(); }
   if (el.dataset.sf != null) { const s = S.cfg.salas[+el.dataset.i]; const old = s.nome; s[el.dataset.sf] = el.value; if (el.dataset.sf === 'nome' && old !== el.value) { for (const tt of Object.values(S.turmas)) { let ch = false; if (tt.sala === old) { tt.sala = el.value; ch = true; } for (const o of Object.values(tt.ov || {})) if (o.sala === old) { o.sala = el.value; ch = true; } if (ch) saveT(tt); } } saveCfg(); return refresh(); }
   if (el.dataset.cf) { const k = el.dataset.cf; if (k === 'areas') S.cfg.areas = el.value.split('\n').map(s => s.trim()).filter(Boolean); else if (k === 'cc') S.cfg.cc = el.value.split('\n').map(l => { const [c, ...d] = l.split(';'); return { cod: (c || '').trim(), desc: d.join(';').trim() }; }).filter(c => c.cod); else S.cfg[k] = +el.value; saveCfg(); return refresh(); }
   if (el.dataset.in) {
@@ -2150,7 +2154,7 @@ const EV_CATS = [['Evento', '#0b7a83'], ['Reunião', '#5a32c8'], ['Prazo', '#c42
 const evColor = c => (EV_CATS.find(x => x[0] === c) || EV_CATS[EV_CATS.length - 1])[1];
 const evList = () => (S.eventos || []).concat(reunEvs());
 // reuniões pedagógicas lançadas em Dias letivos e não letivos viram eventos em destaque (somente leitura aqui)
-function reunEvs() { return ((S.cfg && S.cfg.fer) || []).filter(f => isDate(f.data) && /^reuni/i.test(f.cons || '')).map(f => ({ id: 'rp:' + f.data, titulo: (f.nome || 'Reunião pedagógica').trim(), ini: f.data, fim: '', hi: f.hi || '', hf: f.hf || '', cat: 'Reunião', imp: true, auto: true, desc: 'Reunião pedagógica: sem aula' + (f.hi || f.hf ? ' das ' + (f.hi || '00:00') + ' às ' + (f.hf || '23:59') : ' no dia') + '. Lançada em Dias letivos e não letivos.' })); }
+function reunEvs() { return ((S.cfg && S.cfg.fer) || []).filter(f => isDate(f.data) && /^reuni/i.test(f.cons || '')).map(f => ({ id: 'rp:' + f.data, titulo: (f.nome || 'Reunião pedagógica').trim() + ((f.pers || []).length ? ' — ' + rpPerTxt(f.pers) : ''), ini: f.data, fim: '', hi: (f.pers || []).length ? '' : f.hi || '', hf: (f.pers || []).length ? '' : f.hf || '', cat: 'Reunião', imp: true, auto: true, desc: 'Reunião pedagógica: sem aula ' + ((f.pers || []).length ? (f.pers.length === 3 ? 'no dia todo' : 'no período: ' + f.pers.join(', ')) : f.hi || f.hf ? 'das ' + (f.hi || '00:00') + ' às ' + (f.hf || '23:59') : 'no dia') + '. Lançada em Dias letivos e não letivos.' })); }
 const evOn = (e, ds) => e.ini && ds >= e.ini && ds <= (e.fim && e.fim >= e.ini ? e.fim : e.ini);
 const evWhen = e => (e.fim && e.fim > e.ini ? `${br(e.ini)} a ${br(e.fim)}` : `${WDL[wd(e.ini)]}, ${br(e.ini)}`) + (e.hi ? ` · ${e.hi}${e.hf ? '–' + e.hf : ''}` : '');
 const saveEv = () => persist('cfg/eventos');
@@ -4379,9 +4383,9 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
-  { id: 'cad-reuniao', t: 'Reuniões pedagógicas do ano', h: `
-${P(`Em ${caminho('Dias letivos e não letivos')}, clique em <b>+ Reuniões pedagógicas do ano</b>.`, `Marque os dias da semana e o período sem aula de cada um (quinta já vem 18:00–22:30 e sexta 13:00–18:00).`, `Escolha a frequência: <b>1 vez por mês</b> (1ª, 2ª, 3ª, 4ª ou última semana — quinta e sexta ficam na mesma semana), <b>a cada 2 semanas</b> ou <b>toda semana</b>.`, `Confira a lista de datas, desmarque as que não quiser (feriados já vêm desmarcados) e clique em <b>Lançar reuniões</b>.`)}
-${dica('As reuniões aparecem em destaque em Eventos. Para apagar as do ano exibido de uma vez, use <b>✕ Reuniões do ano</b>.')}` },
+  { id: 'cad-reuniao', t: 'Reuniões pedagógicas', h: `
+${P(`Em ${caminho('Dias letivos e não letivos')}, clique em <b>+ Reuniões pedagógicas</b>.`, `Em <b>Escolha as datas</b>, informe a data, marque o período (<b>Manhã</b>, <b>Tarde</b> e/ou <b>Noite</b>) e clique em <b>+ Adicionar data</b>. Repita para cada reunião.`, `Se as reuniões seguem um padrão, abra <b>Ou gerar por regra</b>: escolha os dias da semana, o período de cada um e a frequência (1 vez por mês, a cada 2 semanas ou toda semana).`, `Na lista, ajuste o período de cada data ou desmarque a data, e clique em <b>Lançar reuniões</b>.`)}
+${dica('Só as aulas do período marcado deixam de acontecer (manhã = aulas que começam antes das 12h, tarde = até 18h, noite = depois). As reuniões aparecem em destaque em Eventos. Para apagar as do ano exibido de uma vez, use <b>✕ Reuniões do ano</b>.')}` },
 
   { id: 'cad-inter', t: 'Alerta de interjornada', h: `
 <p>O sistema confere o descanso de cada docente entre o fim da última aula de um dia e o início da primeira aula do dia seguinte. Se for menor que <b>11 horas</b> (ex.: aula sexta até 22h30 e sábado às 8h = 9h30 de descanso), as duas aulas recebem o alerta <b>Interjornada</b>: a do dia anterior ("só 9h30 de descanso até…") e a do dia seguinte ("…após…").</p>
@@ -4420,7 +4424,7 @@ ${ref('<p>O dia aparece em azul no calendário do docente; o calendário mostra 
 ${P(`Clique em ${caminho('Dias não letivos')} e confira o <b>Ano</b> no canto direito.`,
  `Um dia: clique em <b>+ Dia</b>. Uma linha nova aparece em 01/01 — troque a <b>data</b>, escreva a <b>descrição</b> e o <b>tipo</b> (Nacional, Municipal, Institucional…).`,
  `Vários dias seguidos (recesso, férias coletivas): clique em <b>+ Período (recesso)</b>, informe de/até, descrição e como considerar.`,
- `Em <b>Considerar?</b> escolha: <b>Sim</b> (feriado, com emenda automática), <b>Sem aula (conta carga)</b>, <b>Expediente parcial</b> (informe abre/fecha e, se não houver aula, marque <b>Sem aula no dia</b>), <b>Reunião pedagógica</b> (informe o período sem aula — quinta já vem 18:00–22:30 e sexta 13:00–18:00; só as aulas desse horário saem e a reunião aparece em destaque em Eventos) ou <b>Não</b>.`,
+ `Em <b>Considerar?</b> escolha: <b>Sim</b> (feriado, com emenda automática), <b>Sem aula (conta carga)</b>, <b>Expediente parcial</b> (informe abre/fecha e, se não houver aula, marque <b>Sem aula no dia</b>), <b>Reunião pedagógica</b> (marque manhã, tarde e/ou noite; só as aulas desse período saem e a reunião aparece em destaque em Eventos) ou <b>Não</b>.`,
  `Tudo salva sozinho. ✕ exclui a linha.`)}
 ${ref('<p>Os cronogramas de todas as turmas são recalculados na hora (as aulas pulam o dia). O <b>Calendário letivo</b> mostra o ano colorido; Eventos mostram o dia como “sem aula”, “feriado” etc. Expediente parcial reduz a carga dos docentes no 70×30 e no rateio.</p>')}` },
 
@@ -5493,55 +5497,63 @@ document.addEventListener('change', async e => {
 });
 document.addEventListener('input', e => { const el = e.target; if (el.dataset && el.dataset.ccpaste != null) { CC_IMP = ccParse(el.value.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : ';'))); ccPrev(); } });
 
-// ---------- Reuniões pedagógicas do ano de uma vez ----------
-const RP_DEF = { 1: ['', ''], 2: ['', ''], 3: ['', ''], 4: ['18:00', '22:30'], 5: ['13:00', '18:00'], 6: ['', ''] };
+// ---------- Reuniões pedagógicas do ano de uma vez (por data e período: manhã, tarde, noite) ----------
+const RP_PERS = ['Manhã', 'Tarde', 'Noite'];
+let RP_EXTRA = [];
 function rpDatas() {
   const q = s => $('#modal ' + s); if (!q('[data-rp=de]')) return [];
   const de = q('[data-rp=de]').value, ate = q('[data-rp=ate]').value, fr = q('[data-rp=fr]').value, sm = q('[data-rp=sm]').value;
-  if (!isDate(de) || !isDate(ate) || ate < de) return [];
-  const dias = {}; document.querySelectorAll('#modal [data-rpw]:checked').forEach(e => { const w = +e.dataset.rpw; dias[w] = [q(`[data-rphi="${w}"]`).value, q(`[data-rphf="${w}"]`).value]; });
+  const dias = {}; document.querySelectorAll('#modal [data-rpw]:checked').forEach(e => { const w = +e.dataset.rpw; dias[w] = RP_PERS.filter(p => q(`[data-rpwp="${w}"][value="${p}"]`).checked); });
   const out = []; const cont = {};
-  for (let d = de, g = 0; d <= ate && g < 800; d = addD(d, 1), g++) {
+  if (isDate(de) && isDate(ate) && ate >= de && Object.keys(dias).length) for (let d = de, g = 0; d <= ate && g < 800; d = addD(d, 1), g++) {
     const w = wd(d); if (!dias[w]) continue;
     const n = cont[w] = (cont[w] || 0) + 1; const dm = +d.slice(8);
-    let ok = fr === 'sem' || (fr === 'quin' && n % 2 === 1);
     if (fr === 'mes') { // a semana é a do primeiro dia marcado; os outros dias entram na mesma semana
       const w0 = Math.min(...Object.keys(dias).map(Number)); if (w !== w0) continue;
       if (!(sm === 'u' ? addD(d, 7).slice(5, 7) !== d.slice(5, 7) : Math.ceil(dm / 7) === +sm)) continue;
-      for (const k of Object.keys(dias).map(Number).sort()) { const x = addD(d, k - w0); if (x >= de && x <= ate) out.push({ d: x, hi: dias[k][0], hf: dias[k][1], ci: calInfo(x) }); }
+      for (const k of Object.keys(dias).map(Number).sort()) { const x = addD(d, k - w0); if (x >= de && x <= ate) out.push({ d: x, pers: dias[k] }); }
       continue;
     }
-    if (ok) out.push({ d, hi: dias[w][0], hf: dias[w][1], ci: calInfo(d) });
+    if (fr === 'sem' || (fr === 'quin' && n % 2 === 1)) out.push({ d, pers: dias[w] });
   }
-  return out;
+  for (const x of RP_EXTRA) if (!out.some(o => o.d === x.d)) out.push(x);
+  return out.sort((a, b) => a.d.localeCompare(b.d)).map(x => ({ ...x, ci: calInfo(x.d) }));
 }
 function rpPrev() {
-  const L = rpDatas(); const box = $('#modal [data-rpprev]'); if (!box) return;
+  const box = $('#modal [data-rpprev]'); if (!box) return;
+  const sm = $('#modal [data-rpsmw]'); if (sm) sm.style.display = $('#modal [data-rp=fr]').value === 'mes' ? '' : 'none';
+  const ed = {}; document.querySelectorAll('#modal [data-rprow]').forEach(r => { const d = r.dataset.rprow; ed[d] = { on: r.querySelector('[data-rpd]').checked, pers: RP_PERS.filter(p => r.querySelector(`[value="${p}"]`).checked) }; });
+  const L = rpDatas().map(x => ed[x.d] ? { ...x, pers: ed[x.d].pers, on: ed[x.d].on } : { ...x, on: !x.ci });
   const ja = new Set((S.cfg.fer || []).filter(f => /^reuni/i.test(f.cons || '')).map(f => f.data));
-  box.innerHTML = L.length ? `<div class="small" style="margin:6px 0"><b>${L.filter(x => !x.ci).length}</b> reunião(ões). Desmarque as datas que não quiser.</div><div class="tsdates" style="max-height:230px">${L.map(x => `<label class="tsd" style="min-width:210px"><input type="checkbox" data-rpd="${x.d}" data-hi="${x.hi}" data-hf="${x.hf}" ${x.ci ? '' : 'checked'}><span>${WD[wd(x.d)]} ${br(x.d)} <span class="small muted">${x.hi || x.hf ? (x.hi || '…') + '–' + (x.hf || '…') : 'dia todo'}${x.ci ? ' · ' + esc(x.ci.mot) : ''}${ja.has(x.d) ? ' · já lançada (atualiza)' : ''}</span></span></label>`).join('')}</div>` : '<p class="small muted">Nenhuma data com essas regras.</p>';
+  box.innerHTML = L.length ? `<div class="small" style="margin:6px 0"><b>${L.filter(x => x.on).length}</b> reunião(ões) marcada(s). Ajuste o período de cada data ou desmarque a data.</div><div class="tw" style="max-height:250px"><table class="plain">${L.map(x => `<tr data-rprow="${x.d}"><td class="nowrap"><label class="chk"><input type="checkbox" data-rpd="${x.d}" ${x.on ? 'checked' : ''}><span>${WD[wd(x.d)]} ${br(x.d)}</span></label></td><td class="nowrap">${RP_PERS.map(p => `<label class="chk" style="margin-right:6px"><input type="checkbox" data-rpdp="${x.d}" value="${p}" ${x.pers.includes(p) ? 'checked' : ''}><span>${p}</span></label>`).join('')}</td><td class="small muted">${x.ci ? esc(x.ci.mot) : ''}${ja.has(x.d) ? ' já lançada (atualiza)' : ''}</td></tr>`).join('')}</table></div>` : '<p class="small muted">Nenhuma data ainda: marque um dia da semana acima ou adicione uma data.</p>';
 }
 Object.assign(ACT, {
   rpAno: () => {
-    const ano = +(V.calAno || S.cfg.ano);
+    const ano = +(V.calAno || S.cfg.ano); RP_EXTRA = [];
     MCTX = { ok: () => {
       const nome = $('#modal [data-rp=nome]').value.trim() || 'Reunião pedagógica';
-      const sel = [...document.querySelectorAll('#modal [data-rpd]:checked')]; if (!sel.length) return toast('Nenhuma data marcada');
+      const sel = [...document.querySelectorAll('#modal [data-rpd]:checked')].map(e => ({ d: e.dataset.rpd, pers: RP_PERS.filter(p => { const c = $(`#modal [data-rpdp="${e.dataset.rpd}"][value="${p}"]`); return c && c.checked; }) }));
+      if (!sel.length) return toast('Nenhuma data marcada');
+      if (sel.some(x => !x.pers.length)) return toast('Marque o período (manhã, tarde ou noite) de todas as datas');
       S.cfg.fer = S.cfg.fer || []; let nv = 0, at = 0;
-      for (const el of sel) {
-        const d = el.dataset.rpd, hi = el.dataset.hi, hf = el.dataset.hf;
+      for (const { d, pers } of sel) {
         const f = S.cfg.fer.find(x => x.data === d && /^reuni/i.test(x.cons || ''));
-        if (f) { Object.assign(f, { nome, hi, hf }); at++; } else { S.cfg.fer.push({ data: d, nome, tipo: 'Local', cons: 'Reunião pedagógica', hi, hf }); nv++; }
+        if (f) { Object.assign(f, { nome, pers }); delete f.hi; delete f.hf; at++; } else { S.cfg.fer.push({ data: d, nome, tipo: 'Local', cons: 'Reunião pedagógica', pers }); nv++; }
       }
       S.cfg.fer.sort((a, b) => String(a.data).localeCompare(String(b.data)));
       saveCfg(); closeModal(); refresh(); toast(`${nv} reunião(ões) lançada(s)${at ? `, ${at} atualizada(s)` : ''}`);
     } };
-    modal(`<h2>Reuniões pedagógicas do ano</h2>
-     <div class="bar" style="margin:6px 0;flex-wrap:wrap"><label class="f">De<input type="date" data-rp="de" value="${ano}-01-01"></label><label class="f">Até<input type="date" data-rp="ate" value="${ano}-12-31"></label><label class="f" style="flex:1 1 200px">Nome<input data-rp="nome" value="Reunião pedagógica"></label></div>
-     <div class="small muted">Dias da semana e período sem aula</div>
-     <table class="plain" style="margin:4px 0 8px">${[1, 2, 3, 4, 5, 6].map(w => `<tr><td><label class="chk"><input type="checkbox" data-rpw="${w}" ${w === 4 || w === 5 ? 'checked' : ''}><span>${WDL[w]}</span></label></td><td class="small">sem aula das <input type="time" data-rphi="${w}" value="${RP_DEF[w][0]}" style="width:auto"> às <input type="time" data-rphf="${w}" value="${RP_DEF[w][1]}" style="width:auto"></td></tr>`).join('')}</table>
-     <div class="bar" style="margin:0;flex-wrap:wrap"><label class="f">Frequência<select data-rp="fr"><option value="mes">1 vez por mês</option><option value="quin">A cada 2 semanas</option><option value="sem">Toda semana</option></select></label><label class="f" data-rpsmw>Semana do mês<select data-rp="sm"><option value="1">1ª</option><option value="2">2ª</option><option value="3">3ª</option><option value="4">4ª</option><option value="u" selected>Última</option></select></label></div>
+    const pchk = (attr, w) => RP_PERS.map(p => `<label class="chk" style="margin-right:6px"><input type="checkbox" ${attr}="${w}" value="${p}"><span>${p}</span></label>`).join('');
+    modal(`<h2>Reuniões pedagógicas</h2>
+     <div class="bar" style="margin:6px 0;flex-wrap:wrap"><label class="f" style="flex:1 1 200px">Nome<input data-rp="nome" value="Reunião pedagógica"></label></div>
+     <h3 style="margin:8px 0 4px">Escolha as datas</h3>
+     <div class="bar" style="margin:0 0 6px;flex-wrap:wrap;align-items:flex-end"><label class="f">Data<input type="date" data-rpx="d"></label><span>${RP_PERS.map(p => `<label class="chk" style="margin-right:6px"><input type="checkbox" data-rpxp value="${p}"><span>${p}</span></label>`).join('')}</span><button class="sm" data-m="rpAdd">+ Adicionar data</button></div>
+     <details style="margin:6px 0"><summary><b>Ou gerar por regra</b> <span class="small muted">(ex.: última quinta de cada mês à noite)</span></summary>
+     <div class="bar" style="margin:6px 0;flex-wrap:wrap"><label class="f">De<input type="date" data-rp="de" value="${ano}-01-01"></label><label class="f">Até<input type="date" data-rp="ate" value="${ano}-12-31"></label>
+      <label class="f">Frequência<select data-rp="fr"><option value="mes">1 vez por mês</option><option value="quin">A cada 2 semanas</option><option value="sem">Toda semana</option></select></label><label class="f" data-rpsmw>Semana do mês<select data-rp="sm"><option value="1">1ª</option><option value="2">2ª</option><option value="3">3ª</option><option value="4">4ª</option><option value="u" selected>Última</option></select></label></div>
+     <table class="plain" style="margin:4px 0 8px">${[1, 2, 3, 4, 5, 6].map(w => `<tr><td><label class="chk"><input type="checkbox" data-rpw="${w}"><span>${WDL[w]}</span></label></td><td class="small">${pchk('data-rpwp', w)}</td></tr>`).join('')}</table></details>
      <div data-rpprev></div>
-     <p class="small muted">Datas que já são feriado ou sem aula vêm desmarcadas. Para mudar ou excluir depois, use a lista de Dias letivos e não letivos.</p>
+     <p class="small muted">Datas que já são feriado ou sem aula vêm desmarcadas. Depois de lançadas, cada data pode ser alterada na lista de Dias letivos e não letivos.</p>
      <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Lançar reuniões</button></div>`, true);
     rpPrev();
   },
@@ -5551,8 +5563,19 @@ Object.assign(ACT, {
     askConfirm(`Excluir as <b>${n}</b> reuniões pedagógicas de ${ano}?`, () => { S.cfg.fer = S.cfg.fer.filter(f => !(/^reuni/i.test(f.cons || '') && String(f.data).startsWith(ano))); saveCfg(); closeModal(); refresh(); toast(n + ' reunião(ões) excluída(s)'); }, 'Excluir');
   },
 });
-document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#modal') && (e.target.dataset.rp || e.target.dataset.rpw || e.target.dataset.rphi || e.target.dataset.rphf)) { const sm = $('#modal [data-rpsmw]'); if (sm) sm.style.display = $('#modal [data-rp=fr]').value === 'mes' ? '' : 'none'; rpPrev(); } });
-document.addEventListener('change', e => { if (e.target.closest && e.target.closest('#modal') && (e.target.dataset.rp || e.target.dataset.rpw)) { const sm = $('#modal [data-rpsmw]'); if (sm) sm.style.display = $('#modal [data-rp=fr]').value === 'mes' ? '' : 'none'; rpPrev(); } });
+MACT.rpAdd = () => {
+  const d = $('#modal [data-rpx=d]').value; const pers = [...document.querySelectorAll('#modal [data-rpxp]:checked')].map(e => e.value);
+  if (!isDate(d)) return toast('Escolha a data'); if (!pers.length) return toast('Marque manhã, tarde ou noite');
+  RP_EXTRA = RP_EXTRA.filter(x => x.d !== d).concat([{ d, pers }]);
+  $('#modal [data-rpx=d]').value = ''; document.querySelectorAll('#modal [data-rpxp]').forEach(e => e.checked = false); rpPrev();
+};
+// ao marcar um dia da semana sem período, sugere a noite; mudanças refazem a lista
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.closest || !el.closest('#modal')) return;
+  if (el.dataset.rpw && el.checked && !document.querySelector(`#modal [data-rpwp="${el.dataset.rpw}"]:checked`)) document.querySelector(`#modal [data-rpwp="${el.dataset.rpw}"][value="Noite"]`).checked = true;
+  if (el.dataset.rp || el.dataset.rpw || el.dataset.rpwp) rpPrev();
+  if (el.dataset.rpdp) { const x = RP_EXTRA.find(z => z.d === el.dataset.rpdp); if (x) x.pers = RP_PERS.filter(p => $(`#modal [data-rpdp="${x.d}"][value="${p}"]`).checked); }
+});
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
