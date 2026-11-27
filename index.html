@@ -1970,7 +1970,14 @@ function weekNav() {
   return `<button data-act="wkPrev">‹</button><span class="wklbl">${brs(w)} a ${br(end)}</span><button data-act="wkNext">›</button><input type="date" data-in="wkGo" value="${w}" title="Ir para a semana de…"><button data-act="wkHoje">Hoje</button>`;
 }
 function areaSel(withAll) { return `<select data-in="area">${withAll ? `<option value="__all" ${V.area === '__all' ? 'selected' : ''}>Todas as áreas</option>` : ''}${opt(S.cfg.areas, V.area)}</select>`; }
-function passT(t) { return areaOk(t.area) && (!V.cPer || t.per === V.cPer) && (!V.cq || (t.nome + ' ' + (t.sigla || '')).toLowerCase().includes(V.cq.toLowerCase())); }
+function passT(t) { return areaOk(t.area) && (!V.cPer || t.per === V.cPer) && (!V.cTid || t.id === V.cTid) && (!V.cq || (t.nome + ' ' + (t.sigla || '')).toLowerCase().includes(V.cq.toLowerCase())); }
+// lista suspensa com os cursos programados (ordem de início), respeitando área e período escolhidos
+function cursoSelCron() {
+  V.cq = ''; // filtro antigo por texto foi substituído pela lista
+  const L = Object.values(S.turmas).filter(t => R[t.id] && R[t.id].inicio && !isPlanAct(t) && areaOk(t.area) && (!V.cPer || t.per === V.cPer)).sort((a, b) => R[a.id].inicio.localeCompare(R[b.id].inicio) || a.nome.localeCompare(b.nome));
+  if (V.cTid && !L.some(t => t.id === V.cTid) && S.turmas[V.cTid]) L.unshift(S.turmas[V.cTid]);
+  return `<select data-in="cTid" style="flex:1 1 220px;max-width:420px"><option value="">Todos os cursos (${L.length})</option>${L.map(t => `<option value="${esc(t.id)}" ${t.id === V.cTid ? 'selected' : ''}>${esc(t.nome)}${t.sigla ? ' (' + esc(t.sigla) + ')' : ''} · início ${brs(R[t.id].inicio)}/${R[t.id].inicio.slice(2, 4)}</option>`).join('')}</select>`;
+}
 
 function viewCronograma() {
   const tab = V.cTab || 'semana';
@@ -1985,7 +1992,7 @@ function viewCronograma() {
 // ---------- Semana ----------
 function viewSemana() {
   const w = curWeek(); const days = [0, 1, 2, 3, 4, 5].map(i => addD(w, i));
-  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select><input placeholder="Filtrar curso ou sigla" data-in="cq" value="${esc(V.cq || '')}" style="flex:1 1 160px">${docSelCron()}</div>
+  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select>${cursoSelCron()}${docSelCron()}</div>
   <div class="bar filters wkbar">${visTabs()}${weekNav()}</div>`;
   const cell = {}; let n = 0;
   for (const d of days) for (const { t, row } of (IDX[d] || [])) { if (!passT(t) || !passDoc(row)) continue; const k = d + '|' + slotOf(row.a); (cell[k] = cell[k] || []).push({ t, row }); n++; }
@@ -2023,7 +2030,7 @@ function viewLinha() {
   const ano = +(V.lnAno || V.mes.slice(0, 4)); const d0 = ano + '-01-01', d1 = ano + '-12-31'; const span = (Dms(d1) - Dms(d0)) / 864e5 + 1;
   const x = ds => Math.max(0, Math.min(100, 100 * ((Dms(ds) - Dms(d0)) / 864e5) / span));
   const ts = Object.values(S.turmas).filter(t => passT(t) && R[t.id].aulas.some(a => a.ds >= d0 && a.ds <= d1)).sort((a, b) => (PER_ORD[a.per] - PER_ORD[b.per]) || (R[a.id].inicio || '').localeCompare(R[b.id].inicio || ''));
-  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select><input placeholder="Filtrar curso ou sigla" data-in="cq" value="${esc(V.cq || '')}" style="flex:1 1 160px"><button data-act="lnPrev">‹ ${ano - 1}</button><b>${ano}</b><button data-act="lnNext">${ano + 1} ›</button></div>`;
+  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select>${cursoSelCron()}<button data-act="lnPrev">‹ ${ano - 1}</button><b>${ano}</b><button data-act="lnNext">${ano + 1} ›</button></div>`;
   if (!ts.length) return h + '<div class="card empty">Nenhuma turma com aula neste ano com esses filtros.</div>';
   const months = Array.from({ length: 12 }, (_, i) => ano + '-' + String(i + 1).padStart(2, '0') + '-01');
   const grid = months.map(m => `<i class="gl" style="left:${x(m)}%"></i>`).join('') + (HOJE >= d0 && HOJE <= d1 ? `<i class="gtoday" style="left:${x(HOJE)}%"></i>` : '');
@@ -4401,7 +4408,7 @@ ${dica('Só as aulas do período marcado deixam de acontecer (manhã = aulas que
 ${P(`Clique no alerta para filtrar as aulas a corrigir, ou em <b>Abrir [outra turma] ›</b> para ir à aula do dia anterior.`, `Troque o docente de uma das duas aulas. Se a situação for combinada, marque o alerta como analisado.`)}` },
 
   { id: 'cad-filtros', t: 'Ver o cronograma por docente, mês ou ano', h: `
-${P(`Em ${caminho('Cronograma')} → <b>Semana / mês / ano</b>, escolha <b>Semana</b>, <b>Mês</b> ou <b>Ano</b>. As aulas aparecem nos mesmos cartões da semana.`, `Use o filtro de <b>docente</b> (e, se quiser, o de curso ou sigla) para ver só as aulas dele. No Ano, filtre por curso, docente ou área quando houver muitas aulas.`, `Dentro de uma turma, o <b>Cronograma de aulas</b> também tem o filtro <b>Todos os docentes</b>.`, `Em ${caminho('Horas e 70×30')} → <b>70 × 30</b>, escolha um docente para ver os 12 meses e o total do ano.`)}` },
+${P(`Em ${caminho('Cronograma')} → <b>Semana / mês / ano</b>, escolha <b>Semana</b>, <b>Mês</b> ou <b>Ano</b>. As aulas aparecem nos mesmos cartões da semana.`, `Use o filtro de <b>curso</b> (lista com os cursos programados, em ordem de início) e/ou o de <b>docente</b> para ver só essas aulas. No Ano, filtre por curso, docente ou área quando houver muitas aulas.`, `Dentro de uma turma, o <b>Cronograma de aulas</b> também tem o filtro <b>Todos os docentes</b>.`, `Em ${caminho('Horas e 70×30')} → <b>70 × 30</b>, escolha um docente para ver os 12 meses e o total do ano.`)}` },
 
   { id: 'cad-diasesp', t: 'Dias especiais, recessos e dias não letivos da turma', h: `
 ${P(`Abra a turma em ${caminho('Turmas e UCs')} e clique em <b>📆 Dias especiais e recessos desta turma…</b>.`, `<b>Período com outros dias</b>: informe as datas (ou escolha uma UC para usar as datas dela) e marque os dias de aula desse período. Ex.: curso só de segunda que, durante uma UC, tem aula de segunda a sexta.`, `<b>Recesso da turma</b>: informe de/até e o motivo. As aulas desses dias passam para a frente só nesta turma.`, `<b>Dias não letivos da unidade</b>: marque os dias em que esta turma terá aula mesmo assim, ou desconsidere de uma vez todos os “Sem aula”/recessos ou todos os feriados e emendas.`)}
@@ -5434,7 +5441,7 @@ function mesGrid(ym, cont) {
 }
 function viewCronMesAno() {
   const vis = V.cVis; const ym = V.mes; const ano = +ym.slice(0, 4);
-  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select><input placeholder="Filtrar curso ou sigla" data-in="cq" value="${esc(V.cq || '')}" style="flex:1 1 160px">${docSelCron()}</div>
+  let h = `<div class="bar filters">${areaMulti()}<select data-in="cPer">${opt(PERS, V.cPer || '', 'Todos os períodos')}</select>${cursoSelCron()}${docSelCron()}</div>
   <div class="bar filters wkbar">${visTabs()}${vis === 'mes' ? mesNav() : `<button data-act="cAnoP">‹ ${ano - 1}</button><b style="align-self:center">${ano}</b><button data-act="cAnoN2">${ano + 1} ›</button>`}</div>`;
   const cont = { n: 0 };
   if (vis === 'mes') { const g = mesGrid(ym, cont); return h + (cont.n ? '' : '<div class="card empty">Nenhuma aula neste mês com esses filtros.</div>') + g; }
