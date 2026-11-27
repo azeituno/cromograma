@@ -972,7 +972,7 @@ function viewTurma() {
   h += '</div>';
   // Cronograma
   h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Cronograma de aulas</h2>${tVisBtns()}${tDocSel(t)}
-   <button data-act="tLote">✎ Alterar várias aulas</button><button data-act="addExtra">+ Aula extra</button><button data-act="cancelRange">Cancelar período</button><button data-act="resetOv">Limpar ajustes</button></div>
+   <button data-act="tLote">✎ Alterar várias aulas</button><button data-act="addExtra">+ Aula extra</button><button data-act="cancelRange">Cancelar período</button><button data-act="resetOv">Limpar ajustes</button></div>${tFilBar(t)}
    <div class="legend"><span>📌 UC escolhida à mão</span><span><span class="ead on">EAD</span> aula a distância</span><span class="at conf">Conflito</span><span class="at fer">Férias</span><span class="at esc">Fora da escala</span><span class="at sala">Sala ocupada</span></div></div>`;
   if (r.sit !== 'OK') return h + `<div class="card empty">${esc(r.sit)} para gerar o cronograma.</div>`;
   const ucOpts = (sel, locked) => (locked ? `<option value="">↺ voltar à sequência automática</option>` : sel < 0 ? '<option value="">— escolher UC —</option>' : '') + r.units.map((u, i) => `<option value="${esc(u.id)}" ${sel === i ? 'selected' : ''}>${esc((u.num ? 'UC ' + u.num + ' · ' : '') + u.nome)}</option>`).join('');
@@ -981,6 +981,7 @@ function viewTurma() {
   for (const row of (V.tVis === 'cal' ? [] : r.rows)) {
     if (V.tFix && !fixRowOk(row, r)) continue;
     if (tDocFiltro(t) && !(row.docs || []).includes(tDocFiltro(t))) continue;
+    if (!tFilOk(t, row.ds)) continue;
     const m = row.ds.slice(0, 7);
     if (m !== mes) { mes = m; h += `<div class="mhead">${MESESL[+m.slice(5) - 1]} ${m.slice(0, 4)}</div>`; }
     const dt = `<div class="dt"><b>${brs(row.ds)}</b><small>${WD[row.w]}</small></div>`;
@@ -4386,10 +4387,10 @@ ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula 
 
   { id: 'cad-analise', t: 'Análise do curso (regras de conferência)', h: `
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}. O quadro <b>🔍 Análise do curso</b> mostra se o cronograma passou nas regras ou quantas falhas tem. Clique em <b>Ver análise</b>: cada falha é um link que leva à aula.`, `Para ver todos os cursos de uma vez, use <b>🔍 Analisar cursos</b> no topo da lista de turmas.`, `Em <b>⚙ Regras de análise</b>, ative ou desative regras e clique em <b>+ Nova regra</b>: escolha o tipo (ex.: aula EAD antes da presencial, N aulas EAD seguidas, última aula da UC em EAD, aula sem docente ou sem sala, intervalo maior que N dias, dia da semana não permitido, UC com mais de N docentes, item de conferência manual), o parâmetro e as áreas em que vale.`, `Regras de conferência manual aparecem como caixinhas na análise de cada curso; marque quando conferir.`)}
-${dica('A regra “Aula EAD da UC antes da primeira aula presencial da mesma UC” já vem ativa. Se precisar de um tipo de regra que ainda não existe, peça a inclusão.')}` },
+${dica('A regra “Aula EAD da UC antes da primeira aula presencial da mesma UC” já vem ativa e não se aplica às UCs de Projeto integrador (campo “Não aplicar às UCs cujo nome contém”, que você pode editar em cada regra). Se precisar de um tipo de regra que ainda não existe, peça a inclusão.')}` },
 
   { id: 'cad-lote', t: 'Alterar várias aulas, recessos e calendário da turma', h: `
-${P(`<b>Várias aulas de uma vez:</b> na turma, clique em <b>✎ Alterar várias aulas</b>. Em <b>📅 Escolher datas</b>, clique nos dias com aula (em verde) ou use <b>Período</b> (de / até e dias da semana) e <b>+ Marcar o período</b>.`, `Escolha o que alterar: docentes, sala, UC fixa, EAD/presencial, cancelar as aulas ou desfazer ajustes, e clique em <b>Aplicar</b>.`, `<b>Calendário da turma:</b> no Cronograma de aulas, use <b>📅 Calendário</b> para ver o curso mês a mês; clique numa aula para voltar à lista já nela. <b>☰ Lista</b> volta ao formato de linhas.`, `<b>Recesso em vários dias:</b> em ${caminho('Dias letivos e não letivos')} → <b>+ Período (recesso)</b>, marque os dias no calendário (ou use Período) e clique em <b>Incluir</b>.`)}` },
+${P(`<b>Filtrar por data:</b> no Cronograma de aulas, escolha um <b>Mês</b> ou informe <b>de / até</b>: a lista (e o calendário) mostram só as aulas desse período, e o botão <b>✎ Alterar as aulas deste período</b> abre a alteração já com elas marcadas.`, `<b>Várias aulas de uma vez:</b> na turma, clique em <b>✎ Alterar várias aulas</b>. Em <b>📅 Escolher datas</b>, clique nos dias com aula (em verde) ou use <b>Período</b> (de / até e dias da semana) e <b>+ Marcar o período</b>.`, `Escolha o que alterar: docentes, sala, UC fixa, EAD/presencial, cancelar as aulas ou desfazer ajustes, e clique em <b>Aplicar</b>.`, `<b>Calendário da turma:</b> no Cronograma de aulas, use <b>📅 Calendário</b> para ver o curso mês a mês; clique numa aula para voltar à lista já nela. <b>☰ Lista</b> volta ao formato de linhas.`, `<b>Recesso em vários dias:</b> em ${caminho('Dias letivos e não letivos')} → <b>+ Período (recesso)</b>, marque os dias no calendário (ou use Período) e clique em <b>Incluir</b>.`)}` },
 
   { id: 'cad-reuniao', t: 'Reuniões pedagógicas', h: `
 ${P(`Em ${caminho('Dias letivos e não letivos')}, clique em <b>+ Reuniões pedagógicas</b>.`, `Clique em <b>📅 Escolher datas no calendário</b> e marque várias datas (use ‹ › para mudar de mês; clique de novo para desmarcar). Marque o período (<b>Manhã</b>, <b>Tarde</b> e/ou <b>Noite</b>) e clique em <b>+ Adicionar datas</b>: todas vão para a lista. Repita para datas com outro período.`, `Se as reuniões seguem um padrão, abra <b>Ou gerar por regra</b>: escolha os dias da semana, o período de cada um e a frequência (1 vez por mês, a cada 2 semanas ou toda semana).`, `Na lista, ajuste o período de cada data ou desmarque a data, e clique em <b>Lançar reuniões</b>.`)}
@@ -5699,7 +5700,7 @@ ACT.tLote = () => {
 document.addEventListener('change', e => { const el = e.target; if (el.closest && el.closest('#modal') && (el.dataset.lts != null || el.dataset.ltu != null)) { const r = el.closest('label').querySelector('input[type=radio]'); if (r) r.checked = true; } });
 // ---------- Turma: cronograma em formato de calendário ----------
 function tCalHtml(t) {
-  const r = R[t.id]; const rows = r.rows.filter(x => !tDocFiltro(t) || (x.docs || []).includes(tDocFiltro(t)));
+  const r = R[t.id]; const rows = r.rows.filter(x => (!tDocFiltro(t) || (x.docs || []).includes(tDocFiltro(t))) && tFilOk(t, x.ds));
   if (!rows.length) return '<div class="empty">Sem aulas.</div>';
   const by = {}; for (const x of rows) (by[x.ds] = by[x.ds] || []).push(x);
   const ini = rows[0].ds.slice(0, 7), fim = rows[rows.length - 1].ds.slice(0, 7);
@@ -5726,6 +5727,27 @@ function tCalHtml(t) {
 ACT.tVis = el => { V.tVis = el.dataset.v; refresh(); };
 ACT.tCalGo = el => { V.tVis = 'lista'; V.hl = el.dataset.ds; refresh(); };
 function tVisBtns() { const v = V.tVis || 'lista'; return `<span class="segbtn">${[['lista', '☰ Lista'], ['cal', '📅 Calendário']].map(([k, l]) => `<button class="sm ${v === k ? 'pri' : ''}" data-act="tVis" data-v="${k}">${l}</button>`).join('')}</span>`; }
+// ---------- Turma: filtro do cronograma por data ou período ----------
+function tFil(t) { const f = V.tFil || {}; return f.tid === t.id ? f : {}; }
+function tFilOk(t, ds) { const f = tFil(t); return (!f.de || ds >= f.de) && (!f.ate || ds <= f.ate); }
+function tFilBar(t) {
+  const f = tFil(t); const r = R[t.id]; const meses = [...new Set(r.rows.map(x => x.ds.slice(0, 7)))];
+  const mSel = f.de && f.ate && f.de.slice(0, 7) === f.ate.slice(0, 7) && f.de.endsWith('-01') && addD(f.ate, 1).endsWith('-01') ? f.de.slice(0, 7) : '';
+  const n = (f.de || f.ate) ? r.aulas.filter(a => tFilOk(t, a.ds)).length : 0;
+  return `<div class="bar filters" style="margin:8px 0 0;flex-wrap:wrap;align-items:center;background:#f7f9fa;border-radius:10px;padding:6px 8px">
+   <b class="small">Filtrar por data:</b>
+   <select data-tfmes><option value="">Mês…</option>${meses.map(m => `<option value="${m}" ${m === mSel ? 'selected' : ''}>${MESESL[+m.slice(5) - 1]} ${m.slice(0, 4)}</option>`).join('')}</select>
+   <span class="small">ou de</span><input type="date" data-tf="de" value="${esc(f.de || '')}" style="width:auto"><span class="small">até</span><input type="date" data-tf="ate" value="${esc(f.ate || '')}" style="width:auto">
+   ${f.de || f.ate ? `<span class="pill">${n} aula(s) no período</span><button class="sm" data-act="tfLimpa">✕ limpar</button>${canWrite() && n ? '<button class="sm pri" data-act="tLote" data-fil="1">✎ Alterar as aulas deste período</button>' : ''}` : '<span class="small muted">mostra só as aulas do período escolhido</span>'}</div>`;
+}
+ACT.tfLimpa = () => { V.tFil = {}; refresh(); };
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.dataset) return; const t = curT(); if (!t) return;
+  if (el.dataset.tfmes != null) { const m = el.value; V.tFil = m ? { tid: t.id, de: m + '-01', ate: addD(addD(m + '-28', 4).slice(0, 7) + '-01', -1) } : {}; return refresh(); }
+  if (el.dataset.tf) { const f = Object.assign({}, tFil(t), { tid: t.id }); f[el.dataset.tf] = el.value; V.tFil = f; return refresh(); }
+});
+// abre "Alterar várias aulas" já com as aulas do filtro marcadas
+{ const orig = ACT.tLote; ACT.tLote = el => { orig(el); const t = curT(); if (el && el.dataset && el.dataset.fil && DP.lote) { for (const a of R[t.id].aulas) if (tFilOk(t, a.ds)) DP.lote.sel.add(a.ds); const f = tFil(t); if (f.de) DP.lote.ym = f.de.slice(0, 7); dpRender('lote'); } }; }
 
 // ---------- Análise do curso: regras de conferência do cronograma ----------
 const REG_TIPOS = {
@@ -5742,7 +5764,8 @@ const REG_TIPOS = {
   manual: { nome: 'Item para conferir manualmente (marcar como conferido)', p: 'txt', pl: 'O que conferir' },
 };
 function regras() {
-  if (!S.cfg.regras) S.cfg.regras = [{ id: 'r-eadantes', tipo: 'eadAntes', nome: '', ativo: true, areas: [] }];
+  if (!S.cfg.regras) S.cfg.regras = [{ id: 'r-eadantes', tipo: 'eadAntes', nome: '', ativo: true, areas: [], excl: 'Projeto integrador' }];
+  for (const g of S.cfg.regras) if (g.tipo === 'eadAntes' && g.excl == null) g.excl = 'Projeto integrador';
   return S.cfg.regras;
 }
 const regNome = g => g.nome || (REG_TIPOS[g.tipo] || {}).nome.replace(/\bN\b/, g.n != null ? g.n : 'N') || g.tipo;
@@ -5751,20 +5774,21 @@ function analisa(t) {
   const r = R[t.id]; if (!r) return [];
   const A = r.aulas.filter(a => a.ui >= 0); const out = [];
   const porUC = {}; for (const a of A) (porUC[a.ui] = porUC[a.ui] || []).push(a);
+  const exclui = (g, ui) => { const ws = String(g.excl || '').split(/[,;]/).map(x => x.trim().toLowerCase()).filter(Boolean); if (!ws.length) return false; const u = r.units[ui] || {}; const n = String(u.nome || '').toLowerCase(); return ws.some(w => n.includes(w)); };
   const uN = ui => { const u = r.units[ui] || {}; return u.num ? 'UC ' + u.num : (u.nome || 'UC'); };
   for (const g of regras()) {
     if (!regVale(g, t)) continue; const F = (msg, ds) => out.push({ g, msg, ds });
     switch (g.tipo) {
-      case 'eadAntes': for (const [ui, L] of Object.entries(porUC)) { const p = L.find(a => !a.ead); if (!p) continue; for (const a of L) if (a.ead && a.ds < p.ds) F(`${uN(ui)}: aula EAD em ${br(a.ds)} antes da primeira presencial (${br(p.ds)})`, a.ds); } break;
-      case 'minPres': for (const [ui, L] of Object.entries(porUC)) { const i = L.findIndex(a => a.ead); if (i < 0) continue; const np = L.slice(0, i).filter(a => !a.ead).length; if (np < +g.n) F(`${uN(ui)}: só ${np} aula(s) presencial(is) antes da primeira EAD (${br(L[i].ds)}) — mínimo ${g.n}`, L[i].ds); } break;
-      case 'eadSeq': for (const [ui, L] of Object.entries(porUC)) { let s = 0; for (const a of L) { s = a.ead ? s + 1 : 0; if (s === +g.n + 1) F(`${uN(ui)}: ${s} aulas EAD seguidas até ${br(a.ds)} — máximo ${g.n}`, a.ds); } } break;
-      case 'ultPres': for (const [ui, L] of Object.entries(porUC)) { const u = L[L.length - 1]; if (u.ead && L.some(a => !a.ead)) F(`${uN(ui)}: última aula (${br(u.ds)}) é EAD`, u.ds); } break;
+      case 'eadAntes': for (const [ui, L] of Object.entries(porUC)) { if (exclui(g, ui)) continue; const p = L.find(a => !a.ead); if (!p) continue; for (const a of L) if (a.ead && a.ds < p.ds) F(`${uN(ui)}: aula EAD em ${br(a.ds)} antes da primeira presencial (${br(p.ds)})`, a.ds); } break;
+      case 'minPres': for (const [ui, L] of Object.entries(porUC)) { if (exclui(g, ui)) continue; const i = L.findIndex(a => a.ead); if (i < 0) continue; const np = L.slice(0, i).filter(a => !a.ead).length; if (np < +g.n) F(`${uN(ui)}: só ${np} aula(s) presencial(is) antes da primeira EAD (${br(L[i].ds)}) — mínimo ${g.n}`, L[i].ds); } break;
+      case 'eadSeq': for (const [ui, L] of Object.entries(porUC)) { if (exclui(g, ui)) continue; let s = 0; for (const a of L) { s = a.ead ? s + 1 : 0; if (s === +g.n + 1) F(`${uN(ui)}: ${s} aulas EAD seguidas até ${br(a.ds)} — máximo ${g.n}`, a.ds); } } break;
+      case 'ultPres': for (const [ui, L] of Object.entries(porUC)) { if (exclui(g, ui)) continue; const u = L[L.length - 1]; if (u.ead && L.some(a => !a.ead)) F(`${uN(ui)}: última aula (${br(u.ds)}) é EAD`, u.ds); } break;
       case 'primPres': if (A[0] && A[0].ead) F(`Primeira aula do curso (${br(A[0].ds)}) é EAD`, A[0].ds); break;
       case 'semDoc': { const L = A.filter(a => !(a.docs || []).length); if (L.length) F(`${L.length} aula(s) sem docente, a primeira em ${br(L[0].ds)}`, L[0].ds); } break;
       case 'semSala': { const L = A.filter(a => !a.ead && naSala(a) && !a.sala); if (L.length) F(`${L.length} aula(s) presencial(is) sem sala, a primeira em ${br(L[0].ds)}`, L[0].ds); } break;
       case 'gap': for (let i = 1; i < A.length; i++) { const d = Math.round((new Date(A[i].ds) - new Date(A[i - 1].ds)) / 864e5); if (d > +g.n) F(`${d} dias sem aula entre ${br(A[i - 1].ds)} e ${br(A[i].ds)} — máximo ${g.n}`, A[i].ds); } break;
       case 'diaProib': { const ws = (g.w || []).map(Number); const L = A.filter(a => ws.includes(wd(a.ds))); if (L.length) F(`${L.length} aula(s) em ${[...new Set(L.map(a => WDL[wd(a.ds)].toLowerCase()))].join(', ')}, a primeira em ${br(L[0].ds)}`, L[0].ds); } break;
-      case 'ucDocs': for (const [ui, L] of Object.entries(porUC)) { const D = new Set(L.flatMap(a => a.docs || [])); if (D.size > +g.n) F(`${uN(ui)}: ${D.size} docentes diferentes (${[...D].map(short).join(', ')}) — máximo ${g.n}`, L[0].ds); } break;
+      case 'ucDocs': for (const [ui, L] of Object.entries(porUC)) { if (exclui(g, ui)) continue; const D = new Set(L.flatMap(a => a.docs || [])); if (D.size > +g.n) F(`${uN(ui)}: ${D.size} docentes diferentes (${[...D].map(short).join(', ')}) — máximo ${g.n}`, L[0].ds); } break;
       case 'manual': if (!((t.chk || {})[g.id])) F(`Conferir: ${g.txt || regNome(g)}`, null); break;
     }
   }
@@ -5794,7 +5818,7 @@ function regModal(i) {
     return `<label class="f">${T.pl}<input data-rg="txt" value="${esc(g.txt || '')}" placeholder="ex.: plano de curso enviado ao SS"></label>`; };
   MCTX = { ok: () => {
     const tp = $('#modal [data-rg=tipo]').value; const T = REG_TIPOS[tp];
-    const ng = { id: g.id || uid('r'), tipo: tp, nome: $('#modal [data-rg=nome]').value.trim(), ativo: $('#modal [data-rg=ativo]').checked, areas: [...document.querySelectorAll('#modal [data-rga]:checked')].map(e => e.value) };
+    const ng = { id: g.id || uid('r'), tipo: tp, excl: $('#modal [data-rg=excl]').value.trim(), nome: $('#modal [data-rg=nome]').value.trim(), ativo: $('#modal [data-rg=ativo]').checked, areas: [...document.querySelectorAll('#modal [data-rga]:checked')].map(e => e.value) };
     if (T.p === 'n') { const v = $('#modal [data-rg=n]').value; if (v === '' || +v < 0) return toast('Informe N'); ng.n = +v; }
     if (T.p === 'w') { ng.w = [...document.querySelectorAll('#modal [data-rgw]:checked')].map(e => +e.value); if (!ng.w.length) return toast('Marque os dias'); }
     if (T.p === 'txt') { ng.txt = $('#modal [data-rg=txt]').value.trim(); if (!ng.txt) return toast('Descreva o que conferir'); }
@@ -5803,6 +5827,7 @@ function regModal(i) {
   modal(`<h2>${i != null ? 'Editar' : 'Nova'} regra de análise</h2>
    <label class="f">Tipo de regra<select data-rg="tipo">${Object.entries(REG_TIPOS).map(([k, v]) => `<option value="${k}" ${g.tipo === k ? 'selected' : ''}>${esc(v.nome)}</option>`).join('')}</select></label>
    <div data-rgp style="margin:8px 0">${campos(g.tipo)}</div>
+   <label class="f">Não aplicar às UCs cujo nome contém <span class="small muted">(separe por vírgula; vale nas regras por UC)</span><input data-rg="excl" value="${esc(g.excl || '')}" placeholder="ex.: Projeto integrador, Estágio"></label>
    <label class="f">Nome da regra (opcional)<input data-rg="nome" value="${esc(g.nome || '')}" placeholder="usa o nome do tipo se ficar vazio"></label>
    <div class="small muted" style="margin-top:8px">Vale para as áreas (nenhuma marcada = todas)</div>
    <div class="bar" style="margin:4px 0;flex-wrap:wrap">${areas.map(a => `<label class="chk"><input type="checkbox" data-rga value="${esc(a)}" ${(g.areas || []).includes(a) ? 'checked' : ''}><span>${esc(a)}</span></label>`).join('')}</div>
@@ -5817,7 +5842,7 @@ Object.assign(ACT, {
     const L = regras();
     MCTX = {};
     modal(`<h2>Regras de análise dos cursos</h2><p class="small muted" style="margin-top:-4px">As regras ativas conferem o cronograma de cada curso. Crie novas regras a partir dos tipos disponíveis; se precisar de um tipo que não existe, peça a inclusão.</p>
-     <div class="tw"><table class="plain"><tr><th></th><th>Regra</th><th>Áreas</th><th></th></tr>${L.map((g, i) => `<tr><td><input type="checkbox" data-rgon="${i}" ${g.ativo !== false ? 'checked' : ''} title="Ativa"></td><td>${esc(regNome(g))}${g.tipo === 'manual' && g.txt ? `<div class="small muted">${esc(g.txt)}</div>` : ''}</td><td class="small">${(g.areas || []).length ? esc(g.areas.join(', ')) : 'todas'}</td><td class="nowrap"><button class="sm" data-m="regEd" data-i="${i}">✎</button><button class="sm dng" data-m="regDel" data-i="${i}">✕</button></td></tr>`).join('')}</table></div>
+     <div class="tw"><table class="plain"><tr><th></th><th>Regra</th><th>Áreas</th><th></th></tr>${L.map((g, i) => `<tr><td><input type="checkbox" data-rgon="${i}" ${g.ativo !== false ? 'checked' : ''} title="Ativa"></td><td>${esc(regNome(g))}${g.tipo === 'manual' && g.txt ? `<div class="small muted">${esc(g.txt)}</div>` : ''}${g.excl ? `<div class="small muted">exceto UCs: ${esc(g.excl)}</div>` : ''}</td><td class="small">${(g.areas || []).length ? esc(g.areas.join(', ')) : 'todas'}</td><td class="nowrap"><button class="sm" data-m="regEd" data-i="${i}">✎</button><button class="sm dng" data-m="regDel" data-i="${i}">✕</button></td></tr>`).join('')}</table></div>
      <div class="mact"><button data-m="regNova">+ Nova regra</button><button class="pri" data-m="close">Fechar</button></div>`, true);
   },
   anTodas: () => {
