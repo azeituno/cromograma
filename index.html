@@ -1137,7 +1137,8 @@ function viewSalas() {
 function viewHoras() {
   const ano = +V.ano || S.cfg.ano; const H = horasDocentes(S, ano);
   let h = `<h1>Horas dos docentes</h1><div class="tabs">${[['resumo', 'Resumo por mês'], ['70', '70 × 30'], ['turma', 'Por turma']].map(([k, l]) => `<button class="${V.sub === k ? 'on' : ''}" data-set="sub" data-v="${k}">${l}</button>`).join('')}<span class="grow"></span><span class="small muted" style="align-self:center">Ano</span><input type="number" style="width:90px" data-in="ano" value="${ano}"></div>`;
-  const docs = S.docentes.slice().sort((a, b) => a.nome.localeCompare(b.nome));
+  const docs = S.docentes.slice().sort((a, b) => a.nome.localeCompare(b.nome)).filter(d => docOk(d.nome));
+  h += docMultiSel();
   if (V.sub === 'resumo') {
     h += `<div class="tw"><table class="hm"><tr><th>Docente</th>${MESES.map(m => `<th class="num">${m}</th>`).join('')}<th class="num">Total em aula</th><th class="num">Disponível</th><th class="num">Ocupação</th></tr>`;
     for (const d of docs) {
@@ -1145,14 +1146,14 @@ function viewHoras() {
       const disp = r2(cargaDisponivel(d, ano).reduce((a, b) => a + b, 0));
       h += `<tr><td>${esc(d.nome)}</td>${m.map(x => `<td class="num">${x ? r2(x) : ''}</td>`).join('')}<td class="num"><b>${tot}</b></td><td class="num">${disp}</td><td class="num">${disp ? Math.round(100 * tot / disp) + '%' : ''}</td></tr>`;
     }
-    const outros = Object.keys(H).filter(n => !DOCMAP[n]);
+    const outros = Object.keys(H).filter(n => !DOCMAP[n] && docOk(n));
     for (const n of outros) { const m = H[n].m; h += `<tr><td>${esc(n)} <span class="pill warn">sem cadastro</span></td>${m.map(x => `<td class="num">${x ? r2(x) : ''}</td>`).join('')}<td class="num">${r2(m.reduce((a, b) => a + b, 0))}</td><td></td><td></td></tr>`; }
     return h + '</table></div><p class="small muted">Horas em aula = dias de aula do docente × horas da aula da turma (inclui aulas EAD). Disponível = escala da semana nos dias letivos e “sem aula (conta carga)”, descontando feriados, emendas, férias e afastamentos.</p>';
   }
   if (V.sub === '70') return h + view70(ano, H, docs);
   if (V.sub === 'turma') {
     h += `<div class="tw"><table><tr><th>Docente</th><th>Área</th><th>Turma</th>${MESES.map(m => `<th class="num">${m}</th>`).join('')}<th class="num">Total</th><th>Centro de custo</th></tr>`;
-    for (const n of Object.keys(H).sort()) for (const [tid, m] of Object.entries(H[n].t)) {
+    for (const n of Object.keys(H).sort().filter(docOk)) for (const [tid, m] of Object.entries(H[n].t)) {
       const t = S.turmas[tid];
       h += `<tr><td>${esc(n)}</td><td class="small">${esc(t.area)}</td><td class="small">${esc(t.nome)} (${esc(t.per)})</td>${m.map(x => `<td class="num">${x ? r2(x) : ''}</td>`).join('')}<td class="num"><b>${r2(m.reduce((a, b) => a + b, 0))}</b></td><td class="small">${esc(t.cc)}</td></tr>`;
     }
@@ -4468,7 +4469,7 @@ ${dica('Só as aulas do período marcado deixam de acontecer (manhã = aulas que
 ${P(`Clique no alerta para filtrar as aulas a corrigir, ou em <b>Abrir [outra turma] ›</b> para ir à aula do dia anterior.`, `Troque o docente de uma das duas aulas. Se a situação for combinada, marque o alerta como analisado.`)}` },
 
   { id: 'cad-filtros', t: 'Ver o cronograma por docente, mês ou ano', h: `
-${P(`Em ${caminho('Cronograma')} → <b>Semana / mês / ano</b>, escolha <b>Semana</b>, <b>Mês</b> ou <b>Ano</b>. As aulas aparecem nos mesmos cartões da semana.`, `Use o filtro de <b>curso</b> (lista com os cursos programados, em ordem de início) e/ou o de <b>docente</b> para ver só essas aulas. No Ano, filtre por curso, docente ou área quando houver muitas aulas.`, `Dentro de uma turma, o <b>Cronograma de aulas</b> também tem o filtro <b>Todos os docentes</b>.`, `Em ${caminho('Horas e 70×30')} → <b>70 × 30</b>, escolha um docente para ver os 12 meses e o total do ano.`)}` },
+${P(`Em ${caminho('Cronograma')} → <b>Semana / mês / ano</b>, escolha <b>Semana</b>, <b>Mês</b> ou <b>Ano</b>. As aulas aparecem nos mesmos cartões da semana.`, `Use o filtro de <b>curso</b> (lista com os cursos programados, em ordem de início) e/ou o de <b>docente</b> para ver só essas aulas. No Ano, filtre por curso, docente ou área quando houver muitas aulas.`, `Dentro de uma turma, o <b>Cronograma de aulas</b> também tem o filtro <b>Todos os docentes</b>.`, `Em ${caminho('Horas e 70×30')}, use <b>👥 Todos os docentes</b> para escolher um ou vários docentes (busque pelo nome, marque e clique em <b>Aplicar</b>); vale nas três abas. No <b>70 × 30</b>, escolha um mês ou <b>Ano inteiro</b>: com vários docentes aparece uma linha por docente e o total; com um docente só e o ano inteiro, os 12 meses dele.`)}` },
 
   { id: 'cad-diasesp', t: 'Dias especiais, recessos e dias não letivos da turma', h: `
 ${P(`Abra a turma em ${caminho('Turmas e UCs')} e clique em <b>📆 Dias especiais e recessos desta turma…</b>.`, `<b>Período com outros dias</b>: informe as datas (ou escolha uma UC para usar as datas dela) e marque os dias de aula desse período. Ex.: curso só de segunda que, durante uma UC, tem aula de segunda a sexta.`, `<b>Recesso da turma</b>: informe de/até e o motivo. As aulas desses dias passam para a frente só nesta turma.`, `<b>Dias não letivos da unidade</b>: marque os dias em que esta turma terá aula mesmo assim, ou desconsidere de uma vez todos os “Sem aula”/recessos ou todos os feriados e emendas.`)}
@@ -5442,27 +5443,48 @@ document.addEventListener('change', e => {
   const el = e.target; if (!el.dataset || !el.dataset.tccin) return; const t = curT(); if (!t) return;
   t.cc = ccResolve(el.value); if (!t.cc) delete t.cc; saveT(t); refresh();
 });
-// ---------- 70×30: filtro por docente (sem o gráfico de acompanhamento) ----------
+// ---------- Horas e 70×30: vários docentes e mês ou ano inteiro ----------
+const docOk = n => !(V.dSel || []).length || V.dSel.includes(n);
+(function () { const st = document.createElement('style'); st.textContent = `.dms{position:relative;display:inline-block}.dms>summary{list-style:none;cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:7px 12px;background:#fff;font-size:14px}.dms>summary::-webkit-details-marker{display:none}
+.dms .dmp{position:absolute;z-index:30;top:40px;left:0;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.15);padding:10px;width:340px;max-height:420px;display:flex;flex-direction:column;gap:6px}.dms .dml{overflow:auto;max-height:300px;display:flex;flex-direction:column;gap:2px}.dms .dml label{display:flex;gap:8px;align-items:center;padding:3px 4px;border-radius:6px;font-size:13.5px;cursor:pointer}.dms .dml label:hover{background:#f3f6f7}`; document.head.appendChild(st); })();
+function docMultiSel() {
+  const L = S.docentes.map(d => d.nome).sort((a, b) => a.localeCompare(b)); const sel = new Set(V.dSel || []);
+  const lbl = !sel.size ? 'Todos os docentes' : sel.size === 1 ? [...sel][0] : sel.size + ' docentes selecionados';
+  return `<div class="bar filters" style="margin:6px 0"><details class="dms" ${V.dmsOpen ? 'open' : ''}><summary data-act="dmsTg">👥 ${esc(lbl)} ▾</summary><div class="dmp">
+   <input placeholder="Buscar docente…" data-dmsq value="${esc(V.dmsQ || '')}">
+   <div class="bar" style="margin:0"><button class="sm" data-act="dmsTodos">Marcar todos os listados</button><button class="sm" data-act="dmsLimpa">Limpar</button></div>
+   <div class="dml">${L.map(n => `<label data-dmsn="${esc(n.toLowerCase())}" ${V.dmsQ && !n.toLowerCase().includes(V.dmsQ.toLowerCase()) ? 'style="display:none"' : ''}><input type="checkbox" data-dms="${esc(n)}" ${sel.has(n) ? 'checked' : ''}><span>${esc(n)}</span></label>`).join('')}</div>
+   <div class="bar" style="margin:0;justify-content:flex-end"><button class="sm pri" data-act="dmsOk">Aplicar</button></div></div></details>
+   ${sel.size ? `<span class="small muted">${[...sel].map(short).join(', ')}</span><button class="sm" data-act="dmsLimpa">✕ todos</button>` : ''}</div>`;
+}
+Object.assign(ACT, {
+  dmsTg: (el, e) => { if (e) e.preventDefault(); V.dmsOpen = !V.dmsOpen; refresh(); },
+  dmsOk: () => { V.dSel = [...document.querySelectorAll('[data-dms]:checked')].map(c => c.dataset.dms); V.dmsOpen = false; refresh(); },
+  dmsLimpa: () => { V.dSel = []; V.dmsOpen = false; V.dmsQ = ''; refresh(); },
+  dmsTodos: () => document.querySelectorAll('.dml label').forEach(l => { if (l.style.display !== 'none') l.querySelector('input').checked = true; }),
+});
+document.addEventListener('input', e => { const el = e.target; if (el.dataset && el.dataset.dmsq != null) { V.dmsQ = el.value; const q = el.value.toLowerCase(); document.querySelectorAll('.dml label').forEach(l => l.style.display = l.dataset.dmsn.includes(q) ? '' : 'none'); } });
 function view70(ano, H, docs) {
-  const mi = +V.mes.slice(5) - 1; const meta = +S.cfg.meta || 0.7, tol = +S.cfg.tol || 0.05;
-  const dn = V.d70 && DOCMAP[V.d70] ? V.d70 : '';
-  let h = `<div class="bar filters"><select data-in="d70"><option value="">Todos os docentes</option>${docs.map(d => `<option ${d.nome === dn ? 'selected' : ''}>${esc(d.nome)}</option>`).join('')}</select>${dn ? '' : `<select data-in="m70">${MESESL.map((m, i) => `<option value="${i}" ${i === mi ? 'selected' : ''}>${m}</option>`).join('')}</select>`}</div>
+  const meta = +S.cfg.meta || 0.7, tol = +S.cfg.tol || 0.05;
+  const per = V.p70 != null ? V.p70 : String(+V.mes.slice(5) - 1); const anoTodo = per === 'ano';
+  let h = `<div class="bar filters"><select data-in="p70"><option value="ano" ${anoTodo ? 'selected' : ''}>Ano inteiro (${ano})</option>${MESESL.map((m, i) => `<option value="${i}" ${String(i) === per ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
    <p class="small muted">Meta de aula: ${Math.round(meta * 100)}% (± ${Math.round(tol * 100)} p.p.) · verde = na meta · vermelho = aula acima (falta planejamento) · amarelo = abaixo (folga para alocar) · Turmas marcadas como planejamento e as de centro de custo terminado em 4060.0 contam no planejamento (30%), não em aula.</p>`;
-  const linha = (lbl, d, i, extra) => {
-    const c = cargaDisponivel(d, ano)[i]; const a = r2(((H[d.nome] || {}).m || [])[i] || 0); const at = r2(((H[d.nome] || {}).pl || [])[i] || 0);
-    const p = c ? a / c : 0; const cls = !a ? 'no' : p > meta + tol ? 'hi' : p < meta - tol ? 'lo' : 'ok';
-    return { c, a, html: `<tr><td>${lbl}</td>${extra}<td class="num">${c}</td><td class="num">${a}</td><td class="num">${r2(Math.max(0, c - a))}${at ? ` <span class="small muted">(${at} em atividades)</span>` : ''}</td><td class="num c70 ${cls}">${c ? Math.round(p * 100) + '%' : ''}</td><td class="num">${c ? Math.round(Math.max(0, 1 - p) * 100) + '%' : ''}</td></tr>` };
-  };
-  if (dn) {
-    const d = DOCMAP[dn]; let tc = 0, ta = 0;
-    h += `<h2 style="margin:6px 0">${esc(dn)} <span class="small muted">${esc(d.funcao || '')} · ${ano}</span></h2><div class="tw"><table><tr><th>Mês</th><th class="num">Carga do mês (h)</th><th class="num">Aula (h)</th><th class="num">Planejamento (h) — inclui atividades</th><th class="num">% aula</th><th class="num">% plan.</th></tr>`;
-    for (let i = 0; i < 12; i++) { const L = linha(MESESL[i], d, i, ''); tc += L.c; ta += L.a; h += L.html; }
-    const p = tc ? ta / tc : 0; const cls = !ta ? 'no' : p > meta + tol ? 'hi' : p < meta - tol ? 'lo' : 'ok';
-    h += `<tr style="font-weight:700"><td>Ano</td><td class="num">${r2(tc)}</td><td class="num">${r2(ta)}</td><td class="num">${r2(Math.max(0, tc - ta))}</td><td class="num c70 ${cls}">${tc ? Math.round(p * 100) + '%' : ''}</td><td class="num">${tc ? Math.round(Math.max(0, 1 - p) * 100) + '%' : ''}</td></tr>`;
-    return h + '</table></div>';
+  const conta = (d, meses) => { let c = 0, a = 0, at = 0; for (const i of meses) { c += cargaDisponivel(d, ano)[i]; a += ((H[d.nome] || {}).m || [])[i] || 0; at += ((H[d.nome] || {}).pl || [])[i] || 0; } return { c: r2(c), a: r2(a), at: r2(at) }; };
+  const cel = ({ c, a, at }) => { const p = c ? a / c : 0; const cls = !a ? 'no' : p > meta + tol ? 'hi' : p < meta - tol ? 'lo' : 'ok';
+    return `<td class="num">${c}</td><td class="num">${a}</td><td class="num">${r2(Math.max(0, c - a))}${at ? ` <span class="small muted">(${at} em atividades)</span>` : ''}</td><td class="num c70 ${cls}">${c ? Math.round(p * 100) + '%' : ''}</td><td class="num">${c ? Math.round(Math.max(0, 1 - p) * 100) + '%' : ''}</td>`; };
+  const cab = (p, extra) => `<tr><th>${p}</th>${extra || ''}<th class="num">Carga ${anoTodo ? 'do ano' : 'do mês'} (h)</th><th class="num">Aula (h)</th><th class="num">Planejamento (h) — inclui atividades</th><th class="num">% aula</th><th class="num">% plan.</th></tr>`;
+  const meses = anoTodo ? [...Array(12).keys()] : [+per];
+  // um docente só + ano inteiro: mês a mês
+  if (anoTodo && docs.length === 1) {
+    const d = docs[0]; let tc = 0, ta = 0, tt = 0;
+    h += `<h2 style="margin:6px 0">${esc(d.nome)} <span class="small muted">${esc(d.funcao || '')} · ${ano}</span></h2><div class="tw"><table>${cab('Mês')}`;
+    for (let i = 0; i < 12; i++) { const x = conta(d, [i]); tc += x.c; ta += x.a; tt += x.at; h += `<tr><td>${MESESL[i]}</td>${cel(x)}</tr>`; }
+    return h + `<tr style="font-weight:700"><td>Ano</td>${cel({ c: r2(tc), a: r2(ta), at: r2(tt) })}</tr></table></div>`;
   }
-  h += `<div class="tw"><table><tr><th>Docente</th><th>Função</th><th class="num">Carga do mês (h)</th><th class="num">Aula (h)</th><th class="num">Planejamento (h) — inclui atividades</th><th class="num">% aula</th><th class="num">% plan.</th></tr>`;
-  for (const d of docs) h += linha(esc(d.nome), d, mi, `<td class="small">${esc(d.funcao)}</td>`).html;
+  let T = { c: 0, a: 0, at: 0 };
+  h += `<div class="tw"><table>${cab('Docente', '<th>Função</th>')}`;
+  for (const d of docs) { const x = conta(d, meses); T.c += x.c; T.a += x.a; T.at += x.at; h += `<tr><td>${esc(d.nome)}</td><td class="small">${esc(d.funcao || '')}</td>${cel(x)}</tr>`; }
+  if (docs.length > 1) h += `<tr style="font-weight:700"><td>Total (${docs.length} docentes)</td><td></td>${cel({ c: r2(T.c), a: r2(T.a), at: r2(T.at) })}</tr>`;
   return h + '</table></div>';
 }
 // ---------- Cronograma: filtro por docente e visões de mês e ano ----------
