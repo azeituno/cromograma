@@ -503,21 +503,38 @@ function buildTurma(t) {
           const uu = units[ui], hU = (cE ? (uu.hE || uu.hA || H) : (ead && +t.hEad > 0 ? +t.hEad : (uu.hA || H)));
           let hh = +o.h > 0 ? +o.h : hU;
           const falta = cE ? nE[ui] - dE[ui] : nP[ui] - dP[ui];
-          if (t.chExata && !(+o.h > 0) && falta > EPS && falta < 1 - EPS) hh = Math.round(falta * hU * 100) / 100;
+          // carga exata, ou UC com fração já dada (aula dividida entre UCs): a última aula fica só com as horas que faltam
+          const fracUC = Math.abs((cE ? dE[ui] : dP[ui]) - Math.round(cE ? dE[ui] : dP[ui])) > EPS;
+          if ((t.chExata || fracUC) && !(+o.h > 0) && falta > EPS && falta < 1 - EPS) hh = Math.round(falta * hU * 100) / 100;
           // ajuste manual de horas (o.h) não muda a contagem da UC: a aula conta inteira
-          const inc = +o.h > 0 ? 1 : (hU ? hh / hU : 1);
-          if (cE) dE[ui] = Math.round((dE[ui] + inc) * 1e4) / 1e4; else dP[ui] = Math.round((dP[ui] + inc) * 1e4) / 1e4;
+          let inc = +o.h > 0 ? 1 : (hU ? hh / hU : 1);
+          // aula dividida entre UCs (o.parts = [{uc,h}, ...]; a 1ª é a UC desta linha): cada UC conta só as suas horas
+          const parts = locked && Array.isArray(o.parts) ? o.parts.filter(p => uidx[p.uc] != null && +p.h > 0) : [];
+          if (parts.length > 1 && parts[0].uc === units[ui].id) { hh = +parts[0].h; inc = hU ? hh / hU : 1; }
+          const add = (i, x) => { if (cE) dE[i] = Math.round((dE[i] + x) * 1e4) / 1e4; else dP[i] = Math.round((dP[i] + x) * 1e4) / 1e4; };
+          add(ui, inc);
           row.hAula = hh; row.hAj = +o.h > 0; row.hU = hU; row.hCont = inc * hU;
+          if (parts.length > 1 && parts[0].uc === units[ui].id) {
+            row.parts = [{ ui, h: hh }];
+            for (const p of parts.slice(1)) { const i2 = uidx[p.uc], u2 = units[i2], h2u = cE ? (u2.hE || u2.hA || H) : (ead && +t.hEad > 0 ? +t.hEad : (u2.hA || H)); add(i2, h2u ? +p.h / h2u : 1); row.parts.push({ ui: i2, h: +p.h }); }
+            row.hAula = r2(row.parts.reduce((s, p) => s + p.h, 0)); row.hCont = row.hAula; row.hAj = true;
+          }
+          // UC terminou no meio da aula por causa de uma divisão: a próxima UC pendente completa o horário
+          if (!row.parts && fracUC && !(+o.h > 0) && hh < hU - EPS) {
+            const j = units.findIndex((x, i) => i !== ui && !x.wd.length && (cE ? dE[i] + lkE[i] < nE[i] - EPS : dP[i] + lkP[i] < nP[i] - EPS));
+            if (j >= 0) { const uj = units[j], hj = cE ? (uj.hE || uj.hA || H) : (ead && +t.hEad > 0 ? +t.hEad : (uj.hA || H)); const resto = r2(hU - hh); add(j, hj ? resto / hj : 1); row.parts = [{ ui, h: hh }, { ui: j, h: resto, auto: true }]; row.hAula = r2(hh + resto); row.hCont = row.hAula; }
+          }
           row.k = done(ui); row.n = n[ui]; row.num = ++count;
           if (split) { row.mod = cE ? 'EAD' : 'P'; row.kM = cE ? dE[ui] : dP[ui]; row.nM = cE ? nE[ui] : nP[ui]; }
           row.conv = ead && +t.ead !== w; // aula de dia presencial transformada em EAD
           const u = units[ui];
           row.ead = ead; row.sinc = ead && !!(t.ucs && (t.ucs.find(x => x.id === u.id) || {}).sinc);
           row.sala = (row.ead && !row.sinc) ? EAD_SALA : o.semSala ? '' : (o.sala || t.sala || VSALA[t.id] || '');
-          row.docs = (o.doc ? o.doc : u.doc || []).filter(Boolean); row.est = /est[aá]gio/i.test(u.nome || '');
+          row.docs = (o.doc ? o.doc : row.parts ? [...new Set(row.parts.flatMap(p => units[p.ui].doc || []))] : u.doc || []).filter(Boolean); row.est = /est[aá]gio/i.test(u.nome || '');
           row.h = row.hAula; row.a = tm(t.hi); row.b = (ead || row.hAj) ? row.a + Math.round(row.h * 60) : Math.min(tm(t.hf), row.a + Math.round(row.h * 60));
           // horário de cada docente dentro da aula (ex.: 8h–10h um docente, 10h–12h outro): ajuste da aula ou da UC
-          { const tu = (t.ucs || []).find(x => x.id === u.id) || {}; const DH = o.docH || tu.docH; if (DH) { const dj = {}; for (const nm of row.docs) { const j = DH[nm]; if (!j) continue; const a = Math.max(row.a, tm(j.hi) == null ? row.a : tm(j.hi)), b = Math.min(row.b, tm(j.hf) == null ? row.b : tm(j.hf)); if (b > a && (a !== row.a || b !== row.b)) dj[nm] = [a, b]; else if (b <= a) dj[nm] = [row.a, row.a]; } if (Object.keys(dj).length) row.dj = dj; } }
+          if (row.parts && !o.docH && !o.doc) { let a0 = row.a; const dj = {}; for (const p of row.parts) { const a1 = a0 + Math.round(p.h * 60); for (const nm of units[p.ui].doc || []) { if (!nm) continue; dj[nm] = dj[nm] ? [Math.min(dj[nm][0], a0), Math.max(dj[nm][1], a1)] : [a0, a1]; } a0 = a1; } for (const nm of Object.keys(dj)) if (dj[nm][0] === row.a && dj[nm][1] === row.b) delete dj[nm]; if (Object.keys(dj).length) row.dj = dj; }
+          else { const tu = (t.ucs || []).find(x => x.id === u.id) || {}; const DH = o.docH || tu.docH; if (DH) { const dj = {}; for (const nm of row.docs) { const j = DH[nm]; if (!j) continue; const a = Math.max(row.a, tm(j.hi) == null ? row.a : tm(j.hi)), b = Math.min(row.b, tm(j.hf) == null ? row.b : tm(j.hf)); if (b > a && (a !== row.a || b !== row.b)) dj[nm] = [a, b]; else if (b <= a) dj[nm] = [row.a, row.a]; } if (Object.keys(dj).length) row.dj = dj; } }
           res.aulas.push(row);
         }
         res.rows.push(row);
@@ -1016,7 +1033,7 @@ function viewTurma() {
      ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${knTxt(row)}</span>
      <button class="ead ${row.ead ? 'on' : ''}" data-act="rEad" data-ds="${row.ds}">${row.ead ? (row.sinc ? 'EAD síncr.' : 'EAD') : 'Presencial'}</button>${salaSel}
      <div class="docs" data-act="rDocs" data-ds="${row.ds}">${docs}</div>
-     ${row.extra ? '<span class="pill">extra</span>' : ''}${row.hAula != null && Math.abs(row.hAula - (row.ead && +t.hEad > 0 ? +t.hEad : ((r.units[row.ui] || {}).hA || r.H))) > 1e-6 ? `<span class="pill" style="background:#fff4e5;color:#b54708" title="${row.hAj ? 'Carga desta aula alterada à mão' : 'Última aula da UC com só as horas que faltam (carga exata)'}">⏱ ${fmtH(row.hAula)} h</span>` : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
+     ${row.extra ? '<span class="pill">extra</span>' : ''}${row.parts ? `<span class="pill" style="background:#eef4ff;color:#3538cd" title="Aula dividida entre UCs">${row.parts.map(p => { const u = r.units[p.ui] || {}; return (u.num ? 'UC ' + u.num : short2(u.nome || '')) + ' ' + fmtH(p.h) + ' h'; }).join(' + ')}</span>` : ''}${!row.parts && row.hAula != null && Math.abs(row.hAula - (row.ead && +t.hEad > 0 ? +t.hEad : ((r.units[row.ui] || {}).hA || r.H))) > 1e-6 ? `<span class="pill" style="background:#fff4e5;color:#b54708" title="${row.hAj ? 'Carga desta aula alterada à mão' : 'Última aula da UC com só as horas que faltam (carga exata)'}">⏱ ${fmtH(row.hAula)} h</span>` : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
      <div class="al">${als}</div><button class="more" data-act="rMenu" data-ds="${row.ds}" title="Mais opções">⋯</button></div>`;
     if (row.al.length) h += `<div class="small almsgs" style="margin:-2px 0 4px 72px;color:var(--mut)">${row.al.map((a, k) => `<span class="${a.ok ? 'alok' : 'alpe'}" title="${esc(a.ok ? alvInfo(a) : '')}">${a.ok ? '✓ ' : ''}${esc(a.msg)}${a.ot && S.turmas[a.ot] ? ` <a class="alv alot" data-act="fixGo" data-t="${a.ot}" data-ds="${a.od || row.ds}" data-f="${a.tp === 'inter' ? '' : a.tp}" title="Abrir a outra turma neste dia">abrir ${esc(S.turmas[a.ot].sigla || 'a outra turma')} ›</a>` : ''} <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="${k}">${a.ok ? '↺ pendente' : '✓ analisado'}</a></span>`).join(' · ')}${row.al.filter(a => !a.ok).length > 1 ? ` <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="all">✓ todos analisados</a>` : ''}</div>`;
   }
@@ -1284,6 +1301,7 @@ const ACT = {
     modal(`<h2>Aula de ${br(ds)} (${WDL[wd(ds)]})</h2>
      <div class="bar" style="flex-direction:column;align-items:stretch">
       ${((R[t.id].rows.find(x => x.ds === ds) || {}).docs || []).length > 1 ? '<button data-m="aulaDocH">⏱ Horário de cada docente nesta aula <span class="small muted">— ex.: 8h–10h um, 10h–12h outro</span></button>' : ''}
+      ${(t.ucs || []).length > 1 ? '<button data-m="aulaParts">⇄ Dividir esta aula entre UCs <span class="small muted">— ex.: 2 h de uma UC e 1 h de outra</span></button>' : ''}
       <button data-m="aulaH">⏱ Alterar a carga horária desta aula <span class="small muted">— hoje ${fmtH((R[t.id].rows.find(x => x.ds === ds) || {}).h || 0)} h</span></button>
       <button data-m="skip">Cancelar a aula deste dia <span class="small muted">— o curso termina uma aula depois</span></button>
       <div class="bar" style="margin:0"><span>Mover para</span><input type="date" data-mv><button data-m="move">Mover</button></div>
@@ -4416,6 +4434,9 @@ ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula 
 ${P(`Na turma, no <b>Cronograma de aulas</b>, clique em <b>⋯</b> na aula e em <b>⏱ Alterar a carga horária desta aula</b>. Informe as horas (ex.: 2 ou 1,5) e salve. A aula ganha a etiqueta ⏱; a UC continua contando a aula normalmente (carga e sequência não mudam) e mudam só o término e as horas do docente no 70×30 e no rateio.`, `Para várias aulas, use <b>✎ Alterar várias aulas</b> → <b>Carga horária de cada aula</b>.`, `Para cursos que precisam da carga horária exata, marque <b>Carga horária exata (sem horas a mais ou a menos)</b> no cadastro da turma. A última aula de cada UC fica só com as horas que faltam e o cabeçalho mostra “carga exata: ✓”.`)}
 ${dica('Sem a marcação de carga exata, a última aula da UC continua inteira (como antes). A regra de análise “Carga horária programada diferente da carga das UCs” confere os cursos com carga exata.')}` },
 
+  { id: 'cad-partes', t: 'Aula com mais de uma UC no mesmo dia', h: `
+${P(`No cronograma da turma, clique em <b>⋯</b> na aula e em <b>⇄ Dividir esta aula entre UCs</b>.`, `Escolha as UCs (até 3) e as horas de cada uma, na ordem em que serão dadas (ex.: UC 1 · 2 h, UC 2 · 1 h) e salve.`, `Cada UC conta só as suas horas. A UC que terminar no meio de uma aula fica só com as horas que faltam e a próxima UC completa o horário daquela aula, sem mudar a carga das UCs.`, `Os docentes de cada UC entram no horário dela e contam essas horas no 70×30 e no rateio. Para desfazer, use <b>Desfazer divisão</b> na mesma janela.`)}` },
+
   { id: 'cad-dochor', t: 'Docentes em horários diferentes na mesma aula', h: `
 ${P(`<b>Para todas as aulas da UC:</b> em ${caminho('Turmas e UCs')}, na tabela de UCs, coloque os docentes da UC e clique em <b>⏱ dividir horário entre docentes</b> (aparece quando a UC tem 2 ou mais docentes). Informe o horário de cada um (ex.: 08:00–10:00 e 10:00–12:00) ou use <b>Dividir ao meio</b>.`, `<b>Só para uma aula:</b> no cronograma, clique em <b>⋯</b> na aula e em <b>⏱ Horário de cada docente nesta aula</b>.`, `Cada docente passa a contar só as horas do seu horário no <b>70×30</b> e no <b>rateio</b>. Conflitos, escala, compensações e interjornada também usam o horário de cada um.`)}
 ${dica('Docente sem horário informado fica a aula toda. O horário aparece ao lado do nome do docente na aula.')}` },
@@ -5966,6 +5987,28 @@ MACT.aulaDocH = () => {
   const o = (t.ov || {})[ds] || {}; const tu = (t.ucs || []).find(x => x.id === (R[t.id].units[row.ui] || {}).id) || {};
   docHModal('Horário dos docentes — aula de ' + br(ds), row.docs, o.docH || tu.docH, row.a, row.b, 'Vale só para esta aula.', v => { setOv(t, ds, { docH: v }); saveT(t); });
 };
+// ---------- Aula dividida entre UCs ----------
+MACT.aulaParts = () => {
+  const { t, ds } = MCTX; const r = R[t.id]; const row = r.rows.find(x => x.ds === ds); if (!row || row.ui < 0) return;
+  const o = (t.ov || {})[ds] || {}; const tot = r2((row.b - row.a) / 60) || row.h;
+  const cur = Array.isArray(o.parts) && o.parts.length > 1 ? o.parts : [{ uc: r.units[row.ui].id, h: '' }, { uc: '', h: '' }];
+  const ucOpt = sel => `<option value="">—</option>` + (t.ucs || []).map(u => `<option value="${esc(u.id)}" ${u.id === sel ? 'selected' : ''}>${esc((u.num ? 'UC ' + u.num + ' · ' : '') + u.nome)}</option>`).join('');
+  const linha = (p, i) => `<tr><td><select data-pu="${i}">${ucOpt(p.uc)}</select></td><td class="nowrap"><input data-ph="${i}" inputmode="decimal" value="${p.h !== '' ? String(p.h).replace('.', ',') : ''}" style="width:70px"> h</td></tr>`;
+  MCTX.ok = () => {
+    const P = []; for (let i = 0; i < 3; i++) { const s = $(`#modal [data-pu="${i}"]`); if (!s) break; const uc = s.value, h = +($(`#modal [data-ph="${i}"]`).value.replace(',', '.')); if (uc && h > 0) P.push({ uc, h }); }
+    if (P.length < 2) return toast('Informe pelo menos duas UCs com as horas');
+    if (new Set(P.map(p => p.uc)).size < P.length) return toast('Use UCs diferentes');
+    setOv(t, ds, { uc: P[0].uc, parts: P, h: undefined }); saveT(t); closeModal(); refresh(); toast('Aula dividida: ' + P.map(p => fmtH(p.h) + ' h').join(' + '));
+  };
+  MCTX.limpa = () => { setOv(t, ds, { parts: undefined }); saveT(t); closeModal(); refresh(); toast('Aula voltou a ter uma UC só'); };
+  modal(`<h2>Dividir a aula de ${br(ds)} entre UCs</h2>
+   <p class="small muted" style="margin-top:-4px">${esc(t.nome)} · ${hm(row.a)} às ${hm(row.b)} (${fmtH(tot)} h). A primeira UC é dada primeiro; cada UC conta só as suas horas e o restante entra nas próximas aulas dela.</p>
+   <table class="plain"><tr><th>UC</th><th>Horas</th></tr>${[0, 1, 2].map(i => linha(cur[i] || { uc: '', h: '' }, i)).join('')}</table>
+   <p class="small muted">Os docentes de cada UC entram no horário dela (ex.: 08:00–10:00 e 10:00–11:00) e contam essas horas no 70×30 e no rateio.</p>
+   <div class="mact">${Array.isArray(o.parts) ? '<button class="dng" data-m="pLimpa">Desfazer divisão</button>' : ''}<button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
+  if (!cur[0].h) { $('#modal [data-ph="0"]').value = String(r2(tot / 2)).replace('.', ','); }
+};
+MACT.pLimpa = () => MCTX.limpa();
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
