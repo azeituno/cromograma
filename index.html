@@ -986,7 +986,7 @@ function viewTurma() {
   h += analiseCard(t);
   h += turmaAlunosCard(t);
   // UCs
-  h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Unidades curriculares</h2><button data-act="pasteUC">Colar lista</button><button class="pri" data-act="addUC">+ UC</button></div>`;
+  h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Unidades curriculares</h2><button data-act="copUC">⧉ Copiar UCs de outra turma</button><button data-act="pasteUC">Colar lista</button><button class="pri" data-act="addUC">+ UC</button></div>`;
   if (!t.ucs || !t.ucs.length) h += `<p class="muted small">Sem UCs: o curso conta pelo “Total de aulas”. Cadastre UCs para a contagem automática por unidade.</p>`;
   else {
     h += `<div class="tw" style="max-height:none"><table class="ucs"><tr><th></th><th>Nº</th><th>Unidade curricular</th><th class="num" title="Carga horária presencial da UC">CH presencial</th><th class="num" title="Carga horária EAD da UC: é dada nos dias de aula EAD da turma">CH EAD</th><th class="num" title="Horas por aula desta UC. Vazio = automático (horário da turma; estágio à noite = 3 h)">H/aula</th><th class="num">Aulas</th><th>Docentes de referência</th><th>Programadas</th><th>Início</th><th>Fim</th><th title="Desmembramento da UC no SS — preenchido pelos apoios">Desmembramento (SS)</th><th></th></tr>`;
@@ -4430,6 +4430,10 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-copuc', t: 'Copiar UCs de outra turma', h: `
+${P(`Na turma, no quadro <b>Unidades curriculares</b>, clique em <b>⧉ Copiar UCs de outra turma</b>.`, `Escolha a turma de origem e marque as UCs que quer copiar (todas vêm marcadas).`, `Escolha <b>Adicionar ao final</b> ou <b>Substituir as UCs atuais</b> e se quer levar também os docentes de referência. Clique em <b>Copiar UCs</b>.`)}
+${dica('Só as UCs são copiadas (nome, número, carga horária, EAD, horas por aula e dias da semana). O cronograma é gerado com as datas e dias desta turma; para copiar o cronograma inteiro, use “Copiar o cronograma de outra turma”.')}` },
+
   { id: 'cad-chaula', t: 'Carga horária de uma aula e carga exata do curso', h: `
 ${P(`Na turma, no <b>Cronograma de aulas</b>, clique em <b>⋯</b> na aula e em <b>⏱ Alterar a carga horária desta aula</b>. Informe as horas (ex.: 2 ou 1,5) e salve. A aula ganha a etiqueta ⏱ e a UC conta as horas do dia: com mais horas ela termina antes, com menos o que faltar vai para as próximas aulas. A carga total da UC não muda (a última aula fica só com as horas que faltam).`, `Para várias aulas, use <b>✎ Alterar várias aulas</b> → <b>Carga horária de cada aula</b>.`, `Para cursos que precisam da carga horária exata, marque <b>Carga horária exata (sem horas a mais ou a menos)</b> no cadastro da turma. A última aula de cada UC fica só com as horas que faltam e o cabeçalho mostra “carga exata: ✓”.`)}
 ${dica('Sem a marcação de carga exata, a última aula da UC continua inteira (como antes). A regra de análise “Carga horária programada diferente da carga das UCs” confere os cursos com carga exata.')}` },
@@ -6036,6 +6040,39 @@ MACT.pLimpa = () => MCTX.limpa();
    <p class="small muted">${resto > 0 ? `Sugestão: as ${fmtH(resto)} h que restam no dia.` : 'O dia já está com o horário todo ocupado; informe as horas se a aula vai se estender.'} ${esc(nome(uOrig))} conta só essas horas e o que faltar entra nas próximas aulas dela. O dia ${br(ds)} continua sendo dia de aula: o cronograma sobe e ele recebe a próxima aula da sequência. A carga de cada UC não muda.</p>
    <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Juntar</button></div>`);
 }; }
+
+// ---------- Copiar só as UCs de outra turma (sem o cronograma) ----------
+ACT.copUC = () => {
+  const t = curT(); const L = Object.values(S.turmas).filter(x => x.id !== t.id && (x.ucs || []).length).sort((a, b) => a.nome.localeCompare(b.nome) || String((R[a.id] || {}).inicio || '').localeCompare(String((R[b.id] || {}).inicio || '')));
+  if (!L.length) return toast('Nenhuma outra turma com UCs cadastradas');
+  const lista = src => { const o = S.turmas[src]; if (!o) return ''; return `<div class="tw" style="max-height:260px"><table class="plain"><tr><th><input type="checkbox" data-cuall checked title="Todas"></th><th>Nº</th><th>UC</th><th class="num">CH</th><th class="num">EAD</th><th>Docentes</th></tr>${o.ucs.map((u, i) => `<tr><td><input type="checkbox" data-cui="${i}" checked></td><td>${esc(u.num || '')}</td><td>${esc(u.nome || '')}</td><td class="num">${fmtH(+u.ch || 0)}</td><td class="num">${+u.chE ? fmtH(+u.chE) : ''}</td><td class="small">${(u.doc || []).filter(Boolean).map(short).join(', ')}</td></tr>`).join('')}</table></div>`; };
+  MCTX = { ok: () => {
+    const o = S.turmas[$('#modal [data-cusrc]').value]; if (!o) return toast('Escolha a turma');
+    const idx = [...document.querySelectorAll('#modal [data-cui]:checked')].map(e => +e.dataset.cui); if (!idx.length) return toast('Marque as UCs');
+    const modo = $('#modal input[name=cumodo]:checked').value, docs = $('#modal [data-cudoc]').checked;
+    const novas = idx.map(i => { const u = clone(o.ucs[i]); u.id = uid('u'); if (!docs) { u.doc = []; delete u.docH; } delete u.desm; delete u.desmEm; delete u.desmPor; delete u.desmAte; return u; });
+    if (modo === 'sub') {
+      // UCs antigas saem: ajustes de dias que apontavam para elas voltam ao automático
+      const velhas = new Set((t.ucs || []).map(u => u.id));
+      for (const [d, ov] of Object.entries(t.ov || {})) if (ov.uc && velhas.has(ov.uc)) setOv(t, d, { uc: undefined, parts: undefined });
+      t.ucs = novas;
+    } else t.ucs = (t.ucs || []).concat(novas);
+    if (!t.aulasTot || t.ucs.length) t.aulasTot = 0;
+    saveT(t); closeModal(); refresh(); toast(novas.length + ' UC(s) copiada(s) de ' + o.nome);
+  } };
+  modal(`<h2>Copiar UCs de outra turma</h2><p class="small muted" style="margin-top:-4px">Copia só as unidades curriculares (nome, número, carga horária, EAD, horas por aula, dias da semana). O cronograma desta turma é gerado a partir das suas próprias datas.</p>
+   <label class="f">Turma de origem<select data-cusrc><option value="">—</option>${L.map(x => `<option value="${esc(x.id)}">${esc(x.nome)}${x.sigla ? ' (' + esc(x.sigla) + ')' : ''} · ${x.ucs.length} UC(s)${R[x.id] && R[x.id].inicio ? ' · início ' + brs(R[x.id].inicio) + '/' + R[x.id].inicio.slice(2, 4) : ''}</option>`).join('')}</select></label>
+   <div data-culist></div>
+   <div class="bar" style="margin:8px 0;flex-wrap:wrap"><label class="chk"><input type="radio" name="cumodo" value="add" ${(t.ucs || []).length ? 'checked' : ''}><span>Adicionar ao final das UCs atuais</span></label><label class="chk"><input type="radio" name="cumodo" value="sub" ${(t.ucs || []).length ? '' : 'checked'}><span>Substituir as UCs atuais${(t.ucs || []).length ? ` (${t.ucs.length})` : ''}</span></label></div>
+   <label class="chk"><input type="checkbox" data-cudoc checked><span>Copiar também os docentes de referência das UCs</span></label>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Copiar UCs</button></div>`, true);
+  MCTX.lista = lista;
+};
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.closest || !el.closest('#modal')) return;
+  if (el.dataset.cusrc != null) { const b = $('#modal [data-culist]'); if (b) b.innerHTML = MCTX.lista ? MCTX.lista(el.value) : ''; }
+  if (el.dataset.cuall != null) document.querySelectorAll('#modal [data-cui]').forEach(c => c.checked = el.checked);
+});
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
