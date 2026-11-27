@@ -970,14 +970,14 @@ function viewTurma() {
   if (!t.ucs || !t.ucs.length) h += `<div class="small muted">Docentes do curso: <span class="docs" data-act="soloDocs" style="display:inline-flex;gap:3px;cursor:pointer;border:1px dashed var(--line);border-radius:8px;padding:2px 6px">${(t.docPad || []).filter(Boolean).map(n => `<span class="dchip">${esc(short(n))}</span>`).join('') || '+ docente'}</span></div>`;
   h += '</div>';
   // Cronograma
-  h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Cronograma de aulas</h2>${tDocSel(t)}
-   <button data-act="addExtra">+ Aula extra</button><button data-act="cancelRange">Cancelar período</button><button data-act="resetOv">Limpar ajustes</button></div>
+  h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Cronograma de aulas</h2>${tVisBtns()}${tDocSel(t)}
+   <button data-act="tLote">✎ Alterar várias aulas</button><button data-act="addExtra">+ Aula extra</button><button data-act="cancelRange">Cancelar período</button><button data-act="resetOv">Limpar ajustes</button></div>
    <div class="legend"><span>📌 UC escolhida à mão</span><span><span class="ead on">EAD</span> aula a distância</span><span class="at conf">Conflito</span><span class="at fer">Férias</span><span class="at esc">Fora da escala</span><span class="at sala">Sala ocupada</span></div></div>`;
   if (r.sit !== 'OK') return h + `<div class="card empty">${esc(r.sit)} para gerar o cronograma.</div>`;
   const ucOpts = (sel, locked) => (locked ? `<option value="">↺ voltar à sequência automática</option>` : sel < 0 ? '<option value="">— escolher UC —</option>' : '') + r.units.map((u, i) => `<option value="${esc(u.id)}" ${sel === i ? 'selected' : ''}>${esc((u.num ? 'UC ' + u.num + ' · ' : '') + u.nome)}</option>`).join('');
   let mes = '';
-  h += '<div class="rows">';
-  for (const row of r.rows) {
+  h += V.tVis === 'cal' ? '<div>' + tCalHtml(t) : '<div class="rows">';
+  for (const row of (V.tVis === 'cal' ? [] : r.rows)) {
     if (V.tFix && !fixRowOk(row, r)) continue;
     if (tDocFiltro(t) && !(row.docs || []).includes(tDocFiltro(t))) continue;
     const m = row.ds.slice(0, 7);
@@ -4383,6 +4383,9 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-lote', t: 'Alterar várias aulas, recessos e calendário da turma', h: `
+${P(`<b>Várias aulas de uma vez:</b> na turma, clique em <b>✎ Alterar várias aulas</b>. Em <b>📅 Escolher datas</b>, clique nos dias com aula (em verde) ou use <b>Período</b> (de / até e dias da semana) e <b>+ Marcar o período</b>.`, `Escolha o que alterar: docentes, sala, UC fixa, EAD/presencial, cancelar as aulas ou desfazer ajustes, e clique em <b>Aplicar</b>.`, `<b>Calendário da turma:</b> no Cronograma de aulas, use <b>📅 Calendário</b> para ver o curso mês a mês; clique numa aula para voltar à lista já nela. <b>☰ Lista</b> volta ao formato de linhas.`, `<b>Recesso em vários dias:</b> em ${caminho('Dias letivos e não letivos')} → <b>+ Período (recesso)</b>, marque os dias no calendário (ou use Período) e clique em <b>Incluir</b>.`)}` },
+
   { id: 'cad-reuniao', t: 'Reuniões pedagógicas', h: `
 ${P(`Em ${caminho('Dias letivos e não letivos')}, clique em <b>+ Reuniões pedagógicas</b>.`, `Clique em <b>📅 Escolher datas no calendário</b> e marque várias datas (use ‹ › para mudar de mês; clique de novo para desmarcar). Marque o período (<b>Manhã</b>, <b>Tarde</b> e/ou <b>Noite</b>) e clique em <b>+ Adicionar datas</b>: todas vão para a lista. Repita para datas com outro período.`, `Se as reuniões seguem um padrão, abra <b>Ou gerar por regra</b>: escolha os dias da semana, o período de cada um e a frequência (1 vez por mês, a cada 2 semanas ou toda semana).`, `Na lista, ajuste o período de cada data ou desmarque a data, e clique em <b>Lançar reuniões</b>.`)}
 ${dica('Só as aulas do período marcado deixam de acontecer (manhã = aulas que começam antes das 12h, tarde = até 18h, noite = depois). As reuniões aparecem em destaque em Eventos. Para apagar as do ano exibido de uma vez, use <b>✕ Reuniões do ano</b>.')}` },
@@ -5599,6 +5602,124 @@ document.addEventListener('change', e => {
   if (el.dataset.rp || el.dataset.rpw || el.dataset.rpwp) rpPrev();
   if (el.dataset.rpdp) { const x = RP_EXTRA.find(z => z.d === el.dataset.rpdp); if (x) x.pers = RP_PERS.filter(p => $(`#modal [data-rpdp="${x.d}"][value="${p}"]`).checked); }
 });
+
+// ---------- Seletor de várias datas (calendário suspenso + período) reutilizável ----------
+const DP = {}; // DP[key] = { sel:Set, ym, mark:fn(ds)->classe, title }
+(function () { const st = document.createElement('style'); st.textContent = `.dpw{position:relative;display:inline-block}.dpop{position:absolute;z-index:40;top:34px;left:0;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px;width:310px}.dpop.hidden{display:none}
+.dpop .rch{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.dpop .rcg{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.dpop .rcw{font-size:10.5px;color:var(--mut);text-align:center;font-weight:700}
+.dpop .rcd{border:1px solid transparent;border-radius:8px;padding:5px 0;text-align:center;font-size:12.5px;cursor:pointer;background:#f7f9fa}.dpop .rcd:hover{border-color:#0f766e}.dpop .rcd.sel{background:#0f766e!important;color:#fff!important;font-weight:700}
+.dpop .rcd.nl{background:#fdecec;color:#b42318}.dpop .rcd.aula{background:#e6f4f1;color:#0f5f58;font-weight:600}.dpop .rcd.dom{opacity:.35}.dpop .rcd.vz{background:none;cursor:default}
+.dpop .dpper{border-top:1px solid var(--line);margin-top:8px;padding-top:8px}.dpop .dpper input[type=date]{width:128px;padding:3px 4px}.dpchips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}`; document.head.appendChild(st); })();
+function dpInit(key, opts) { DP[key] = Object.assign({ sel: new Set(), ym: HOJE.slice(0, 7), mark: () => '', legenda: '' }, opts || {}); }
+function dpHtml(key, label) { return `<span class="dpw"><button class="sm" data-m="dpTg" data-k="${key}" data-dpbtn="${key}">${label || '📅 Escolher datas'} ▾</button><div class="dpop hidden" data-dpop="${key}"></div></span><div class="dpchips small" data-dpchips="${key}"></div>`; }
+function dpCal(key) {
+  const P = DP[key], ym = P.ym, d1 = ym + '-01', off = wd(d1) - 1;
+  let g = ''; for (let i = 0; i < off; i++) g += '<div class="rcd vz"></div>';
+  for (let d = d1; d.slice(0, 7) === ym; d = addD(d, 1)) g += `<div class="rcd ${P.sel.has(d) ? 'sel' : ''} ${P.mark(d) || ''} ${wd(d) === 7 ? 'dom' : ''}" data-m="dpDia" data-k="${key}" data-d="${d}">${+d.slice(8)}</div>`;
+  return `<div class="rch"><button class="sm" data-m="dpMes" data-k="${key}" data-n="-1">‹</button><b>${MESESL[+ym.slice(5) - 1]} ${ym.slice(0, 4)}</b><button class="sm" data-m="dpMes" data-k="${key}" data-n="1">›</button></div>
+   <div class="rcg">${['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map(x => `<div class="rcw">${x}</div>`).join('')}${g}</div>
+   <div class="dpper small"><b>Período:</b> de <input type="date" data-dpa="${key}"> até <input type="date" data-dpb="${key}"><div style="margin:4px 0">${[1, 2, 3, 4, 5, 6].map(w => `<label class="chk" style="margin-right:4px"><input type="checkbox" data-dpw="${key}" value="${w}" checked><span>${WD[w]}</span></label>`).join('')}</div><button class="sm" data-m="dpPer" data-k="${key}">+ Marcar o período</button></div>
+   <div class="small muted" style="margin-top:6px">${P.sel.size} data(s) marcada(s)${P.legenda ? ' · ' + P.legenda : ''}</div>
+   <div class="bar" style="margin:6px 0 0;justify-content:flex-end"><button class="sm" data-m="dpLimpa" data-k="${key}">Limpar</button><button class="sm pri" data-m="dpTg" data-k="${key}">OK</button></div>`;
+}
+function dpRender(key) {
+  const P = DP[key]; const pop = $(`#modal [data-dpop="${key}"]`); if (pop && !pop.classList.contains('hidden')) pop.innerHTML = dpCal(key);
+  const L = [...P.sel].sort(); const c = $(`#modal [data-dpchips="${key}"]`);
+  if (c) c.innerHTML = L.length ? (L.length > 40 ? `<span class="pill">${L.length} datas: ${brs(L[0])} a ${brs(L[L.length - 1])}</span>` : L.map(d => `<span class="pill">${WD[wd(d)]} ${brs(d)}</span>`).join('')) : '<span class="muted">Nenhuma data marcada.</span>';
+  const b = $(`#modal [data-dpbtn="${key}"]`); if (b) b.textContent = '📅 Escolher datas' + (L.length ? ` (${L.length})` : '') + ' ▾';
+  if (P.onChange) P.onChange();
+}
+Object.assign(MACT, {
+  dpTg: el => { const k = el.dataset.k; const p = $(`#modal [data-dpop="${k}"]`); p.classList.toggle('hidden'); dpRender(k); },
+  dpDia: el => { const P = DP[el.dataset.k], d = el.dataset.d; if (P.sel.has(d)) P.sel.delete(d); else P.sel.add(d); dpRender(el.dataset.k); },
+  dpMes: el => { const P = DP[el.dataset.k]; const [y, m] = P.ym.split('-').map(Number); const t = new Date(y, m - 1 + +el.dataset.n, 1); P.ym = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0'); dpRender(el.dataset.k); },
+  dpLimpa: el => { DP[el.dataset.k].sel.clear(); dpRender(el.dataset.k); },
+  dpPer: el => {
+    const k = el.dataset.k, P = DP[k]; const a = $(`#modal [data-dpa="${k}"]`).value, b = $(`#modal [data-dpb="${k}"]`).value;
+    if (!isDate(a) || !isDate(b) || b < a) return toast('Informe o período (de / até)');
+    const ws = new Set([...document.querySelectorAll(`#modal [data-dpw="${k}"]:checked`)].map(e => +e.value)); let n = 0;
+    for (let d = a, g = 0; d <= b && g < 800; d = addD(d, 1), g++) if (ws.has(wd(d)) && (!P.filtro || P.filtro(d))) { P.sel.add(d); n++; }
+    P.ym = a.slice(0, 7); dpRender(k); toast(n + ' data(s) marcada(s)');
+  },
+});
+// ---------- Recesso (dias não letivos) com o calendário ----------
+ACT.addFerRange = () => {
+  const ano = String(V.calAno || S.cfg.ano);
+  dpInit('rec', { ym: ano === HOJE.slice(0, 4) ? HOJE.slice(0, 7) : ano + '-01', mark: d => calInfo(d) ? 'nl' : '', legenda: 'vermelho = já é não letivo' });
+  MCTX = { ok: () => {
+    const L = [...DP.rec.sel].sort().filter(d => wd(d) !== 7); if (!L.length) return toast('Marque as datas no calendário');
+    const nome = $('#modal [data-k=n]').value || 'Recesso', cons = $('#modal [data-k=c]').value; let n = 0, at = 0;
+    for (const d of L) { const f = S.cfg.fer.find(x => x.data === d && x.nome === nome); if (f) { f.cons = cons; at++; } else { S.cfg.fer.push({ data: d, nome, tipo: 'Local', cons }); n++; } }
+    S.cfg.fer.sort((a, b) => String(a.data).localeCompare(String(b.data))); saveCfg(); closeModal(); refresh(); toast(n + ' dia(s) incluído(s)' + (at ? `, ${at} atualizado(s)` : ''));
+  } };
+  modal(`<h2>Incluir recesso / dias sem aula</h2>
+   <p class="small muted" style="margin-top:-4px">Marque os dias no calendário (clique para marcar ou desmarcar, ‹ › muda o mês) ou use <b>Período</b> para marcar de uma data a outra. Domingos são ignorados.</p>
+   <div class="bar" style="margin:6px 0">${dpHtml('rec')}</div>
+   <div class="grid"><label class="f w2">Descrição<input data-k="n" value="Recesso"></label><label class="f w2">Considerar<select data-k="c">${opt(['Sem aula (conta carga)', 'Sim', 'Não'], 'Sem aula (conta carga)')}</select></label></div>
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Incluir</button></div>`, true);
+  dpRender('rec');
+};
+// ---------- Turma: alterar várias aulas de uma vez ----------
+ACT.tLote = () => {
+  const t = curT(), r = R[t.id]; const aulas = new Set(r.aulas.map(a => a.ds));
+  dpInit('lote', { ym: (r.aulas.find(a => a.ds >= HOJE) || r.aulas[0] || { ds: HOJE }).ds.slice(0, 7), mark: d => aulas.has(d) ? 'aula' : calInfo(d) ? 'nl' : '', filtro: d => aulas.has(d), legenda: 'verde = dia com aula', onChange: () => { const n = [...DP.lote.sel].filter(d => aulas.has(d)).length; const s = $('#modal [data-lten]'); if (s) s.textContent = n + ' aula(s) selecionada(s)'; } });
+  const salas = salaNames().filter(s => s !== EAD_SALA);
+  MCTX = { ok: () => {
+    const L = [...DP.lote.sel].filter(d => aulas.has(d)).sort(); if (!L.length) return toast('Marque dias com aula');
+    const ac = ($('#modal input[name=ltac]:checked') || {}).value; if (!ac) return toast('Escolha o que alterar');
+    const set = o => { for (const d of L) setOv(t, d, o); };
+    if (ac === 'doc') { closeModal(); return docsModal('Docentes de ' + L.length + ' aula(s)', (r.aulas.find(a => a.ds === L[0]) || {}).docs || [], L[0], tm(t.hi), tm(t.hf), t.id, null, v => { set({ doc: v }); saveT(t); closeModal(); refresh(); toast(L.length + ' aula(s) com os novos docentes'); }); }
+    if (ac === 'sala') { const s = $('#modal [data-lts]').value; if (!s) return toast('Escolha a sala'); set(s === '__sem' ? { sala: undefined, semSala: true } : { sala: s === t.sala ? undefined : s, semSala: undefined }); }
+    if (ac === 'uc') { const u = $('#modal [data-ltu]').value; if (!u) return toast('Escolha a UC'); set({ uc: u }); }
+    if (ac === 'ead') set({ ead: true }); if (ac === 'pres') set({ ead: false, eadP: undefined });
+    if (ac === 'skip') set({ skip: true });
+    if (ac === 'auto') set({ uc: undefined, doc: undefined, sala: undefined, semSala: undefined, ead: undefined, eadP: undefined });
+    saveT(t); closeModal(); refresh(); toast(L.length + ' aula(s) alterada(s)');
+  } };
+  const rad = (v, l, extra) => `<label style="display:flex;gap:8px;align-items:center;margin:5px 0"><input type="radio" name="ltac" value="${v}"><span>${l}</span>${extra || ''}</label>`;
+  modal(`<h2>Alterar várias aulas</h2><p class="small muted" style="margin-top:-4px">${esc(t.nome)}</p>
+   <div class="bar" style="margin:6px 0">${dpHtml('lote')}<b data-lten class="small"></b></div>
+   <p class="small muted" style="margin:0 0 6px">No calendário, os dias em verde têm aula. Clique para marcar, ou use <b>Período</b> (de / até e dias da semana) para marcar todas as aulas do intervalo.</p>
+   <div class="small muted"><b>O que alterar nas aulas marcadas</b></div>
+   ${rad('doc', 'Trocar os docentes…')}
+   ${rad('sala', 'Trocar a sala para', `<select data-lts><option value="">—</option>${salas.map(s => `<option>${esc(s)}</option>`).join('')}<option value="__sem">Sem sala</option></select>`)}
+   ${(t.ucs || []).length ? rad('uc', 'Fixar a UC', `<select data-ltu><option value="">—</option>${t.ucs.map(u => `<option value="${esc(u.id)}">${esc((u.num ? 'UC ' + u.num + ' · ' : '') + u.nome)}</option>`).join('')}</select>`) : ''}
+   ${rad('ead', 'Transformar em EAD')}${rad('pres', 'Transformar em presencial')}
+   ${rad('skip', 'Cancelar as aulas <span class="small muted">(passam para o fim)</span>')}
+   ${rad('auto', 'Desfazer ajustes <span class="small muted">(volta UC, docentes, sala e EAD ao automático)</span>')}
+   <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Aplicar</button></div>`, true);
+  dpRender('lote');
+};
+document.addEventListener('change', e => { const el = e.target; if (el.closest && el.closest('#modal') && (el.dataset.lts != null || el.dataset.ltu != null)) { const r = el.closest('label').querySelector('input[type=radio]'); if (r) r.checked = true; } });
+// ---------- Turma: cronograma em formato de calendário ----------
+function tCalHtml(t) {
+  const r = R[t.id]; const rows = r.rows.filter(x => !tDocFiltro(t) || (x.docs || []).includes(tDocFiltro(t)));
+  if (!rows.length) return '<div class="empty">Sem aulas.</div>';
+  const by = {}; for (const x of rows) (by[x.ds] = by[x.ds] || []).push(x);
+  const ini = rows[0].ds.slice(0, 7), fim = rows[rows.length - 1].ds.slice(0, 7);
+  let h = '', ym = ini, g = 0;
+  while (ym <= fim && g++ < 40) {
+    const d1 = ym + '-01'; let d = monday(d1); let n = 0; let grid = `<div class="mgrid">${[1, 2, 3, 4, 5, 6].map(w => `<div class="wh"><b>${WD[w]}</b></div>`).join('')}`;
+    const fimM = addD(addD(d1, 32).slice(0, 7) + '-01', -1);
+    while (d <= fimM) {
+      for (let i = 0; i < 6; i++) {
+        const x = addD(d, i), fora = x.slice(0, 7) !== ym, L = fora ? [] : (by[x] || []); const ci = !fora && calLbl(x);
+        grid += `<div class="mday ${fora ? 'out' : ''} ${ci ? 'off' : ''} ${x === HOJE ? 'today' : ''}"><div class="mdn"><span>${+x.slice(8)}</span>${ci ? `<span class="muted" title="${esc(ci.mot)}">${esc(ci.mot)}</span>` : ''}</div>${L.map(row => {
+          if (row.type === 'off') return `<div class="small muted" style="font-size:10.5px">${esc(row.mot || 'sem aula')}</div>`;
+          if (row.ui < 0) return '<div class="small muted" style="font-size:10.5px">livre</div>';
+          n++; return miniCard(t, row).replace(`data-open="${t.id}"`, `data-act="tCalGo"`);
+        }).join('')}</div>`;
+      }
+      d = addD(d, 7);
+    }
+    h += `<h3 class="mtit" style="margin:12px 0 6px">${MESESL[+ym.slice(5) - 1]} ${ym.slice(0, 4)} <span class="small muted">· ${n} aula${n === 1 ? '' : 's'}</span></h3>${grid}</div>`;
+    ym = addD(d1, 32).slice(0, 7);
+  }
+  return h;
+}
+ACT.tVis = el => { V.tVis = el.dataset.v; refresh(); };
+ACT.tCalGo = el => { V.tVis = 'lista'; V.hl = el.dataset.ds; refresh(); };
+function tVisBtns() { const v = V.tVis || 'lista'; return `<span class="segbtn">${[['lista', '☰ Lista'], ['cal', '📅 Calendário']].map(([k, l]) => `<button class="sm ${v === k ? 'pri' : ''}" data-act="tVis" data-v="${k}">${l}</button>`).join('')}</span>`; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
