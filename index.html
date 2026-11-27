@@ -981,7 +981,7 @@ function viewTurma() {
   for (const row of (V.tVis === 'cal' ? [] : r.rows)) {
     if (V.tFix && !fixRowOk(row, r)) continue;
     if (tDocFiltro(t) && !(row.docs || []).includes(tDocFiltro(t))) continue;
-    if (!tFilOk(t, row.ds)) continue;
+    if (!tFilOk(t, row.ds) || !tFilUC(t, row)) continue;
     const m = row.ds.slice(0, 7);
     if (m !== mes) { mes = m; h += `<div class="mhead">${MESESL[+m.slice(5) - 1]} ${m.slice(0, 4)}</div>`; }
     const dt = `<div class="dt"><b>${brs(row.ds)}</b><small>${WD[row.w]}</small></div>`;
@@ -4390,7 +4390,7 @@ ${P(`Abra a turma em ${caminho('Turmas e UCs')}. O quadro <b>🔍 Análise do cu
 ${dica('A regra “Aula EAD da UC antes da primeira aula presencial da mesma UC” já vem ativa e não se aplica às UCs de Projeto integrador (campo “Não aplicar às UCs cujo nome contém”, que você pode editar em cada regra). Se precisar de um tipo de regra que ainda não existe, peça a inclusão.')}` },
 
   { id: 'cad-lote', t: 'Alterar várias aulas, recessos e calendário da turma', h: `
-${P(`<b>Filtrar por data:</b> no Cronograma de aulas, escolha um <b>Mês</b> ou informe <b>de / até</b>: a lista (e o calendário) mostram só as aulas desse período, e o botão <b>✎ Alterar as aulas deste período</b> abre a alteração já com elas marcadas.`, `<b>Várias aulas de uma vez:</b> na turma, clique em <b>✎ Alterar várias aulas</b>. Em <b>📅 Escolher datas</b>, clique nos dias com aula (em verde) ou use <b>Período</b> (de / até e dias da semana) e <b>+ Marcar o período</b>.`, `Escolha o que alterar: docentes, sala, UC fixa, EAD/presencial, cancelar as aulas ou desfazer ajustes, e clique em <b>Aplicar</b>.`, `<b>Calendário da turma:</b> no Cronograma de aulas, use <b>📅 Calendário</b> para ver o curso mês a mês; clique numa aula para voltar à lista já nela. <b>☰ Lista</b> volta ao formato de linhas.`, `<b>Recesso em vários dias:</b> em ${caminho('Dias letivos e não letivos')} → <b>+ Período (recesso)</b>, marque os dias no calendário (ou use Período) e clique em <b>Incluir</b>.`)}` },
+${P(`<b>Filtrar por UC e por data:</b> no Cronograma de aulas, escolha a <b>UC</b>, um <b>Mês</b> ou informe <b>de / até</b> (pode combinar): a lista (e o calendário) mostram só essas aulas, e o botão <b>✎ Alterar as aulas filtradas</b> abre a alteração já com elas marcadas.`, `<b>Várias aulas de uma vez:</b> na turma, clique em <b>✎ Alterar várias aulas</b>. Em <b>📅 Escolher datas</b>, clique nos dias com aula (em verde) ou use <b>Período</b> (de / até e dias da semana) e <b>+ Marcar o período</b>.`, `Escolha o que alterar: docentes, sala, UC fixa, EAD/presencial, cancelar as aulas ou desfazer ajustes, e clique em <b>Aplicar</b>.`, `<b>Calendário da turma:</b> no Cronograma de aulas, use <b>📅 Calendário</b> para ver o curso mês a mês; clique numa aula para voltar à lista já nela. <b>☰ Lista</b> volta ao formato de linhas.`, `<b>Recesso em vários dias:</b> em ${caminho('Dias letivos e não letivos')} → <b>+ Período (recesso)</b>, marque os dias no calendário (ou use Período) e clique em <b>Incluir</b>.`)}` },
 
   { id: 'cad-reuniao', t: 'Reuniões pedagógicas', h: `
 ${P(`Em ${caminho('Dias letivos e não letivos')}, clique em <b>+ Reuniões pedagógicas</b>.`, `Clique em <b>📅 Escolher datas no calendário</b> e marque várias datas (use ‹ › para mudar de mês; clique de novo para desmarcar). Marque o período (<b>Manhã</b>, <b>Tarde</b> e/ou <b>Noite</b>) e clique em <b>+ Adicionar datas</b>: todas vão para a lista. Repita para datas com outro período.`, `Se as reuniões seguem um padrão, abra <b>Ou gerar por regra</b>: escolha os dias da semana, o período de cada um e a frequência (1 vez por mês, a cada 2 semanas ou toda semana).`, `Na lista, ajuste o período de cada data ou desmarque a data, e clique em <b>Lançar reuniões</b>.`)}
@@ -5700,7 +5700,7 @@ ACT.tLote = () => {
 document.addEventListener('change', e => { const el = e.target; if (el.closest && el.closest('#modal') && (el.dataset.lts != null || el.dataset.ltu != null)) { const r = el.closest('label').querySelector('input[type=radio]'); if (r) r.checked = true; } });
 // ---------- Turma: cronograma em formato de calendário ----------
 function tCalHtml(t) {
-  const r = R[t.id]; const rows = r.rows.filter(x => (!tDocFiltro(t) || (x.docs || []).includes(tDocFiltro(t))) && tFilOk(t, x.ds));
+  const r = R[t.id]; const rows = r.rows.filter(x => (!tDocFiltro(t) || (x.docs || []).includes(tDocFiltro(t))) && tFilOk(t, x.ds) && tFilUC(t, x));
   if (!rows.length) return '<div class="empty">Sem aulas.</div>';
   const by = {}; for (const x of rows) (by[x.ds] = by[x.ds] || []).push(x);
   const ini = rows[0].ds.slice(0, 7), fim = rows[rows.length - 1].ds.slice(0, 7);
@@ -5730,24 +5730,27 @@ function tVisBtns() { const v = V.tVis || 'lista'; return `<span class="segbtn">
 // ---------- Turma: filtro do cronograma por data ou período ----------
 function tFil(t) { const f = V.tFil || {}; return f.tid === t.id ? f : {}; }
 function tFilOk(t, ds) { const f = tFil(t); return (!f.de || ds >= f.de) && (!f.ate || ds <= f.ate); }
+function tFilUC(t, row) { const f = tFil(t); if (!f.uc) return true; const u = row && row.ui >= 0 && R[t.id].units[row.ui]; return !!u && u.id === f.uc; }
+const tFilOn = t => { const f = tFil(t); return !!(f.de || f.ate || f.uc); };
 function tFilBar(t) {
   const f = tFil(t); const r = R[t.id]; const meses = [...new Set(r.rows.map(x => x.ds.slice(0, 7)))];
   const mSel = f.de && f.ate && f.de.slice(0, 7) === f.ate.slice(0, 7) && f.de.endsWith('-01') && addD(f.ate, 1).endsWith('-01') ? f.de.slice(0, 7) : '';
-  const n = (f.de || f.ate) ? r.aulas.filter(a => tFilOk(t, a.ds)).length : 0;
+  const n = tFilOn(t) ? r.aulas.filter(a => tFilOk(t, a.ds) && tFilUC(t, a)).length : 0;
   return `<div class="bar filters" style="margin:8px 0 0;flex-wrap:wrap;align-items:center;background:#f7f9fa;border-radius:10px;padding:6px 8px">
-   <b class="small">Filtrar por data:</b>
+   <b class="small">Filtrar:</b>${r.units.length > 1 || !r.units[0] || !r.units[0].solo ? `<select data-tfuc><option value="">Todas as UCs</option>${r.units.map(u => `<option value="${esc(u.id)}" ${u.id === f.uc ? 'selected' : ''}>${esc((u.num ? 'UC ' + u.num + ' · ' : '') + (u.nome || ''))}</option>`).join('')}</select>` : ''}
    <select data-tfmes><option value="">Mês…</option>${meses.map(m => `<option value="${m}" ${m === mSel ? 'selected' : ''}>${MESESL[+m.slice(5) - 1]} ${m.slice(0, 4)}</option>`).join('')}</select>
    <span class="small">ou de</span><input type="date" data-tf="de" value="${esc(f.de || '')}" style="width:auto"><span class="small">até</span><input type="date" data-tf="ate" value="${esc(f.ate || '')}" style="width:auto">
-   ${f.de || f.ate ? `<span class="pill">${n} aula(s) no período</span><button class="sm" data-act="tfLimpa">✕ limpar</button>${canWrite() && n ? '<button class="sm pri" data-act="tLote" data-fil="1">✎ Alterar as aulas deste período</button>' : ''}` : '<span class="small muted">mostra só as aulas do período escolhido</span>'}</div>`;
+   ${tFilOn(t) ? `<span class="pill">${n} aula(s)${f.uc ? ' da UC' : ''}${f.de || f.ate ? ' no período' : ''}</span><button class="sm" data-act="tfLimpa">✕ limpar</button>${canWrite() && n ? '<button class="sm pri" data-act="tLote" data-fil="1">✎ Alterar as aulas filtradas</button>' : ''}` : '<span class="small muted">mostra só as aulas da UC e/ou do período escolhido</span>'}</div>`;
 }
 ACT.tfLimpa = () => { V.tFil = {}; refresh(); };
 document.addEventListener('change', e => {
   const el = e.target; if (!el.dataset) return; const t = curT(); if (!t) return;
-  if (el.dataset.tfmes != null) { const m = el.value; V.tFil = m ? { tid: t.id, de: m + '-01', ate: addD(addD(m + '-28', 4).slice(0, 7) + '-01', -1) } : {}; return refresh(); }
+  if (el.dataset.tfuc != null) { V.tFil = Object.assign({}, tFil(t), { tid: t.id, uc: el.value }); return refresh(); }
+  if (el.dataset.tfmes != null) { const m = el.value; const f = Object.assign({}, tFil(t), { tid: t.id }); if (m) { f.de = m + '-01'; f.ate = addD(addD(m + '-28', 4).slice(0, 7) + '-01', -1); } else { delete f.de; delete f.ate; } V.tFil = f; return refresh(); }
   if (el.dataset.tf) { const f = Object.assign({}, tFil(t), { tid: t.id }); f[el.dataset.tf] = el.value; V.tFil = f; return refresh(); }
 });
 // abre "Alterar várias aulas" já com as aulas do filtro marcadas
-{ const orig = ACT.tLote; ACT.tLote = el => { orig(el); const t = curT(); if (el && el.dataset && el.dataset.fil && DP.lote) { for (const a of R[t.id].aulas) if (tFilOk(t, a.ds)) DP.lote.sel.add(a.ds); const f = tFil(t); if (f.de) DP.lote.ym = f.de.slice(0, 7); dpRender('lote'); } }; }
+{ const orig = ACT.tLote; ACT.tLote = el => { orig(el); const t = curT(); if (el && el.dataset && el.dataset.fil && DP.lote) { for (const a of R[t.id].aulas) if (tFilOk(t, a.ds) && tFilUC(t, a)) DP.lote.sel.add(a.ds); const f = tFil(t); const p0 = [...DP.lote.sel].sort()[0]; if (p0) DP.lote.ym = p0.slice(0, 7); dpRender('lote'); } }; }
 
 // ---------- Análise do curso: regras de conferência do cronograma ----------
 const REG_TIPOS = {
