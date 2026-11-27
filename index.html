@@ -1052,7 +1052,7 @@ function viewCal() {
   const anoF = V.calAno || S.cfg.ano;
   let h = `<h1>Dias letivos e não letivos</h1>
   <div class="card small">Regras (iguais às da planilha): <b>Sim</b> = feriado, sem aula e sem carga, com emenda automática (feriado na terça → emenda segunda; quinta → sexta e sábado; sexta → sábado). <b>Sem aula (conta carga)</b> = sem aula, mas conta na carga do docente (recesso, planejamento). <b>Expediente parcial</b> = a unidade funciona só parte do dia (ex.: Quarta-feira de Cinzas, abre às 14:00): informe o horário; a escala dentro dele conta carga e a escala fora dele é suspensa (diminui a carga no 70×30 e no rateio). As aulas fora do horário não acontecem; marque <b>Sem aula no dia</b> se houver só expediente, sem nenhuma aula. <b>Reunião pedagógica</b> = informe o período da reunião: as aulas nesse horário não acontecem (as de outros períodos do dia seguem normais), conta carga do docente e a reunião aparece em destaque no calendário de Eventos. <b>Não</b> = desconsiderado. Domingos nunca têm aula.</div>
-  <div class="bar"><button class="pri" data-act="addFer">+ Dia</button><button data-act="addFerRange">+ Período (recesso)</button><span class="grow"></span><span class="small muted">Ano:</span><input type="number" style="width:90px" data-in="calAno" value="${anoF}"></div>
+  <div class="bar"><button class="pri" data-act="addFer">+ Dia</button><button data-act="addFerRange">+ Período (recesso)</button><button data-act="rpAno">+ Reuniões pedagógicas do ano</button><button class="sm dng" data-act="rpDel" title="Excluir todas as reuniões pedagógicas do ano exibido">✕ Reuniões do ano</button><span class="grow"></span><span class="small muted">Ano:</span><input type="number" style="width:90px" data-in="calAno" value="${anoF}"></div>
   <div class="tw"><table><tr><th>Data</th><th>Dia</th><th>Descrição</th><th>Tipo</th><th>Considerar?</th><th>Efeito</th><th></th></tr>`;
   for (const f of L) {
     if (String(f.data || '').slice(0, 4) != anoF && f.data) continue;
@@ -4379,6 +4379,10 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-reuniao', t: 'Reuniões pedagógicas do ano', h: `
+${P(`Em ${caminho('Dias letivos e não letivos')}, clique em <b>+ Reuniões pedagógicas do ano</b>.`, `Marque os dias da semana e o período sem aula de cada um (quinta já vem 18:00–22:30 e sexta 13:00–18:00).`, `Escolha a frequência: <b>1 vez por mês</b> (1ª, 2ª, 3ª, 4ª ou última semana — quinta e sexta ficam na mesma semana), <b>a cada 2 semanas</b> ou <b>toda semana</b>.`, `Confira a lista de datas, desmarque as que não quiser (feriados já vêm desmarcados) e clique em <b>Lançar reuniões</b>.`)}
+${dica('As reuniões aparecem em destaque em Eventos. Para apagar as do ano exibido de uma vez, use <b>✕ Reuniões do ano</b>.')}` },
+
   { id: 'cad-inter', t: 'Alerta de interjornada', h: `
 <p>O sistema confere o descanso de cada docente entre o fim da última aula de um dia e o início da primeira aula do dia seguinte. Se for menor que <b>11 horas</b> (ex.: aula sexta até 22h30 e sábado às 8h = 9h30 de descanso), as duas aulas recebem o alerta <b>Interjornada</b>: a do dia anterior ("só 9h30 de descanso até…") e a do dia seguinte ("…após…").</p>
 ${P(`Clique no alerta para filtrar as aulas a corrigir, ou em <b>Abrir [outra turma] ›</b> para ir à aula do dia anterior.`, `Troque o docente de uma das duas aulas. Se a situação for combinada, marque o alerta como analisado.`)}` },
@@ -5488,6 +5492,67 @@ document.addEventListener('change', async e => {
   }
 });
 document.addEventListener('input', e => { const el = e.target; if (el.dataset && el.dataset.ccpaste != null) { CC_IMP = ccParse(el.value.split(/\r?\n/).map(l => l.split(l.includes('\t') ? '\t' : ';'))); ccPrev(); } });
+
+// ---------- Reuniões pedagógicas do ano de uma vez ----------
+const RP_DEF = { 1: ['', ''], 2: ['', ''], 3: ['', ''], 4: ['18:00', '22:30'], 5: ['13:00', '18:00'], 6: ['', ''] };
+function rpDatas() {
+  const q = s => $('#modal ' + s); if (!q('[data-rp=de]')) return [];
+  const de = q('[data-rp=de]').value, ate = q('[data-rp=ate]').value, fr = q('[data-rp=fr]').value, sm = q('[data-rp=sm]').value;
+  if (!isDate(de) || !isDate(ate) || ate < de) return [];
+  const dias = {}; document.querySelectorAll('#modal [data-rpw]:checked').forEach(e => { const w = +e.dataset.rpw; dias[w] = [q(`[data-rphi="${w}"]`).value, q(`[data-rphf="${w}"]`).value]; });
+  const out = []; const cont = {};
+  for (let d = de, g = 0; d <= ate && g < 800; d = addD(d, 1), g++) {
+    const w = wd(d); if (!dias[w]) continue;
+    const n = cont[w] = (cont[w] || 0) + 1; const dm = +d.slice(8);
+    let ok = fr === 'sem' || (fr === 'quin' && n % 2 === 1);
+    if (fr === 'mes') { // a semana é a do primeiro dia marcado; os outros dias entram na mesma semana
+      const w0 = Math.min(...Object.keys(dias).map(Number)); if (w !== w0) continue;
+      if (!(sm === 'u' ? addD(d, 7).slice(5, 7) !== d.slice(5, 7) : Math.ceil(dm / 7) === +sm)) continue;
+      for (const k of Object.keys(dias).map(Number).sort()) { const x = addD(d, k - w0); if (x >= de && x <= ate) out.push({ d: x, hi: dias[k][0], hf: dias[k][1], ci: calInfo(x) }); }
+      continue;
+    }
+    if (ok) out.push({ d, hi: dias[w][0], hf: dias[w][1], ci: calInfo(d) });
+  }
+  return out;
+}
+function rpPrev() {
+  const L = rpDatas(); const box = $('#modal [data-rpprev]'); if (!box) return;
+  const ja = new Set((S.cfg.fer || []).filter(f => /^reuni/i.test(f.cons || '')).map(f => f.data));
+  box.innerHTML = L.length ? `<div class="small" style="margin:6px 0"><b>${L.filter(x => !x.ci).length}</b> reunião(ões). Desmarque as datas que não quiser.</div><div class="tsdates" style="max-height:230px">${L.map(x => `<label class="tsd" style="min-width:210px"><input type="checkbox" data-rpd="${x.d}" data-hi="${x.hi}" data-hf="${x.hf}" ${x.ci ? '' : 'checked'}><span>${WD[wd(x.d)]} ${br(x.d)} <span class="small muted">${x.hi || x.hf ? (x.hi || '…') + '–' + (x.hf || '…') : 'dia todo'}${x.ci ? ' · ' + esc(x.ci.mot) : ''}${ja.has(x.d) ? ' · já lançada (atualiza)' : ''}</span></span></label>`).join('')}</div>` : '<p class="small muted">Nenhuma data com essas regras.</p>';
+}
+Object.assign(ACT, {
+  rpAno: () => {
+    const ano = +(V.calAno || S.cfg.ano);
+    MCTX = { ok: () => {
+      const nome = $('#modal [data-rp=nome]').value.trim() || 'Reunião pedagógica';
+      const sel = [...document.querySelectorAll('#modal [data-rpd]:checked')]; if (!sel.length) return toast('Nenhuma data marcada');
+      S.cfg.fer = S.cfg.fer || []; let nv = 0, at = 0;
+      for (const el of sel) {
+        const d = el.dataset.rpd, hi = el.dataset.hi, hf = el.dataset.hf;
+        const f = S.cfg.fer.find(x => x.data === d && /^reuni/i.test(x.cons || ''));
+        if (f) { Object.assign(f, { nome, hi, hf }); at++; } else { S.cfg.fer.push({ data: d, nome, tipo: 'Local', cons: 'Reunião pedagógica', hi, hf }); nv++; }
+      }
+      S.cfg.fer.sort((a, b) => String(a.data).localeCompare(String(b.data)));
+      saveCfg(); closeModal(); refresh(); toast(`${nv} reunião(ões) lançada(s)${at ? `, ${at} atualizada(s)` : ''}`);
+    } };
+    modal(`<h2>Reuniões pedagógicas do ano</h2>
+     <div class="bar" style="margin:6px 0;flex-wrap:wrap"><label class="f">De<input type="date" data-rp="de" value="${ano}-01-01"></label><label class="f">Até<input type="date" data-rp="ate" value="${ano}-12-31"></label><label class="f" style="flex:1 1 200px">Nome<input data-rp="nome" value="Reunião pedagógica"></label></div>
+     <div class="small muted">Dias da semana e período sem aula</div>
+     <table class="plain" style="margin:4px 0 8px">${[1, 2, 3, 4, 5, 6].map(w => `<tr><td><label class="chk"><input type="checkbox" data-rpw="${w}" ${w === 4 || w === 5 ? 'checked' : ''}><span>${WDL[w]}</span></label></td><td class="small">sem aula das <input type="time" data-rphi="${w}" value="${RP_DEF[w][0]}" style="width:auto"> às <input type="time" data-rphf="${w}" value="${RP_DEF[w][1]}" style="width:auto"></td></tr>`).join('')}</table>
+     <div class="bar" style="margin:0;flex-wrap:wrap"><label class="f">Frequência<select data-rp="fr"><option value="mes">1 vez por mês</option><option value="quin">A cada 2 semanas</option><option value="sem">Toda semana</option></select></label><label class="f" data-rpsmw>Semana do mês<select data-rp="sm"><option value="1">1ª</option><option value="2">2ª</option><option value="3">3ª</option><option value="4">4ª</option><option value="u" selected>Última</option></select></label></div>
+     <div data-rpprev></div>
+     <p class="small muted">Datas que já são feriado ou sem aula vêm desmarcadas. Para mudar ou excluir depois, use a lista de Dias letivos e não letivos.</p>
+     <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Lançar reuniões</button></div>`, true);
+    rpPrev();
+  },
+  rpDel: () => {
+    const ano = String(V.calAno || S.cfg.ano); const n = (S.cfg.fer || []).filter(f => /^reuni/i.test(f.cons || '') && String(f.data).startsWith(ano)).length;
+    if (!n) return toast('Nenhuma reunião pedagógica em ' + ano);
+    askConfirm(`Excluir as <b>${n}</b> reuniões pedagógicas de ${ano}?`, () => { S.cfg.fer = S.cfg.fer.filter(f => !(/^reuni/i.test(f.cons || '') && String(f.data).startsWith(ano))); saveCfg(); closeModal(); refresh(); toast(n + ' reunião(ões) excluída(s)'); }, 'Excluir');
+  },
+});
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#modal') && (e.target.dataset.rp || e.target.dataset.rpw || e.target.dataset.rphi || e.target.dataset.rphf)) { const sm = $('#modal [data-rpsmw]'); if (sm) sm.style.display = $('#modal [data-rp=fr]').value === 'mes' ? '' : 'none'; rpPrev(); } });
+document.addEventListener('change', e => { if (e.target.closest && e.target.closest('#modal') && (e.target.dataset.rp || e.target.dataset.rpw)) { const sm = $('#modal [data-rpsmw]'); if (sm) sm.style.display = $('#modal [data-rp=fr]').value === 'mes' ? '' : 'none'; rpPrev(); } });
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
