@@ -506,8 +506,8 @@ function buildTurma(t) {
           // carga exata, ou UC com fração já dada (aula dividida entre UCs): a última aula fica só com as horas que faltam
           const fracUC = Math.abs((cE ? dE[ui] : dP[ui]) - Math.round(cE ? dE[ui] : dP[ui])) > EPS;
           if ((t.chExata || fracUC) && !(+o.h > 0) && falta > EPS && falta < 1 - EPS) hh = Math.round(falta * hU * 100) / 100;
-          // ajuste manual de horas (o.h) não muda a contagem da UC: a aula conta inteira
-          let inc = +o.h > 0 ? 1 : (hU ? hh / hU : 1);
+          // a UC conta as horas dadas no dia (inclusive quando a carga da aula é alterada à mão); a carga total da UC não muda
+          let inc = hU ? hh / hU : 1;
           // aula dividida entre UCs (o.parts = [{uc,h}, ...]; a 1ª é a UC desta linha): cada UC conta só as suas horas
           const parts = locked && Array.isArray(o.parts) ? o.parts.filter(p => uidx[p.uc] != null && +p.h > 0) : [];
           if (parts.length > 1 && parts[0].uc === units[ui].id) { hh = +parts[0].h; inc = parts[0].cheia ? 1 : (hU ? hh / hU : 1); }
@@ -4431,7 +4431,7 @@ ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de a
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
   { id: 'cad-chaula', t: 'Carga horária de uma aula e carga exata do curso', h: `
-${P(`Na turma, no <b>Cronograma de aulas</b>, clique em <b>⋯</b> na aula e em <b>⏱ Alterar a carga horária desta aula</b>. Informe as horas (ex.: 2 ou 1,5) e salve. A aula ganha a etiqueta ⏱; a UC continua contando a aula normalmente (carga e sequência não mudam) e mudam só o término e as horas do docente no 70×30 e no rateio.`, `Para várias aulas, use <b>✎ Alterar várias aulas</b> → <b>Carga horária de cada aula</b>.`, `Para cursos que precisam da carga horária exata, marque <b>Carga horária exata (sem horas a mais ou a menos)</b> no cadastro da turma. A última aula de cada UC fica só com as horas que faltam e o cabeçalho mostra “carga exata: ✓”.`)}
+${P(`Na turma, no <b>Cronograma de aulas</b>, clique em <b>⋯</b> na aula e em <b>⏱ Alterar a carga horária desta aula</b>. Informe as horas (ex.: 2 ou 1,5) e salve. A aula ganha a etiqueta ⏱ e a UC conta as horas do dia: com mais horas ela termina antes, com menos o que faltar vai para as próximas aulas. A carga total da UC não muda (a última aula fica só com as horas que faltam).`, `Para várias aulas, use <b>✎ Alterar várias aulas</b> → <b>Carga horária de cada aula</b>.`, `Para cursos que precisam da carga horária exata, marque <b>Carga horária exata (sem horas a mais ou a menos)</b> no cadastro da turma. A última aula de cada UC fica só com as horas que faltam e o cabeçalho mostra “carga exata: ✓”.`)}
 ${dica('Sem a marcação de carga exata, a última aula da UC continua inteira (como antes). A regra de análise “Carga horária programada diferente da carga das UCs” confere os cursos com carga exata.')}` },
 
   { id: 'cad-partes', t: 'Aula com mais de uma UC no mesmo dia', h: `
@@ -5946,7 +5946,7 @@ function aulaHModal(t, dsList) {
    <label class="f">Horas desta aula<input data-ah inputmode="decimal" value="${L[0].hAj ? String(atual).replace('.', ',') : ''}" placeholder="ex.: 2 ou 1,5"></label>
    <div class="small muted" data-ahfim style="margin:4px 0"></div>
    <label class="chk"><input type="checkbox" data-ahpad><span>Voltar à carga padrão</span></label>
-   <p class="small muted">A UC continua contando esta aula normalmente (a carga da UC e a sequência não mudam). Mudam só o horário de término e as horas do docente no 70×30 e no rateio.</p>
+   <p class="small muted">A UC conta as horas desta aula: com mais horas, a UC termina antes; com menos, o que faltar entra nas próximas aulas dela. A carga total da UC não muda (a última aula fica só com as horas que faltam). As horas do docente no 70×30 e no rateio seguem o novo valor.</p>
    <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`);
   const upd = () => { const v = +($('#modal [data-ah]').value.replace(',', '.')); const f = $('#modal [data-ahfim]'); if (f) f.textContent = v > 0 ? `Termina às ${hm(L[0].a + Math.round(v * 60))}` : ''; };
   $('#modal [data-ah]').addEventListener('input', upd); upd();
@@ -6016,7 +6016,7 @@ MACT.pLimpa = () => MCTX.limpa();
   if (!alvo || !orig || nd === ds) return mv0();
   const slot = r2((tm(t.hf) - tm(t.hi)) / 60) || r.H;
   // aula com horas ajustadas à mão continua contando inteira para a UC dela (cheia)
-  const partsAlvo = alvo.parts ? (((t.ov || {})[nd] || {}).parts || alvo.parts.map(p => ({ uc: r.units[p.ui].id, h: p.h }))) : [Object.assign({ uc: r.units[alvo.ui].id, h: alvo.h }, alvo.hAj ? { cheia: true } : {})];
+  const partsAlvo = alvo.parts ? (((t.ov || {})[nd] || {}).parts || alvo.parts.map(p => ({ uc: r.units[p.ui].id, h: p.h }))) : [{ uc: r.units[alvo.ui].id, h: alvo.h }];
   const usado = r2(partsAlvo.reduce((s, p) => s + p.h, 0)); const resto = r2(Math.max(0, slot - usado));
   const uOrig = r.units[orig.ui], uAlvo = r.units[alvo.ui];
   const nome = u => (u.num ? 'UC ' + u.num + ' · ' : '') + (u.nome || '');
