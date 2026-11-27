@@ -4430,6 +4430,9 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-menu', t: 'Usar a tela inteira (recolher o menu lateral)', h: `
+${P(`No computador, clique em <b>« Recolher menu</b> (no alto do menu lateral) ou no <b>☰</b> no canto superior esquerdo: o menu some e a página usa a tela toda.`, `Para mostrar o menu de novo, clique no <b>☰</b>. O sistema lembra a sua escolha neste aparelho.`)}` },
+
   { id: 'cad-pi', t: 'Aulas de PI (Projeto Integrador) previstas em cada UC', h: `
 ${P(`Quando a turma tem uma UC com “Projeto Integrador” no nome, a tabela de UCs ganha a coluna <b>Aulas de PI</b> (role a tabela para a direita).`, `Em cada UC, informe quantas aulas de PI <b>presenciais</b> e quantas <b>EAD</b> devem acontecer durante ela.`, `Abaixo aparece <b>programadas x/y</b>: verde quando o cronograma tem exatamente as aulas de PI previstas entre o início e o fim da UC, amarelo quando faltam, vermelho quando sobram. Ajuste fixando a UC do PI nos dias desejados (ou dividindo aulas entre UCs).`)}
 ${dica('A regra de análise “Aulas de PI diferentes das previstas durante a UC” já vem ativa e aponta essas diferenças na Análise do curso.')}` },
@@ -6117,6 +6120,21 @@ REG_TIPOS.piUC = { nome: 'Aulas de PI (Projeto Integrador) diferentes das previs
   return out;
 }; }
 { const L = regras; regras = function () { const R0 = L(); if (!R0.some(g => g.tipo === 'piUC')) R0.push({ id: 'r-piuc', tipo: 'piUC', nome: '', ativo: true, areas: [] }); return R0; }; }
+// ---------- Recolher / mostrar o painel lateral no computador ----------
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `@media(min-width:901px){#menuBtn{display:block;border-radius:8px}#menuBtn:hover{background:rgba(255,255,255,.12)}body.sidecol #side{display:none}}
+#sideTg{display:none}@media(min-width:901px){#sideTg{display:flex;align-items:center;justify-content:center;width:100%;margin:-4px 0 6px;border:1px solid var(--line)!important;border-radius:8px;font-size:12.5px!important;color:var(--mut)!important;padding:5px!important}}`;
+  document.head.appendChild(st);
+  try { if (localStorage.getItem('sidecol') === '1') document.body.classList.add('sidecol'); } catch (e) {}
+  const btn = document.getElementById('menuBtn'); if (btn) btn.title = 'Recolher / mostrar o menu lateral';
+  const tg = () => { const c = document.body.classList.toggle('sidecol'); try { localStorage.setItem('sidecol', c ? '1' : '0'); } catch (e) {} };
+  document.addEventListener('click', e => {
+    if (innerWidth <= 900) return;
+    if (e.target.closest('#menuBtn') || e.target.closest('#sideTg')) { e.preventDefault(); e.stopImmediatePropagation(); tg(); }
+  }, true);
+})();
+{ const rs = renderShell; renderShell = function () { const r = rs.apply(this, arguments); const s = document.getElementById('side'); if (s && !s.querySelector('#sideTg')) s.insertAdjacentHTML('afterbegin', '<button id="sideTg" title="Recolher o menu (use ☰ no topo para mostrar de novo)">« Recolher menu</button>'); return r; }; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
