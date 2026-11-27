@@ -989,7 +989,7 @@ function viewTurma() {
   h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Unidades curriculares</h2><button data-act="copUC">⧉ Copiar UCs de outra turma</button><button data-act="pasteUC">Colar lista</button><button class="pri" data-act="addUC">+ UC</button></div>`;
   if (!t.ucs || !t.ucs.length) h += `<p class="muted small">Sem UCs: o curso conta pelo “Total de aulas”. Cadastre UCs para a contagem automática por unidade.</p>`;
   else {
-    h += `<div class="tw" style="max-height:none"><table class="ucs"><tr><th></th><th>Nº</th><th>Unidade curricular</th><th class="num" title="Carga horária presencial da UC">CH presencial</th><th class="num" title="Carga horária EAD da UC: é dada nos dias de aula EAD da turma">CH EAD</th><th class="num" title="Horas por aula desta UC. Vazio = automático (horário da turma; estágio à noite = 3 h)">H/aula</th><th class="num">Aulas</th><th>Docentes de referência</th><th>Programadas</th><th>Início</th><th>Fim</th><th title="Desmembramento da UC no SS — preenchido pelos apoios">Desmembramento (SS)</th><th></th></tr>`;
+    h += `<div class="tw" style="max-height:none"><table class="ucs"><tr><th></th><th>Nº</th><th>Unidade curricular</th><th class="num" title="Carga horária presencial da UC">CH presencial</th><th class="num" title="Carga horária EAD da UC: é dada nos dias de aula EAD da turma">CH EAD</th><th class="num" title="Horas por aula desta UC. Vazio = automático (horário da turma; estágio à noite = 3 h)">H/aula</th><th class="num">Aulas</th><th>Docentes de referência</th><th>Programadas</th><th>Início</th><th>Fim</th><th title="Desmembramento da UC no SS — preenchido pelos apoios">Desmembramento (SS)</th>${piTemUC(t) ? '<th title="Quantas aulas do Projeto Integrador (PI) devem acontecer durante esta UC">Aulas de PI<br><span class="small muted" style="font-weight:400">pres. · EAD</span></th>' : ''}<th></th></tr>`;
     const UP = ucPeriodos(t);
     t.ucs.forEach((u, i) => {
       const p = r.prog[i] || { n: 0, done: 0 };
@@ -4430,6 +4430,10 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-pi', t: 'Aulas de PI (Projeto Integrador) previstas em cada UC', h: `
+${P(`Quando a turma tem uma UC com “Projeto Integrador” no nome, a tabela de UCs ganha a coluna <b>Aulas de PI</b> (role a tabela para a direita).`, `Em cada UC, informe quantas aulas de PI <b>presenciais</b> e quantas <b>EAD</b> devem acontecer durante ela.`, `Abaixo aparece <b>programadas x/y</b>: verde quando o cronograma tem exatamente as aulas de PI previstas entre o início e o fim da UC, amarelo quando faltam, vermelho quando sobram. Ajuste fixando a UC do PI nos dias desejados (ou dividindo aulas entre UCs).`)}
+${dica('A regra de análise “Aulas de PI diferentes das previstas durante a UC” já vem ativa e aponta essas diferenças na Análise do curso.')}` },
+
   { id: 'cad-copuc', t: 'Copiar UCs de outra turma', h: `
 ${P(`Na turma, no quadro <b>Unidades curriculares</b>, clique em <b>⧉ Copiar UCs de outra turma</b>.`, `Escolha a turma de origem e marque as UCs que quer copiar (todas vêm marcadas).`, `Escolha <b>Adicionar ao final</b> ou <b>Substituir as UCs atuais</b> e se quer levar também os docentes de referência. Clique em <b>Copiar UCs</b>.`)}
 ${dica('Só as UCs são copiadas (nome, número, carga horária, EAD, horas por aula e dias da semana). O cronograma é gerado com as datas e dias desta turma; para copiar o cronograma inteiro, use “Copiar o cronograma de outra turma”.')}` },
@@ -6073,6 +6077,46 @@ document.addEventListener('change', e => {
   if (el.dataset.cusrc != null) { const b = $('#modal [data-culist]'); if (b) b.innerHTML = MCTX.lista ? MCTX.lista(el.value) : ''; }
   if (el.dataset.cuall != null) document.querySelectorAll('#modal [data-cui]').forEach(c => c.checked = el.checked);
 });
+
+// ---------- Aulas de Projeto Integrador (PI) previstas durante cada UC ----------
+const isPI = u => /projeto\s+integrador/i.test((u && u.nome) || '');
+const piTemUC = t => (t.ucs || []).some(isPI);
+// aulas do PI (presenciais e EAD) que caem entre o início e o fim de uma UC
+function piContagem(t, u, UP) {
+  const r = R[t.id]; const p = (UP || ucPeriodos(t))[u.id]; if (!r || !p || !p.ini) return { p: 0, e: 0 };
+  const piIdx = new Set(r.units.map((x, i) => isPI(x) ? i : -1).filter(i => i >= 0)); let np = 0, ne = 0;
+  for (const a of r.aulas) {
+    if (a.ds < p.ini || a.ds > p.fim) continue;
+    const tem = piIdx.has(a.ui) || (a.parts || []).some(x => piIdx.has(x.ui)); if (!tem) continue;
+    if (a.ead) ne++; else np++;
+  }
+  return { p: np, e: ne };
+}
+{ const pc = ucPerCells; ucPerCells = function (t, u, UP) {
+  let h = pc(t, u, UP); if (!piTemUC(t)) return h;
+  if (isPI(u)) return h + '<td class="small muted">—</td>';
+  const c = piContagem(t, u, UP); const ok = (n, m) => !m ? '' : `<span class="pill ${n === m ? 'ok' : n < m ? 'warn' : 'bad'}" style="font-size:10.5px">${n}/${m}</span>`;
+  return h + `<td class="nowrap"><input class="ch" style="width:46px" type="number" min="0" step="1" data-ucpi="p" data-uid="${esc(u.id)}" value="${esc(u.piP || '')}" placeholder="0" title="Aulas presenciais de PI durante esta UC"> <input class="ch" style="width:46px" type="number" min="0" step="1" data-ucpi="e" data-uid="${esc(u.id)}" value="${esc(u.piE || '')}" placeholder="0" title="Aulas EAD de PI durante esta UC">${+u.piP || +u.piE ? `<div class="small" style="margin-top:3px">programadas ${ok(c.p, +u.piP || 0)} ${ok(c.e, +u.piE || 0)}</div>` : ''}</td>`;
+}; }
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.dataset || !el.dataset.ucpi) return; const t = curT(); if (!t) return;
+  const u = (t.ucs || []).find(x => x.id === el.dataset.uid); if (!u) return; const k = el.dataset.ucpi === 'p' ? 'piP' : 'piE';
+  const v = Math.max(0, Math.round(+el.value || 0)); if (v) u[k] = v; else delete u[k]; saveT(t); refresh();
+});
+// regra de análise: aulas de PI previstas x programadas durante cada UC
+REG_TIPOS.piUC = { nome: 'Aulas de PI (Projeto Integrador) diferentes das previstas durante a UC' };
+{ const an = analisa; analisa = function (t) {
+  const out = an(t); if (!piTemUC(t)) return out;
+  const gs = regras().filter(g => g.tipo === 'piUC' && regVale(g, t)); if (!gs.length) return out;
+  const UP = ucPeriodos(t);
+  for (const u of t.ucs) { if (isPI(u) || !(+u.piP || +u.piE)) continue; const c = piContagem(t, u, UP); const nm = u.num ? 'UC ' + u.num : u.nome;
+    for (const g of gs) {
+      if (+u.piP && c.p !== +u.piP) out.push({ g, msg: `${nm}: ${c.p} aula(s) presencial(is) de PI durante a UC — previstas ${u.piP}`, ds: (UP[u.id] || {}).ini });
+      if (+u.piE && c.e !== +u.piE) out.push({ g, msg: `${nm}: ${c.e} aula(s) EAD de PI durante a UC — previstas ${u.piE}`, ds: (UP[u.id] || {}).ini });
+    } }
+  return out;
+}; }
+{ const L = regras; regras = function () { const R0 = L(); if (!R0.some(g => g.tipo === 'piUC')) R0.push({ id: 'r-piuc', tipo: 'piUC', nome: '', ativo: true, areas: [] }); return R0; }; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
