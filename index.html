@@ -4384,7 +4384,7 @@ ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de a
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
   { id: 'cad-reuniao', t: 'Reuniões pedagógicas', h: `
-${P(`Em ${caminho('Dias letivos e não letivos')}, clique em <b>+ Reuniões pedagógicas</b>.`, `Em <b>Escolha as datas</b>, informe a data, marque o período (<b>Manhã</b>, <b>Tarde</b> e/ou <b>Noite</b>) e clique em <b>+ Adicionar data</b>. Repita para cada reunião.`, `Se as reuniões seguem um padrão, abra <b>Ou gerar por regra</b>: escolha os dias da semana, o período de cada um e a frequência (1 vez por mês, a cada 2 semanas ou toda semana).`, `Na lista, ajuste o período de cada data ou desmarque a data, e clique em <b>Lançar reuniões</b>.`)}
+${P(`Em ${caminho('Dias letivos e não letivos')}, clique em <b>+ Reuniões pedagógicas</b>.`, `Clique em <b>📅 Escolher datas no calendário</b> e marque várias datas (use ‹ › para mudar de mês; clique de novo para desmarcar). Marque o período (<b>Manhã</b>, <b>Tarde</b> e/ou <b>Noite</b>) e clique em <b>+ Adicionar datas</b>: todas vão para a lista. Repita para datas com outro período.`, `Se as reuniões seguem um padrão, abra <b>Ou gerar por regra</b>: escolha os dias da semana, o período de cada um e a frequência (1 vez por mês, a cada 2 semanas ou toda semana).`, `Na lista, ajuste o período de cada data ou desmarque a data, e clique em <b>Lançar reuniões</b>.`)}
 ${dica('Só as aulas do período marcado deixam de acontecer (manhã = aulas que começam antes das 12h, tarde = até 18h, noite = depois). As reuniões aparecem em destaque em Eventos. Para apagar as do ano exibido de uma vez, use <b>✕ Reuniões do ano</b>.')}` },
 
   { id: 'cad-inter', t: 'Alerta de interjornada', h: `
@@ -5523,13 +5523,13 @@ function rpPrev() {
   const box = $('#modal [data-rpprev]'); if (!box) return;
   const sm = $('#modal [data-rpsmw]'); if (sm) sm.style.display = $('#modal [data-rp=fr]').value === 'mes' ? '' : 'none';
   const ed = {}; document.querySelectorAll('#modal [data-rprow]').forEach(r => { const d = r.dataset.rprow; ed[d] = { on: r.querySelector('[data-rpd]').checked, pers: RP_PERS.filter(p => r.querySelector(`[value="${p}"]`).checked) }; });
-  const L = rpDatas().map(x => ed[x.d] ? { ...x, pers: ed[x.d].pers, on: ed[x.d].on } : { ...x, on: !x.ci });
+  const L = rpDatas().map(x => ed[x.d] ? { ...x, pers: ed[x.d].pers, on: ed[x.d].on } : { ...x, on: !x.ci || RP_EXTRA.some(z => z.d === x.d) });
   const ja = new Set((S.cfg.fer || []).filter(f => /^reuni/i.test(f.cons || '')).map(f => f.data));
   box.innerHTML = L.length ? `<div class="small" style="margin:6px 0"><b>${L.filter(x => x.on).length}</b> reunião(ões) marcada(s). Ajuste o período de cada data ou desmarque a data.</div><div class="tw" style="max-height:250px"><table class="plain">${L.map(x => `<tr data-rprow="${x.d}"><td class="nowrap"><label class="chk"><input type="checkbox" data-rpd="${x.d}" ${x.on ? 'checked' : ''}><span>${WD[wd(x.d)]} ${br(x.d)}</span></label></td><td class="nowrap">${RP_PERS.map(p => `<label class="chk" style="margin-right:6px"><input type="checkbox" data-rpdp="${x.d}" value="${p}" ${x.pers.includes(p) ? 'checked' : ''}><span>${p}</span></label>`).join('')}</td><td class="small muted">${x.ci ? esc(x.ci.mot) : ''}${ja.has(x.d) ? ' já lançada (atualiza)' : ''}</td></tr>`).join('')}</table></div>` : '<p class="small muted">Nenhuma data ainda: marque um dia da semana acima ou adicione uma data.</p>';
 }
 Object.assign(ACT, {
   rpAno: () => {
-    const ano = +(V.calAno || S.cfg.ano); RP_EXTRA = [];
+    const ano = +(V.calAno || S.cfg.ano); RP_EXTRA = []; RP_PICK = new Set(); RP_PM = (String(ano) === HOJE.slice(0, 4) ? HOJE.slice(0, 7) : ano + '-01');
     MCTX = { ok: () => {
       const nome = $('#modal [data-rp=nome]').value.trim() || 'Reunião pedagógica';
       const sel = [...document.querySelectorAll('#modal [data-rpd]:checked')].map(e => ({ d: e.dataset.rpd, pers: RP_PERS.filter(p => { const c = $(`#modal [data-rpdp="${e.dataset.rpd}"][value="${p}"]`); return c && c.checked; }) }));
@@ -5547,7 +5547,9 @@ Object.assign(ACT, {
     modal(`<h2>Reuniões pedagógicas</h2>
      <div class="bar" style="margin:6px 0;flex-wrap:wrap"><label class="f" style="flex:1 1 200px">Nome<input data-rp="nome" value="Reunião pedagógica"></label></div>
      <h3 style="margin:8px 0 4px">Escolha as datas</h3>
-     <div class="bar" style="margin:0 0 6px;flex-wrap:wrap;align-items:flex-end"><label class="f">Data<input type="date" data-rpx="d"></label><span>${RP_PERS.map(p => `<label class="chk" style="margin-right:6px"><input type="checkbox" data-rpxp value="${p}"><span>${p}</span></label>`).join('')}</span><button class="sm" data-m="rpAdd">+ Adicionar data</button></div>
+     <div class="small muted" style="margin-bottom:4px">Clique nos dias do calendário para marcar várias datas, escolha o período e clique em <b>+ Adicionar datas</b>.</div>
+     <div class="bar" style="margin:0 0 6px;flex-wrap:wrap;align-items:center"><div style="position:relative"><button class="sm" data-m="rpCal" data-rpcalbtn>📅 Escolher datas no calendário ▾</button><div data-rpcal class="rpcal hidden"></div></div><span>${RP_PERS.map(p => `<label class="chk" style="margin-right:6px"><input type="checkbox" data-rpxp value="${p}"><span>${p}</span></label>`).join('')}</span><button class="sm pri" data-m="rpAdd">+ Adicionar datas</button></div>
+     <div data-rppick class="small" style="margin-bottom:6px"></div>
      <details style="margin:6px 0"><summary><b>Ou gerar por regra</b> <span class="small muted">(ex.: última quinta de cada mês à noite)</span></summary>
      <div class="bar" style="margin:6px 0;flex-wrap:wrap"><label class="f">De<input type="date" data-rp="de" value="${ano}-01-01"></label><label class="f">Até<input type="date" data-rp="ate" value="${ano}-12-31"></label>
       <label class="f">Frequência<select data-rp="fr"><option value="mes">1 vez por mês</option><option value="quin">A cada 2 semanas</option><option value="sem">Toda semana</option></select></label><label class="f" data-rpsmw>Semana do mês<select data-rp="sm"><option value="1">1ª</option><option value="2">2ª</option><option value="3">3ª</option><option value="4">4ª</option><option value="u" selected>Última</option></select></label></div>
@@ -5563,12 +5565,33 @@ Object.assign(ACT, {
     askConfirm(`Excluir as <b>${n}</b> reuniões pedagógicas de ${ano}?`, () => { S.cfg.fer = S.cfg.fer.filter(f => !(/^reuni/i.test(f.cons || '') && String(f.data).startsWith(ano))); saveCfg(); closeModal(); refresh(); toast(n + ' reunião(ões) excluída(s)'); }, 'Excluir');
   },
 });
-MACT.rpAdd = () => {
-  const d = $('#modal [data-rpx=d]').value; const pers = [...document.querySelectorAll('#modal [data-rpxp]:checked')].map(e => e.value);
-  if (!isDate(d)) return toast('Escolha a data'); if (!pers.length) return toast('Marque manhã, tarde ou noite');
-  RP_EXTRA = RP_EXTRA.filter(x => x.d !== d).concat([{ d, pers }]);
-  $('#modal [data-rpx=d]').value = ''; document.querySelectorAll('#modal [data-rpxp]').forEach(e => e.checked = false); rpPrev();
-};
+let RP_PICK = new Set(), RP_PM = '';
+(function () { const st = document.createElement('style'); st.textContent = `.rpcal.hidden{display:none}.rpcal{position:absolute;z-index:30;top:34px;left:0;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px;width:300px}
+.rpcal .rch{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.rpcal .rcg{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.rpcal .rcw{font-size:10.5px;color:var(--mut);text-align:center;font-weight:700}.rpcal .rcd{border:1px solid transparent;border-radius:8px;padding:5px 0;text-align:center;font-size:12.5px;cursor:pointer;background:#f7f9fa}
+.rpcal .rcd:hover{border-color:#0f766e}.rpcal .rcd.sel{background:#0f766e;color:#fff;font-weight:700}.rpcal .rcd.nl{background:#fdecec;color:#b42318}.rpcal .rcd.nl.sel{background:#0f766e;color:#fff}.rpcal .rcd.ja{box-shadow:inset 0 -3px 0 #7c3aed}.rpcal .rcd.dom{opacity:.35}.rpcal .rcd.vz{background:none;cursor:default}`; document.head.appendChild(st); })();
+function rpCalHtml() {
+  const ym = RP_PM, d1 = ym + '-01'; const off = wd(d1) - 1; const ja = new Set((S.cfg.fer || []).filter(f => /^reuni/i.test(f.cons || '')).map(f => f.data));
+  let g = ''; for (let i = 0; i < off; i++) g += '<div class="rcd vz"></div>';
+  for (let d = d1; d.slice(0, 7) === ym; d = addD(d, 1)) { const ci = calInfo(d); g += `<div class="rcd ${RP_PICK.has(d) ? 'sel' : ''} ${ci ? 'nl' : ''} ${ja.has(d) ? 'ja' : ''} ${wd(d) === 7 ? 'dom' : ''}" data-m="rpDia" data-d="${d}" title="${esc(ci ? ci.mot : ja.has(d) ? 'Já tem reunião' : '')}">${+d.slice(8)}</div>`; }
+  return `<div class="rch"><button class="sm" data-m="rpMes" data-k="-1">‹</button><b>${MESESL[+ym.slice(5) - 1]} ${ym.slice(0, 4)}</b><button class="sm" data-m="rpMes" data-k="1">›</button></div><div class="rcg">${['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map(x => `<div class="rcw">${x}</div>`).join('')}${g}</div><div class="small muted" style="margin-top:6px">${RP_PICK.size} data(s) marcada(s) · vermelho = feriado/sem aula · traço roxo = já tem reunião</div><div class="bar" style="margin:6px 0 0;justify-content:flex-end"><button class="sm" data-m="rpLimpa">Limpar</button><button class="sm pri" data-m="rpCal">OK</button></div>`;
+}
+function rpPickTxt() { const b = $('#modal [data-rppick]'); if (b) b.innerHTML = RP_PICK.size ? 'Marcadas: ' + [...RP_PICK].sort().map(d => `<span class="pill">${WD[wd(d)]} ${brs(d)}</span>`).join(' ') : ''; const c = $('#modal [data-rpcal]'); if (c && !c.classList.contains('hidden')) c.innerHTML = rpCalHtml(); const bt = $('#modal [data-rpcalbtn]'); if (bt) bt.textContent = '📅 Escolher datas no calendário' + (RP_PICK.size ? ` (${RP_PICK.size})` : '') + ' ▾'; }
+Object.assign(MACT, {
+  rpCal: () => { const c = $('#modal [data-rpcal]'); c.classList.toggle('hidden'); if (!c.classList.contains('hidden')) c.innerHTML = rpCalHtml(); },
+  rpDia: el => { const d = el.dataset.d; if (RP_PICK.has(d)) RP_PICK.delete(d); else RP_PICK.add(d); rpPickTxt(); },
+  rpMes: el => { const [y, m] = RP_PM.split('-').map(Number); const t = new Date(y, m - 1 + +el.dataset.k, 1); RP_PM = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0'); rpPickTxt(); },
+  rpLimpa: () => { RP_PICK.clear(); rpPickTxt(); },
+  rpAdd: () => {
+    const pers = [...document.querySelectorAll('#modal [data-rpxp]:checked')].map(e => e.value);
+    if (!RP_PICK.size) return toast('Marque as datas no calendário'); if (!pers.length) return toast('Marque manhã, tarde ou noite');
+    const ds = [...RP_PICK]; RP_EXTRA = RP_EXTRA.filter(x => !RP_PICK.has(x.d)).concat(ds.map(d => ({ d, pers: [...pers] })));
+    // datas já na lista (por regra) recebem o período escolhido
+    document.querySelectorAll('#modal [data-rprow]').forEach(r => { if (RP_PICK.has(r.dataset.rprow)) r.remove(); });
+    RP_PICK.clear(); const c = $('#modal [data-rpcal]'); if (c) c.classList.add('hidden');
+    document.querySelectorAll('#modal [data-rpxp]').forEach(e => e.checked = false); rpPickTxt(); rpPrev(); toast(ds.length + ' data(s) adicionada(s) à lista');
+  },
+});
 // ao marcar um dia da semana sem período, sugere a noite; mudanças refazem a lista
 document.addEventListener('change', e => {
   const el = e.target; if (!el.closest || !el.closest('#modal')) return;
