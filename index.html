@@ -347,12 +347,13 @@ function salaOvRows(A, B) { return salaSpans(A).reduce((s, [x, y]) => s + salaOv
 // ---- Calendário: feriados, emendas, dias sem aula ----
 let CAL = { folga: {}, sem: {} };
 function buildCal(cfg) {
-  const sim = {}, sem = {}, parc = {};
+  const sim = {}, sem = {}, parc = {}, reun = {};
   for (const f of (cfg.fer || [])) {
     if (!isDate(f.data)) continue;
     const c = (f.cons || '').toLowerCase();
     if (c === 'sim') sim[f.data] = (f.nome || 'Feriado').trim();
     else if (c.startsWith('sem aula')) sem[f.data] = (f.nome || 'Sem aula').trim();
+    else if (c.startsWith('reuni')) { const a = tm(f.hi), b = tm(f.hf); reun[f.data] = { nome: (f.nome || 'Reunião pedagógica').trim(), a: a == null ? 0 : a, b: b == null ? 1440 : b, hi: f.hi || '', hf: f.hf || '' }; }
     else if (c.startsWith('expediente')) { const a = tm(f.hi), b = tm(f.hf); parc[f.data] = { nome: (f.nome || 'Expediente parcial').trim(), a: a == null ? 0 : a, b: b == null ? 1440 : b, sa: !!f.semAula }; }
   }
   const folga = {};
@@ -364,7 +365,7 @@ function buildCal(cfg) {
     if (w === 5) em(addD(d, 1), n);
   }
   for (const d of Object.keys(sim)) folga[d] = sim[d];
-  CAL = { folga, sem, parc };
+  CAL = { folga, sem, parc, reun };
 }
 // null = dia letivo; {aula:false, carga:bool, mot}
 function calInfo(ds) {
@@ -378,9 +379,10 @@ function calParc(ds) {
   const txt = p.a > 0 && p.b < 1440 ? 'unidade funciona das ' + hm(p.a) + ' às ' + hm(p.b) : p.a > 0 ? 'unidade abre às ' + hm(p.a) : 'unidade fecha às ' + hm(p.b);
   return { carga: true, kind: 'parc', a: p.a, b: p.b, sa: p.sa, mot: p.nome + ' · ' + txt + (p.sa ? ' · sem aula' : '') };
 }
-const calLbl = ds => calInfo(ds) || calParc(ds);
+const calLbl = ds => calInfo(ds) || calParc(ds) || calReun(ds);
 // para uma aula das a às b: o dia tira a aula? (expediente parcial tira a aula se menos da metade dela cabe no horário de funcionamento)
-function calInfoAula(ds, a, b) { const ci = calInfo(ds); if (ci) return ci; const p = calParc(ds); if (p && (p.sa || (a != null && b > a && overlap(a, b, p.a, p.b) < (b - a) / 2))) return p; return null; }
+function calReun(ds) { const r = (CAL.reun || {})[ds]; return r ? { carga: true, mot: r.nome + (r.hi || r.hf ? ' (' + (r.hi || '…') + '–' + (r.hf || '…') + ')' : ''), kind: 'reun', a: r.a, b: r.b } : null; }
+function calInfoAula(ds, a, b) { const ci = calInfo(ds); if (ci) return ci; const rp = calReun(ds); if (rp && (a == null || overlap(a, b, rp.a, rp.b) > 0)) return rp; const p = calParc(ds); if (p && (p.sa || (a != null && b > a && overlap(a, b, p.a, p.b) < (b - a) / 2))) return p; return null; }
 // escala do docente no dia, recortada pelo expediente parcial
 function escIvsDia(d, ds, per) { const w = wd(ds); const E = escOn(d, ds); const iv = per ? ivs(E && E[w + per]) : escIvs(d, w, ds); const p = calParc(ds); if (!p) return iv; return iv.map(([x, y]) => [Math.max(x, p.a), Math.min(y, p.b)]).filter(([x, y]) => y > x); }
 
@@ -1049,14 +1051,14 @@ function viewCal() {
   const L = (S.cfg.fer || []).map((f, i) => ({ ...f, i })).sort((a, b) => (a.data || '').localeCompare(b.data || ''));
   const anoF = V.calAno || S.cfg.ano;
   let h = `<h1>Dias letivos e não letivos</h1>
-  <div class="card small">Regras (iguais às da planilha): <b>Sim</b> = feriado, sem aula e sem carga, com emenda automática (feriado na terça → emenda segunda; quinta → sexta e sábado; sexta → sábado). <b>Sem aula (conta carga)</b> = sem aula, mas conta na carga do docente (recesso, planejamento). <b>Expediente parcial</b> = a unidade funciona só parte do dia (ex.: Quarta-feira de Cinzas, abre às 14:00): informe o horário; a escala dentro dele conta carga e a escala fora dele é suspensa (diminui a carga no 70×30 e no rateio). As aulas fora do horário não acontecem; marque <b>Sem aula no dia</b> se houver só expediente, sem nenhuma aula. <b>Não</b> = desconsiderado. Domingos nunca têm aula.</div>
+  <div class="card small">Regras (iguais às da planilha): <b>Sim</b> = feriado, sem aula e sem carga, com emenda automática (feriado na terça → emenda segunda; quinta → sexta e sábado; sexta → sábado). <b>Sem aula (conta carga)</b> = sem aula, mas conta na carga do docente (recesso, planejamento). <b>Expediente parcial</b> = a unidade funciona só parte do dia (ex.: Quarta-feira de Cinzas, abre às 14:00): informe o horário; a escala dentro dele conta carga e a escala fora dele é suspensa (diminui a carga no 70×30 e no rateio). As aulas fora do horário não acontecem; marque <b>Sem aula no dia</b> se houver só expediente, sem nenhuma aula. <b>Reunião pedagógica</b> = informe o período da reunião: as aulas nesse horário não acontecem (as de outros períodos do dia seguem normais), conta carga do docente e a reunião aparece em destaque no calendário de Eventos. <b>Não</b> = desconsiderado. Domingos nunca têm aula.</div>
   <div class="bar"><button class="pri" data-act="addFer">+ Dia</button><button data-act="addFerRange">+ Período (recesso)</button><span class="grow"></span><span class="small muted">Ano:</span><input type="number" style="width:90px" data-in="calAno" value="${anoF}"></div>
   <div class="tw"><table><tr><th>Data</th><th>Dia</th><th>Descrição</th><th>Tipo</th><th>Considerar?</th><th>Efeito</th><th></th></tr>`;
   for (const f of L) {
     if (String(f.data || '').slice(0, 4) != anoF && f.data) continue;
-    const ef = f.cons === 'Sim' ? (wd(f.data) === 2 ? 'Feriado + emenda segunda' : wd(f.data) === 4 ? 'Feriado + emenda sex e sáb' : wd(f.data) === 5 ? 'Feriado + emenda sábado' : 'Feriado') : /sem aula/i.test(f.cons || '') ? 'Sem aula, conta carga' : /expediente/i.test(f.cons || '') ? 'Expediente ' + (f.hi ? 'a partir das ' + f.hi : '') + (f.hi && f.hf ? ' ' : '') + (f.hf ? 'até ' + f.hf : '') + ' (conta carga); escala fora disso suspensa; ' + (f.semAula ? 'sem aula no dia' : 'aulas só no horário de expediente') : 'Desconsiderado';
+    const ef = f.cons === 'Sim' ? (wd(f.data) === 2 ? 'Feriado + emenda segunda' : wd(f.data) === 4 ? 'Feriado + emenda sex e sáb' : wd(f.data) === 5 ? 'Feriado + emenda sábado' : 'Feriado') : /sem aula/i.test(f.cons || '') ? 'Sem aula, conta carga' : /reuni/i.test(f.cons || '') ? 'Reunião: sem aula ' + (f.hi || f.hf ? 'das ' + (f.hi || '00:00') + ' às ' + (f.hf || '23:59') : 'no dia todo') + ' (conta carga); vai para Eventos em destaque' : /expediente/i.test(f.cons || '') ? 'Expediente ' + (f.hi ? 'a partir das ' + f.hi : '') + (f.hi && f.hf ? ' ' : '') + (f.hf ? 'até ' + f.hf : '') + ' (conta carga); escala fora disso suspensa; ' + (f.semAula ? 'sem aula no dia' : 'aulas só no horário de expediente') : 'Desconsiderado';
     h += `<tr><td><input type="date" data-ff="data" data-i="${f.i}" value="${esc(f.data)}"></td><td>${f.data ? WD[wd(f.data)] : ''}</td><td><input data-ff="nome" data-i="${f.i}" value="${esc(f.nome)}"></td><td><input data-ff="tipo" data-i="${f.i}" value="${esc(f.tipo)}" style="width:120px"></td>
-    <td><select data-ff="cons" data-i="${f.i}">${opt(['Sim', 'Sem aula (conta carga)', 'Expediente parcial', 'Não'], f.cons)}</select>${/expediente/i.test(f.cons || '') ? `<div class="small" style="margin-top:4px;display:flex;gap:4px;align-items:center">abre <input type="time" data-ff="hi" data-i="${f.i}" value="${esc(f.hi || '')}" style="width:auto"> fecha <input type="time" data-ff="hf" data-i="${f.i}" value="${esc(f.hf || '')}" style="width:auto"></div><label class="chk small" style="margin-top:4px"><input type="checkbox" data-fsa="${f.i}" ${f.semAula ? 'checked' : ''}><span>Sem aula no dia (só expediente)</span></label>` : ''}</td><td class="small muted">${ef}</td><td><button class="sm dng" data-act="delFer" data-i="${f.i}">✕</button></td></tr>`;
+    <td><select data-ff="cons" data-i="${f.i}">${opt(['Sim', 'Sem aula (conta carga)', 'Expediente parcial', 'Reunião pedagógica', 'Não'], f.cons)}</select>${/reuni/i.test(f.cons || '') ? `<div class="small" style="margin-top:4px;display:flex;gap:4px;align-items:center">sem aula das <input type="time" data-ff="hi" data-i="${f.i}" value="${esc(f.hi || '')}" style="width:auto"> às <input type="time" data-ff="hf" data-i="${f.i}" value="${esc(f.hf || '')}" style="width:auto"></div>` : ''}${/expediente/i.test(f.cons || '') ? `<div class="small" style="margin-top:4px;display:flex;gap:4px;align-items:center">abre <input type="time" data-ff="hi" data-i="${f.i}" value="${esc(f.hi || '')}" style="width:auto"> fecha <input type="time" data-ff="hf" data-i="${f.i}" value="${esc(f.hf || '')}" style="width:auto"></div><label class="chk small" style="margin-top:4px"><input type="checkbox" data-fsa="${f.i}" ${f.semAula ? 'checked' : ''}><span>Sem aula no dia (só expediente)</span></label>` : ''}</td><td class="small muted">${ef}</td><td><button class="sm dng" data-act="delFer" data-i="${f.i}">✕</button></td></tr>`;
   }
   return h + '</table></div>';
 }
@@ -1377,7 +1379,7 @@ document.addEventListener('change', e => {
       const old = c.cod; for (const t of Object.values(S.turmas)) if (t.cc === old) { t.cc = v; saveT(t); } }
     c[k] = v; saveCfg(); return refresh(); }
   if (el.dataset.tcc) { const tt = S.turmas[el.dataset.tcc]; tt.cc = el.value; saveT(tt); return refresh(); }
-  if (el.dataset.ff != null) { const f = S.cfg.fer[+el.dataset.i]; f[el.dataset.ff] = el.value; saveCfg(); return refresh(); }
+  if (el.dataset.ff != null) { const f = S.cfg.fer[+el.dataset.i]; f[el.dataset.ff] = el.value; if (el.dataset.ff === 'cons' && /^reuni/i.test(el.value) && !f.hi && !f.hf && isDate(f.data)) { const w = wd(f.data); if (w === 4) { f.hi = '18:00'; f.hf = '22:30'; } else if (w === 5) { f.hi = '13:00'; f.hf = '18:00'; } if (!f.nome) f.nome = 'Reunião pedagógica'; } saveCfg(); return refresh(); }
   if (el.dataset.sf != null) { const s = S.cfg.salas[+el.dataset.i]; const old = s.nome; s[el.dataset.sf] = el.value; if (el.dataset.sf === 'nome' && old !== el.value) { for (const tt of Object.values(S.turmas)) { let ch = false; if (tt.sala === old) { tt.sala = el.value; ch = true; } for (const o of Object.values(tt.ov || {})) if (o.sala === old) { o.sala = el.value; ch = true; } if (ch) saveT(tt); } } saveCfg(); return refresh(); }
   if (el.dataset.cf) { const k = el.dataset.cf; if (k === 'areas') S.cfg.areas = el.value.split('\n').map(s => s.trim()).filter(Boolean); else if (k === 'cc') S.cfg.cc = el.value.split('\n').map(l => { const [c, ...d] = l.split(';'); return { cod: (c || '').trim(), desc: d.join(';').trim() }; }).filter(c => c.cod); else S.cfg[k] = +el.value; saveCfg(); return refresh(); }
   if (el.dataset.in) {
@@ -1996,7 +1998,7 @@ function viewSemana() {
   };
   if (!n) h += `<div class="card empty">Nenhuma aula nesta semana com esses filtros.</div>`;
   // desktop: grade período × dia
-  const evDay = d => (S.eventos || []).filter(e => evOn(e, d)).map(e => `<div class="whev" data-ev="${e.id}" style="border-left-color:${evColor(e.cat)}">${e.imp ? '★ ' : ''}${esc(e.titulo)}</div>`).join('');
+  const evDay = d => evList().filter(e => evOn(e, d)).map(e => `<div class="whev" data-ev="${e.id}" style="border-left-color:${evColor(e.cat)}">${e.imp ? '★ ' : ''}${esc(e.titulo)}</div>`).join('');
   h += `<div class="wgrid" style="grid-template-columns:90px repeat(6,minmax(0,1fr))"><div></div>${days.map(d => { const ci = calLbl(d); return `<div class="wh ${d === HOJE ? 'today' : ''}"><b>${WD[wd(d)]}</b> ${brs(d)}${ci ? `<div class="whoff">${esc(ci.mot)}</div>` : ''}${evDay(d)}</div>`; }).join('')}`;
   for (const [s, lbl] of (used.length ? used : SLOTS)) {
     h += `<div class="wp">${lbl}</div>`;
@@ -2146,7 +2148,9 @@ ACT.pubUpd = async () => {
 // ===== Eventos e informações institucionais =====
 const EV_CATS = [['Evento', '#0b7a83'], ['Reunião', '#5a32c8'], ['Prazo', '#c4281c'], ['Informativo', '#1f6fd1'], ['Data comemorativa', '#d4622b'], ['Outro', '#667085']];
 const evColor = c => (EV_CATS.find(x => x[0] === c) || EV_CATS[EV_CATS.length - 1])[1];
-const evList = () => (S.eventos || []);
+const evList = () => (S.eventos || []).concat(reunEvs());
+// reuniões pedagógicas lançadas em Dias letivos e não letivos viram eventos em destaque (somente leitura aqui)
+function reunEvs() { return ((S.cfg && S.cfg.fer) || []).filter(f => isDate(f.data) && /^reuni/i.test(f.cons || '')).map(f => ({ id: 'rp:' + f.data, titulo: (f.nome || 'Reunião pedagógica').trim(), ini: f.data, fim: '', hi: f.hi || '', hf: f.hf || '', cat: 'Reunião', imp: true, auto: true, desc: 'Reunião pedagógica: sem aula' + (f.hi || f.hf ? ' das ' + (f.hi || '00:00') + ' às ' + (f.hf || '23:59') : ' no dia') + '. Lançada em Dias letivos e não letivos.' })); }
 const evOn = (e, ds) => e.ini && ds >= e.ini && ds <= (e.fim && e.fim >= e.ini ? e.fim : e.ini);
 const evWhen = e => (e.fim && e.fim > e.ini ? `${br(e.ini)} a ${br(e.fim)}` : `${WDL[wd(e.ini)]}, ${br(e.ini)}`) + (e.hi ? ` · ${e.hi}${e.hf ? '–' + e.hf : ''}` : '');
 const saveEv = () => persist('cfg/eventos');
@@ -2165,7 +2169,7 @@ function viewEventos() {
   for (let k = 0; k < 42; k++) {
     if (k % 7 === 0 && x.slice(0, 7) > V.mes) break;
     const inM = x.slice(0, 7) === V.mes; const ci = calLbl(x); const evs = L.filter(e => evOn(e, x));
-    h += `<div class="eday ${inM ? '' : 'out'} ${wd(x) === 7 ? 'dom' : ''} ${ci ? (ci.kind === 'parc' ? 'nlp' : 'nl') : ''} ${x === HOJE ? 'today' : ''}" ${canWrite() && inM ? `data-act="newEv" data-ds="${x}"` : ''}><div class="dn">${+x.slice(8)}</div>${ci && inM ? `<div class="mot">${esc(ci.mot.slice(0, 70))}</div>` : ''}
+    h += `<div class="eday ${inM ? '' : 'out'} ${wd(x) === 7 ? 'dom' : ''} ${ci ? (ci.kind === 'parc' || ci.kind === 'reun' ? 'nlp' : 'nl') : ''} ${x === HOJE ? 'today' : ''}" ${canWrite() && inM ? `data-act="newEv" data-ds="${x}"` : ''}><div class="dn">${+x.slice(8)}</div>${ci && inM ? `<div class="mot">${esc(ci.mot.slice(0, 70))}</div>` : ''}
       ${inM ? evs.map(e => `<div class="evc" data-ev="${e.id}" style="border-left-color:${evColor(e.cat)}" title="${esc(e.titulo)}">${e.imp ? '★ ' : ''}${e.hi && e.ini === x ? `<b>${esc(e.hi)}</b> ` : ''}${esc(e.titulo)}</div>`).join('') : ''}</div>`;
     x = addD(x, 1);
   }
@@ -2175,7 +2179,7 @@ function viewEventos() {
   return h;
 }
 function evModal(e, isNew) {
-  if (!canWrite()) {
+  if (!canWrite() || e.auto) {
     modal(`<div class="evhead" style="border-left-color:${evColor(e.cat)}"><div class="small muted">${esc(e.cat || '')}${e.imp ? ' · ★ importante' : ''}</div><h2 style="margin:4px 0">${esc(e.titulo)}</h2><div>${esc(evWhen(e))}</div>${e.local ? `<div class="muted">${esc(e.local)}</div>` : ''}</div>${e.desc ? `<p style="white-space:pre-wrap">${esc(e.desc)}</p>` : ''}<div class="mact"><button data-m="close">Fechar</button></div>`);
     return;
   }
@@ -4412,7 +4416,7 @@ ${ref('<p>O dia aparece em azul no calendário do docente; o calendário mostra 
 ${P(`Clique em ${caminho('Dias não letivos')} e confira o <b>Ano</b> no canto direito.`,
  `Um dia: clique em <b>+ Dia</b>. Uma linha nova aparece em 01/01 — troque a <b>data</b>, escreva a <b>descrição</b> e o <b>tipo</b> (Nacional, Municipal, Institucional…).`,
  `Vários dias seguidos (recesso, férias coletivas): clique em <b>+ Período (recesso)</b>, informe de/até, descrição e como considerar.`,
- `Em <b>Considerar?</b> escolha: <b>Sim</b> (feriado, com emenda automática), <b>Sem aula (conta carga)</b>, <b>Expediente parcial</b> (informe abre/fecha e, se não houver aula, marque <b>Sem aula no dia</b>) ou <b>Não</b>.`,
+ `Em <b>Considerar?</b> escolha: <b>Sim</b> (feriado, com emenda automática), <b>Sem aula (conta carga)</b>, <b>Expediente parcial</b> (informe abre/fecha e, se não houver aula, marque <b>Sem aula no dia</b>), <b>Reunião pedagógica</b> (informe o período sem aula — quinta já vem 18:00–22:30 e sexta 13:00–18:00; só as aulas desse horário saem e a reunião aparece em destaque em Eventos) ou <b>Não</b>.`,
  `Tudo salva sozinho. ✕ exclui a linha.`)}
 ${ref('<p>Os cronogramas de todas as turmas são recalculados na hora (as aulas pulam o dia). O <b>Calendário letivo</b> mostra o ano colorido; Eventos mostram o dia como “sem aula”, “feriado” etc. Expediente parcial reduz a carga dos docentes no 70×30 e no rateio.</p>')}` },
 
@@ -5276,7 +5280,7 @@ function diasEspCard(t) {
   const rec = (t.recT || []).map((x, i) => `<tr><td class="nowrap">${br(x.de)}</td><td class="nowrap">${br(isDate(x.ate) ? x.ate : x.de)}</td><td>${esc(x.mot || '')}</td><td class="nowrap"><button class="sm" data-act="deRec" data-i="${i}">✎</button><button class="sm dng" data-act="deRecDel" data-i="${i}">✕</button></td></tr>`).join('');
   const NL = naoLetivosDaTurma(t);
   const ign = new Set(t.calIgn || []);
-  const tipo = ci => ci.kind === 'parc' ? 'Expediente parcial' : ci.kind === 'sem' ? 'Sem aula / recesso' : /^Emenda/.test(ci.mot) ? 'Emenda' : 'Feriado';
+  const tipo = ci => ci.kind === 'reun' ? 'Reunião pedagógica' : ci.kind === 'parc' ? 'Expediente parcial' : ci.kind === 'sem' ? 'Sem aula / recesso' : /^Emenda/.test(ci.mot) ? 'Emenda' : 'Feriado';
   const nl = NL.map(([d, ci]) => { const auto = (t.calIgnSem && ci.kind === 'sem') || (t.calIgnFer && ci.kind === 'fer'); return `<label class="tsd" style="min-width:230px" title="${esc(ci.mot)}"><input type="checkbox" data-deign="${d}" ${ign.has(d) || auto ? 'checked' : ''} ${auto ? 'disabled' : ''}><span>${WD[wd(d)]} ${br(d)} · <span class="small muted">${esc(tipo(ci))}: ${esc(ci.mot.replace(/^Sem aula: /, '').slice(0, 30))}</span></span></label>`; }).join('');
   return `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">📆 Dias especiais e recessos desta turma</h2></div>
    <h3 style="margin:6px 0">Períodos com dias de aula diferentes</h3>
