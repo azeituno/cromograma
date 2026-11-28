@@ -292,6 +292,8 @@ select.desm{font-size:12px;padding:2px 4px}select.desm.total{background:#dcfce7;
 tr.dimrow td{opacity:.6}.livrec{background:#f1f5f9;border-radius:999px;padding:3px 10px}
 
 .at.inter{background:#fdf2fa;color:#a1185f}
+
+.apucs{display:flex;flex-wrap:wrap;gap:4px 18px}.apucs .chk{display:flex;align-items:center;gap:6px;min-width:260px;font-size:14px}.apuc{border-top:1px solid var(--line,#e5e7eb);padding:10px 0}.apuch{margin-bottom:6px}.apops td,.apops th{vertical-align:top}.apops tr.apsel td{background:#ecfdf3}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -907,7 +909,7 @@ function render() {
   if (!V.mes) V.mes = (new Date().getFullYear() === +S.cfg.ano ? new Date().toISOString().slice(0, 7) : S.cfg.ano + '-02');
   if (!V.area) { const ts = Object.values(S.turmas); V.area = S.cfg.areas.find(a => ts.some(t => t.area === a)) || S.cfg.areas[0] || ''; }
   V.ano = V.ano || S.cfg.ano;
-  const f = { pctd: viewPctd, edu: viewEdu, livros: viewLivros, cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
+  const f = { aprov: viewAprov, pctd: viewPctd, edu: viewEdu, livros: viewLivros, cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
   try { m.innerHTML = f(); } catch (e) { console.error(e); m.innerHTML = '<div class="card empty">Não foi possível mostrar esta tela.</div>'; }
   document.documentElement.style.setProperty('--hh', document.querySelector('header').offsetHeight + 'px');
   if (V.hl) { const el = document.getElementById('r-' + V.hl); if (el) { el.classList.add('hl'); el.scrollIntoView({ block: 'center' }); } V.hl = ''; }
@@ -6643,6 +6645,217 @@ function pctdXlsBonito(t) {
   return saveFile('PCTD - ' + t.nome.replace(/[\\/:*?"<>|]/g, ' ').slice(0, 80) + '.xlsx', data);
 }
 ACT.pctdXls = () => { const t = S.turmas[V.pctdT]; if (!t) return; toast('Gerando planilha…'); pctdXlsBonito(t); };
+
+// ===== Aproveitamento de estudos e transferências: onde e quando matricular o aluno =====
+// Só planejamento: não altera ativos, vagas nem meta (a coordenação atualiza esses números mensalmente).
+const AP_SIT = ['Aguardando turma', 'Matriculado', 'Transferido', 'Concluído', 'Desistiu'];
+const apNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const APL = () => (S.cfg.aprov = S.cfg.aprov || []);
+const apGet = id => APL().find(x => x.id === id);
+const apSave = () => saveCfg();
+const apDias = (a, b) => Math.round((Dms(b) - Dms(a)) / 864e5);
+const apMin = m => m == null ? '' : String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+function apCCs() {
+  const m = {}; for (const t of Object.values(S.turmas)) if (t.cc && R[t.id]) m[t.cc] = (m[t.cc] || 0) + 1;
+  return Object.keys(m).sort().map(cod => { const c = (S.cfg.cc || []).find(x => x.cod === cod) || {}; const t = Object.values(S.turmas).find(x => x.cc === cod); return { cod, desc: c.desc || (t ? t.nome : ''), n: m[cod] }; });
+}
+const apTurmas = cc => Object.values(S.turmas).filter(t => cc && t.cc === cc && R[t.id]).sort((a, b) => String(R[a.id].inicio || '').localeCompare(String(R[b.id].inicio || '')));
+// aulas de cada UC numa turma (inclui aulas divididas entre UCs)
+function apOpcoes(t) {
+  const r = R[t.id]; const by = {};
+  for (const a of r.aulas) {
+    const L = a.parts ? a.parts.map(p => ({ ui: p.ui, h: p.h })) : [{ ui: a.ui, h: a.h }];
+    for (const p of L) { const u = r.units[p.ui]; if (!u || u.solo) continue; const k = apNorm(u.nome); const o = by[k] = by[k] || { t, u, k, ds: [], iv: {}, h: 0 }; if (!o.iv[a.ds]) o.ds.push(a.ds); o.iv[a.ds] = [a.a, a.b]; o.h += +p.h || 0; }
+  }
+  for (const o of Object.values(by)) { o.ds.sort(); o.ini = o.ds[0]; o.fim = o.ds[o.ds.length - 1]; o.wd = [...new Set(o.ds.map(d => (new Date(Dms(d)).getUTCDay() || 7)))].sort(); }
+  return by;
+}
+// catálogo de UCs do curso (todas as turmas do mesmo centro de custos), na ordem das UCs
+function apCatalogo(cc) {
+  const m = {}; for (const t of apTurmas(cc)) (t.ucs || []).forEach((u, i) => { const k = apNorm(u.nome); if (!k) return; if (!m[k]) m[k] = { k, nome: u.nome, num: u.num, ord: i, ch: u.ch }; });
+  return Object.values(m).sort((a, b) => (+a.num || 999) - (+b.num || 999) || a.ord - b.ord);
+}
+const apRef = s => s.tipo === 'transf' && s.dt ? s.dt : HOJE;
+function apStatus(o, ref) {
+  if (o.fim < ref) return { c: 'fim', txt: 'já terminou em ' + br(o.fim) };
+  if (o.ini >= ref) return { c: 'ok', txt: 'começa em ' + br(o.ini) + ' (em ' + apDias(ref, o.ini) + ' dia(s))' };
+  const perde = o.ds.filter(d => d < ref).length; return { c: 'and', txt: 'em andamento desde ' + br(o.ini) + ' — perderia ' + perde + ' de ' + o.ds.length + ' aula(s)', perde };
+}
+function apConflito(o1, o2) {
+  if (!o1 || !o2 || o1 === o2) return null;
+  for (const d of o1.ds) { if (!o2.iv[d]) continue; const [a1, b1] = o1.iv[d], [a2, b2] = o2.iv[d]; if (a1 == null || a2 == null || (a1 < b2 && a2 < b1)) return d; }
+  return null;
+}
+// plano do aluno com as datas atuais do cronograma
+function apPlano(s) {
+  const OP = {}; const out = [];
+  for (const p of s.plano || []) { const t = S.turmas[p.tid]; if (!t || !R[t.id]) { out.push({ p, erro: 'turma não existe mais' }); continue; } OP[t.id] = OP[t.id] || apOpcoes(t); const o = OP[t.id][p.k]; out.push(o ? { p, o } : { p, t, erro: 'UC não encontrada nesta turma (o cronograma mudou)' }); }
+  for (const x of out) if (x.o) { x.conf = out.filter(y => y !== x && y.o).map(y => ({ y, d: apConflito(x.o, y.o) })).filter(z => z.d); }
+  return out.sort((a, b) => String(a.o ? a.o.ini : '').localeCompare(String(b.o ? b.o.ini : '')));
+}
+const apTermino = P => P.filter(x => x.o).reduce((m, x) => x.o.fim > m ? x.o.fim : m, '');
+function apProblemas(s) {
+  const P = apPlano(s); const L = [];
+  for (const x of P) { if (x.erro) L.push(x.erro); else if (x.conf.length) L.push('conflito: ' + x.p.nome + ' em ' + br(x.conf[0].d)); }
+  const fal = (s.ucs || []).filter(k => !(s.plano || []).some(p => p.k === k));
+  if (fal.length && s.cc) { const ref = apRef(s); const OPS = apTurmas(s.cc).filter(t => t.id !== s.orig).map(t => apOpcoes(t)); const sem = fal.filter(k => !OPS.some(m => m[k] && m[k].fim >= ref)).length;
+    if (sem) L.push(sem + ' UC(s) sem turma programada que ainda vá oferecer'); if (fal.length - sem && P.length) L.push((fal.length - sem) + ' UC(s) sem turma escolhida'); }
+  return L;
+}
+// sugestão: para cada UC, a turma que começa primeiro depois da data de referência, sem conflito, preferindo turmas já usadas
+function apSugerir(s) {
+  const ref = apRef(s); const cat = apCatalogo(s.cc); const OPS = apTurmas(s.cc).filter(t => t.id !== s.orig).map(t => apOpcoes(t));
+  const esc1 = []; const usadas = new Set();
+  for (const c of cat.filter(c => (s.ucs || []).includes(c.k))) {
+    const cand = OPS.map(m => m[c.k]).filter(o => o && o.fim >= ref);
+    const nota = o => (o.ini >= ref ? 0 : 1e6 + o.ds.filter(d => d < ref).length * 1e3) + (usadas.has(o.t.id) ? 0 : 500) + apDias(ref, o.ini < ref ? ref : o.ini);
+    cand.sort((a, b) => nota(a) - nota(b));
+    const ok = cand.find(o => !esc1.some(e => apConflito(o, e))) || cand[0];
+    if (ok) { esc1.push(ok); usadas.add(ok.t.id); }
+  }
+  return esc1.map(o => ({ tid: o.t.id, k: o.k, nome: o.u.nome }));
+}
+// UCs que faltam na turma de origem a partir da data da transferência
+const apFaltamOrig = s => { const t = S.turmas[s.orig]; if (!t || !R[t.id]) return []; return Object.values(apOpcoes(t)).filter(o => o.fim >= (s.dt || HOJE)).map(o => o.k); };
+
+function viewAprov() {
+  const L = APL(); const s = V.apId ? apGet(V.apId) : null;
+  let h = `<div class="pagehead"><h1>Aproveitamento e transferências</h1><p class="muted">Descubra em qual turma e a partir de quando matricular o estudante em cada UC. Esta tela só planeja: ativos, vagas e meta continuam sendo atualizados por você mensalmente.</p></div>`;
+  if (s) return h + apDetalhe(s);
+  const q = apNorm(V.apQ || ''); const fs = V.apSit || ''; const fc = V.apCC || '';
+  const CC = apCCs();
+  h += `<div class="bar filters"><input placeholder="Buscar aluno" value="${esc(V.apQ || '')}" data-in="apQ" style="min-width:200px">
+   <select data-in="apSit"><option value="">Todas as situações</option>${AP_SIT.map(x => `<option ${fs === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+   <select data-in="apCC"><option value="">Todos os cursos</option>${CC.map(c => `<option value="${esc(c.cod)}" ${fc === c.cod ? 'selected' : ''}>${esc(c.cod)} · ${esc(c.desc)}</option>`).join('')}</select>
+   <span class="grow"></span>${canWrite() ? `<button class="pri" data-act="apNovo" data-t="aprov">+ Aproveitamento</button><button class="pri" data-act="apNovo" data-t="transf">+ Transferência</button>` : ''}</div>`;
+  const F = L.filter(x => (!q || apNorm(x.nome).includes(q)) && (!fs || x.sit === fs) && (!fc || x.cc === fc));
+  if (!F.length) return h + `<div class="card empty">${L.length ? 'Nenhum estudante neste filtro.' : 'Nenhum estudante cadastrado. Use <b>+ Aproveitamento</b> ou <b>+ Transferência</b>.'}</div>`;
+  h += `<div class="card"><div class="tw"><table><tr><th>Estudante</th><th>Tipo</th><th>Curso (CC)</th><th>Próxima UC</th><th>Término previsto</th><th>Situação</th><th></th></tr>`;
+  for (const x of F.sort((a, b) => a.nome.localeCompare(b.nome))) {
+    const P = apPlano(x); const prox = P.find(y => y.o && y.o.fim >= HOJE); const pb = apProblemas(x); const cc = CC.find(c => c.cod === x.cc);
+    h += `<tr><td><a class="link" data-act="apAbrir" data-id="${x.id}"><b>${esc(x.nome || '(sem nome)')}</b></a></td>
+     <td>${x.tipo === 'transf' ? 'Transferência' : 'Aproveitamento'}<div class="small muted">${x.mod === 'COM' ? 'Pagante (Comercial)' : 'Bolsista (PSG)'}</div></td>
+     <td class="small">${esc(x.cc || '—')}${cc ? '<div class="muted">' + esc(cc.desc) + '</div>' : ''}</td>
+     <td class="small">${prox ? `<b>${esc(prox.p.nome)}</b><div>${esc(prox.o.t.nome)} · ${esc(prox.o.t.per || '')}</div><div class="muted">${prox.o.ini >= HOJE ? 'começa ' + br(prox.o.ini) : 'em andamento até ' + br(prox.o.fim)}</div>` : '<span class="muted">sem turma escolhida</span>'}</td>
+     <td>${apTermino(P) ? br(apTermino(P)) : '—'}</td>
+     <td><span class="pill ${x.sit === 'Aguardando turma' ? 'warn' : x.sit === 'Desistiu' ? 'bad' : 'ok'}">${esc(x.sit || 'Aguardando turma')}</span>${pb.length ? `<div class="small" style="color:var(--red);margin-top:3px">⚠ ${pb.map(esc).join('<br>⚠ ')}</div>` : ''}</td>
+     <td><button class="sm" data-act="apAbrir" data-id="${x.id}">Abrir</button></td></tr>`;
+  }
+  return h + '</table></div></div>';
+}
+
+function apDetalhe(s) {
+  const ed = canWrite(); const CC = apCCs(); const T = apTurmas(s.cc); const ref = apRef(s); const dis = ed ? '' : 'disabled';
+  let h = `<div class="bar"><button data-act="apVoltar">← Voltar</button><h2 class="grow" style="margin:0">${esc(s.nome || 'Novo estudante')}</h2>${ed ? '<button class="dng" data-act="apDel">Excluir</button>' : ''}</div>`;
+  h += `<div class="card"><div class="grid">
+   <label class="f w2">Nome do estudante<input data-ap="nome" value="${esc(s.nome || '')}" ${dis}></label>
+   <label class="f">Tipo<select data-ap="tipo" ${dis}><option value="aprov" ${s.tipo !== 'transf' ? 'selected' : ''}>Aproveitamento de estudos</option><option value="transf" ${s.tipo === 'transf' ? 'selected' : ''}>Transferência entre turmas</option></select></label>
+   <label class="f">Modalidade<select data-ap="mod" ${dis}><option value="PSG" ${s.mod !== 'COM' ? 'selected' : ''}>Bolsista (PSG)</option><option value="COM" ${s.mod === 'COM' ? 'selected' : ''}>Pagante (Comercial)</option></select></label>
+   <label class="f w2">Curso (centro de custos)<select data-ap="cc" ${dis}><option value="">Escolha…</option>${CC.map(c => `<option value="${esc(c.cod)}" ${s.cc === c.cod ? 'selected' : ''}>${esc(c.cod)} · ${esc(c.desc)} (${c.n} turma${c.n > 1 ? 's' : ''})</option>`).join('')}</select></label>
+   ${s.tipo === 'transf' ? `<label class="f w2">Turma de origem<select data-ap="orig" ${dis}><option value="">Escolha…</option>${T.map(t => `<option value="${t.id}" ${s.orig === t.id ? 'selected' : ''}>${esc(t.nome)} · ${esc(t.per || '')}</option>`).join('')}</select></label>
+   <label class="f">Data da transferência<input type="date" data-ap="dt" value="${esc(s.dt || '')}" ${dis}></label>` : ''}
+   <label class="f">Situação<select data-ap="sit" ${dis}>${AP_SIT.map(x => `<option ${(s.sit || 'Aguardando turma') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+   <label class="f w3">Observações<textarea rows="2" data-ap="obs" ${dis}>${esc(s.obs || '')}</textarea></label></div></div>`;
+  if (!s.cc) return h + '<div class="card empty">Escolha o curso (centro de custos) para ver as turmas.</div>';
+  if (!T.length) return h + '<div class="card empty">Nenhuma turma programada com este centro de custos.</div>';
+  const cat = apCatalogo(s.cc); const sel = new Set(s.ucs || []);
+  // 1. UCs que o estudante precisa cursar
+  h += `<div class="card"><div class="bar" style="margin:0 0 8px"><h3 class="grow" style="margin:0">1. UCs que o estudante vai cursar</h3>
+   ${ed && s.tipo === 'transf' && s.orig ? '<button class="sm" data-act="apFaltam">Marcar as UCs que faltam na turma de origem</button>' : ''}${ed ? '<button class="sm" data-act="apTodas">Marcar todas</button><button class="sm" data-act="apNenhuma">Desmarcar</button>' : ''}</div>
+   <p class="small muted" style="margin:0 0 6px">Desmarque as UCs aproveitadas (cursadas em outro curso) — as horas delas ficam no outro curso.</p>
+   <div class="apucs">${cat.map(c => `<label class="chk"><input type="checkbox" data-apuc="${esc(c.k)}" ${sel.has(c.k) ? 'checked' : ''} ${dis}> ${c.num ? c.num + '. ' : ''}${esc(c.nome)}${c.ch ? ` <span class="muted small">(${c.ch} h)</span>` : ''}</label>`).join('')}</div></div>`;
+  if (!sel.size) return h;
+  // transferência: comparação das turmas de destino
+  if (s.tipo === 'transf') {
+    const D = T.filter(t => t.id !== s.orig).map(t => { const O = apOpcoes(t); let nov = 0, and = 0, perde = 0, falta = 0, entra = null; for (const k of sel) { const o = O[k]; if (!o || o.fim < ref) { falta++; continue; } if (o.ini >= ref) nov++; else { and++; perde += o.ds.filter(d => d < ref).length; } const ini = o.ini >= ref ? o.ini : ref; if (!entra || ini < entra.ini) entra = { ini, o }; } return { t, nov, and, perde, falta, entra }; })
+      .sort((a, b) => a.falta - b.falta || a.perde - b.perde || String(a.entra ? a.entra.ini : '9').localeCompare(String(b.entra ? b.entra.ini : '9')));
+    h += `<div class="card"><h3 style="margin:0 0 6px">Para qual turma transferir (a partir de ${br(ref)})</h3><div class="tw"><table><tr><th>Turma</th><th>Período</th><th>Entra em</th><th class="num">UCs a começar</th><th class="num">UCs em andamento</th><th class="num">Aulas que perderia</th><th class="num">UCs não disponíveis</th><th></th></tr>`;
+    for (const d of D) h += `<tr><td><a class="link" data-open="${d.t.id}"><b>${esc(d.t.nome)}</b></a></td><td>${esc(d.t.per || '')}</td><td>${d.entra ? `${br(d.entra.ini)}<div class="small muted">${esc(d.entra.o.u.nome)}</div>` : '—'}</td><td class="num">${d.nov}</td><td class="num">${d.and}</td><td class="num">${d.perde ? `<b style="color:var(--amb)">${d.perde}</b>` : 0}</td><td class="num">${d.falta ? `<b style="color:var(--red)">${d.falta}</b>` : 0}</td><td>${ed ? `<button class="sm" data-act="apUsarT" data-t="${d.t.id}">Usar esta turma</button>` : ''}</td></tr>`;
+    h += `</table></div><p class="small muted" style="margin:6px 0 0">Ordem: menos UCs indisponíveis, depois menos aulas perdidas, depois a que começa antes.</p></div>`;
+  }
+  // 2. Onde cada UC acontece
+  const P = apPlano(s);
+  h += `<div class="card"><div class="bar" style="margin:0 0 6px"><h3 class="grow" style="margin:0">2. Onde e quando cada UC acontece</h3>${ed ? '<button class="pri" data-act="apSugerir">✨ Sugerir combinação</button><button class="sm" data-act="apLimpar">Limpar escolhas</button>' : ''}</div>
+   <p class="small muted" style="margin:0 0 6px">Referência: ${s.tipo === 'transf' && s.dt ? 'data da transferência ' : 'hoje '}${br(ref)}. Escolha uma turma por UC. Conflitos de dia e horário com as outras escolhas aparecem em vermelho.</p>`;
+  const OPS = T.filter(t => t.id !== s.orig).map(t => apOpcoes(t));
+  for (const c of cat.filter(c => sel.has(c.k))) {
+    const esco = (s.plano || []).find(p => p.k === c.k);
+    const ops = OPS.map(m => m[c.k]).filter(Boolean).sort((a, b) => a.ini.localeCompare(b.ini));
+    const ativas = ops.filter(o => o.fim >= ref), fins = ops.length - ativas.length;
+    h += `<div class="apuc"><div class="apuch"><b>${c.num ? c.num + '. ' : ''}${esc(c.nome)}</b>${esco ? '' : ' <span class="pill warn">escolha uma turma</span>'}</div>`;
+    if (!ativas.length) { h += `<div class="small" style="color:var(--red)">Nenhuma turma programada ainda vai oferecer esta UC${fins ? ` (${fins} já terminaram)` : ''}.</div></div>`; continue; }
+    h += `<table class="plain apops"><tr><th></th><th>Turma</th><th>Período / dias</th><th>Início</th><th>Fim</th><th class="num">Aulas</th><th>Situação</th><th>Sala (ocupação)</th></tr>`;
+    for (const o of ativas) {
+      const st = apStatus(o, ref); const on = esco && esco.tid === o.t.id;
+      const outros = P.filter(x => x.o && x.p.k !== c.k); const cf = outros.map(x => ({ x, d: apConflito(o, x.o) })).find(z => z.d);
+      const sala = o.t.sala || ''; const cap = ((S.cfg.salas || []).find(x => x.nome === sala) || {}).cap; const mes = HOJE.slice(0, 7);
+      const atv = (typeof ativosMes === 'function') ? ativosMes(o.t, 'PSG', mes) + ativosMes(o.t, 'COM', mes) : '';
+      const hor = o.ds.length && o.iv[o.ds[0]][0] != null ? apMin(o.iv[o.ds[0]][0]) + '–' + apMin(o.iv[o.ds[0]][1]) : '';
+      h += `<tr class="${on ? 'apsel' : ''}"><td><input type="radio" name="apop-${esc(c.k)}" data-apop="${esc(c.k)}" data-t="${o.t.id}" ${on ? 'checked' : ''} ${dis}></td>
+       <td><a class="link" data-open="${o.t.id}">${esc(o.t.nome)}</a>${o.t.sigla ? ` <span class="small muted">${esc(o.t.sigla)}</span>` : ''}</td>
+       <td class="small">${esc(o.t.per || '')} · ${o.wd.map(w => WD[w]).join(', ')}${hor ? '<div class="muted">' + hor + '</div>' : ''}</td>
+       <td>${br(o.ini)}</td><td>${br(o.fim)}</td><td class="num">${o.ds.length}</td>
+       <td class="small"><span class="pill ${st.c === 'ok' ? 'ok' : 'warn'}">${st.c === 'ok' ? 'a começar' : 'em andamento'}</span> ${esc(st.txt)}${cf ? `<div style="color:var(--red)">⚠ conflita com ${esc(cf.x.p.nome)} (${esc(cf.x.o.t.nome)}) em ${br(cf.d)}</div>` : ''}</td>
+       <td class="small">${esc(sala || '—')}${cap || atv !== '' ? `<div class="muted">${atv !== '' ? atv + ' ativo(s)' : ''}${cap ? ' / ' + cap + ' lugares' : ''}</div>` : ''}</td></tr>`;
+    }
+    h += `</table>${fins ? `<div class="small muted">${fins} turma(s) já terminaram esta UC.</div>` : ''}</div>`;
+  }
+  h += '</div>';
+  // 3. Plano do estudante
+  if (P.length) {
+    const fim = apTermino(P);
+    h += `<div class="card"><h3 style="margin:0 0 6px">3. Plano do estudante${fim ? ` <span class="small muted" style="font-weight:400">· término previsto ${br(fim)}</span>` : ''}</h3><div class="tw"><table><tr><th>UC</th><th>Turma</th><th>Período</th><th>Início</th><th>Fim</th><th class="num">Aulas</th><th class="num">Horas</th><th>Avisos</th></tr>`;
+    for (const x of P) {
+      if (!x.o) { h += `<tr><td>${esc(x.p.nome)}</td><td colspan="7" style="color:var(--red)">⚠ ${esc(x.erro)}</td></tr>`; continue; }
+      h += `<tr><td><b>${esc(x.p.nome)}</b></td><td><a class="link" data-open="${x.o.t.id}">${esc(x.o.t.nome)}</a></td><td>${esc(x.o.t.per || '')}</td><td>${br(x.o.ini)}</td><td>${br(x.o.fim)}</td><td class="num">${x.o.ds.length}</td><td class="num">${Math.round(x.o.h * 10) / 10}</td>
+       <td class="small">${x.conf.length ? `<span style="color:var(--red)">⚠ conflito com ${esc(x.conf[0].y.p.nome)} em ${br(x.conf[0].d)}</span>` : x.o.ini < ref ? `<span style="color:var(--amb)">entra com a UC em andamento</span>` : ''}</td></tr>`;
+    }
+    h += `</table></div><p class="small muted" style="margin:6px 0 0">As datas acompanham o cronograma: se uma turma mudar, o plano mostra as novas datas e avisa conflitos.</p></div>`;
+  }
+  return h;
+}
+
+Object.assign(ACT, {
+  apNovo: el => { const s = { id: uid('ap'), nome: '', tipo: el.dataset.t, mod: 'PSG', cc: V.apCC || '', orig: '', dt: el.dataset.t === 'transf' ? HOJE : '', ucs: [], plano: [], sit: 'Aguardando turma', obs: '', em: HOJE }; APL().push(s); apSave(); V.apId = s.id; refresh(); },
+  apAbrir: el => { V.apId = el.dataset.id; render(); window.scrollTo(0, 0); },
+  apVoltar: () => { V.apId = ''; render(); },
+  apDel: () => { const s = apGet(V.apId); if (!s) return; askConfirm(`Excluir <b>${esc(s.nome || 'este estudante')}</b> da lista?`, () => { S.cfg.aprov = APL().filter(x => x.id !== s.id); apSave(); V.apId = ''; closeModal(); refresh(); }, 'Excluir'); },
+  apTodas: () => { const s = apGet(V.apId); s.ucs = apCatalogo(s.cc).map(c => c.k); apSave(); render(); },
+  apNenhuma: () => { const s = apGet(V.apId); s.ucs = []; s.plano = []; apSave(); render(); },
+  apFaltam: () => { const s = apGet(V.apId); s.ucs = apFaltamOrig(s); s.plano = (s.plano || []).filter(p => s.ucs.includes(p.k)); apSave(); render(); toast(s.ucs.length + ' UC(s) marcadas'); },
+  apSugerir: () => { const s = apGet(V.apId); s.plano = apSugerir(s); apSave(); render(); const pb = apProblemas(s); toast(pb.length ? 'Sugestão feita — confira os avisos' : 'Sugestão feita sem conflitos'); },
+  apLimpar: () => { const s = apGet(V.apId); s.plano = []; apSave(); render(); },
+  apUsarT: el => { const s = apGet(V.apId); const t = S.turmas[el.dataset.t]; const O = apOpcoes(t); const ref = apRef(s); const cat = apCatalogo(s.cc);
+    s.plano = cat.filter(c => (s.ucs || []).includes(c.k)).map(c => { const o = O[c.k]; return o && o.fim >= ref ? { tid: t.id, k: c.k, nome: c.nome } : (s.plano || []).find(p => p.k === c.k); }).filter(Boolean); apSave(); render(); toast('Plano montado com ' + t.nome); }
+});
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.dataset || V.view !== 'aprov' || !canWrite()) return; const s = apGet(V.apId); if (!s) return;
+  if (el.dataset.ap) { const k = el.dataset.ap; s[k] = el.value; if (k === 'cc') { s.ucs = []; s.plano = []; s.orig = ''; } if (k === 'tipo' && el.value === 'transf' && !s.dt) s.dt = HOJE; apSave(); return render(); }
+  if (el.dataset.apuc) { const k = el.dataset.apuc; const L = new Set(s.ucs || []); el.checked ? L.add(k) : L.delete(k); s.ucs = [...L]; s.plano = (s.plano || []).filter(p => L.has(p.k)); apSave(); return render(); }
+  if (el.dataset.apop) { const k = el.dataset.apop; const c = apCatalogo(s.cc).find(x => x.k === k); s.plano = (s.plano || []).filter(p => p.k !== k).concat([{ tid: el.dataset.t, k, nome: c ? c.nome : k }]); apSave(); return render(); }
+});
+document.addEventListener('input', e => { const el = e.target; if (el.dataset && el.dataset.in === 'apQ') { V.apQ = el.value; clearTimeout(ACT._apT); ACT._apT = setTimeout(() => { render(); const n = document.querySelector('[data-in=apQ]'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 300); } });
+{ const i = NAV_ADM.findIndex(x => x[0] === 'alunos') + 1; NAV_ADM.splice(i, 0, ['aprov', 'Aproveitamento e transferências', '⇄']); ADM_VIEWS.add('aprov'); }
+// nomes dos estudantes não vão para a consulta pública
+{ const pd = pubData; pubData = function () { const d = pd(); if (d && d.cfg) delete d.cfg.aprov; return d; }; }
+// na turma: estudantes de aproveitamento/transferência com UC planejada nela
+{ const vt = viewTurma; viewTurma = function () { let h = vt(); const t = S.turmas[V.tid]; if (!t || !R[t.id] || !(S.cfg.aprov || []).length) return h; const O = apOpcoes(t);
+  const L = APL().filter(s => s.sit !== 'Desistiu' && (s.plano || []).some(p => p.tid === t.id)); if (!L.length) return h;
+  h += `<div class="card"><h3 style="margin:0 0 6px">Estudantes de aproveitamento e transferência nesta turma</h3><div class="tw"><table class="plain"><tr><th>Estudante</th><th>Tipo</th><th>UC</th><th>Início</th><th>Fim</th></tr>`;
+  for (const s of L) for (const p of s.plano.filter(p => p.tid === t.id)) { const o = O[p.k]; h += `<tr><td><a class="link" data-act="apIr" data-id="${s.id}">${esc(s.nome)}</a></td><td class="small">${s.tipo === 'transf' ? 'Transferência' : 'Aproveitamento'} · ${s.mod === 'COM' ? 'Comercial' : 'PSG'}</td><td>${esc(p.nome)}</td><td>${o ? br(o.ini) : '—'}</td><td>${o ? br(o.fim) : '<span style="color:var(--red)">UC não encontrada</span>'}</td></tr>`; }
+  return h + '</table></div></div>'; }; }
+ACT.apIr = el => go('aprov', { apId: el.dataset.id });
+{ const g0 = go; go = function (v, extra) { if (v === 'aprov' && !(extra && 'apId' in extra)) V.apId = ''; return g0(v, extra); }; }
+MANUAL.splice(Math.max(0, MANUAL.findIndex(s => s.id === 'meta') + 1), 0, { id: 'aprov', g: 'Gestão', t: 'Aproveitamento e transferências', who: 'ed', h: `
+<p>Para saber <b>em qual turma e a partir de quando</b> matricular um estudante que aproveitou estudos, ou para onde transferir um estudante. A tela só planeja: ativos, vagas e meta continuam sendo atualizados por você.</p>
+<ol class="msteps"><li>Abra <span class="mpath">Aproveitamento e transferências</span> e clique em <b>+ Aproveitamento</b> ou <b>+ Transferência</b>.</li>
+<li>Informe o <b>nome</b>, a modalidade (<b>Bolsista — PSG</b> ou <b>Pagante — Comercial</b>) e o <b>curso pelo centro de custos</b>. Todas as turmas com o mesmo CC entram na busca.</li>
+<li>Na transferência, escolha a <b>turma de origem</b> e a <b>data</b>, e clique em <b>Marcar as UCs que faltam na turma de origem</b>.</li>
+<li>No aproveitamento, marque as <b>UCs que o estudante vai cursar</b> (deixe desmarcadas as aproveitadas).</li>
+<li>Em <b>Onde e quando cada UC acontece</b>, veja cada turma com período, dias, início, fim, se a UC ainda vai começar ou já está em andamento (e quantas aulas ele perderia), e a sala com a ocupação. Escolha uma turma por UC, ou clique em <b>✨ Sugerir combinação</b> (a que começa primeiro, sem conflito de dia e horário, preferindo menos turmas).</li>
+<li>Na transferência, o quadro <b>Para qual turma transferir</b> compara as turmas de destino: UCs a começar, em andamento, aulas perdidas e UCs indisponíveis. <b>Usar esta turma</b> monta o plano com ela.</li>
+<li>Confira o <b>Plano do estudante</b> (UCs na ordem, datas, término previsto e avisos) e mude a <b>Situação</b> quando fizer a matrícula.</li></ol>
+<div class="mbox tip"><b>Dica</b>As datas do plano acompanham o cronograma. Se uma turma mudar, a lista mostra ⚠ quando surgir conflito ou a UC deixar de existir na turma. Na própria turma (Turmas e UCs) aparece o quadro dos estudantes planejados nela. Os nomes não aparecem na consulta pública.</div>` });
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
