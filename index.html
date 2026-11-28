@@ -4432,8 +4432,8 @@ ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de a
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
   { id: 'cad-pctd', t: 'PCTD — planejamento docente', h: `
-${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. Aparecem o <b>link de edição</b> (para os docentes) e o <b>link de consulta</b>; use <b>Copiar</b> e envie.`, `O PCTD fica no menu <b>PCTD</b> (consulta). Cada UC é um quadro com o <b>Tema gerador</b> e as aulas: data, formato (presencial/EAD) e docente, seguidos dos campos do planejamento.`, `Quem abre pelo link de edição preenche só os campos do planejamento (situação de aprendizagem, elementos, indicadores, habilidades, atitudes/valores, atividade, atividade avaliativa, recursos, link do RDD e contribuição para o PI). Tudo salva sozinho.`, `Em <b>⚙ Listas da UC</b> (coordenação), cole as opções de Elementos, Habilidades e Atitudes/valores, uma por linha: o docente escolhe uma ou mais em cada aula.`, `<b>⬇ Baixar planilha</b> gera o PCTD da turma em Excel.`)}
-${dica('Mudanças no cronograma (datas, UCs, docentes, EAD) aparecem no PCTD automaticamente: o planejamento acompanha a aula da UC (1ª, 2ª, 3ª…). O PCTD não altera o cronograma. Depois do início das aulas, aulas já iniciadas sem planejamento e UCs sem tema gerador geram o alerta <b>PCTD</b>.')}` },
+${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. O PCTD da turma aparece no menu <b>PCTD</b>.`, `Cadastre os docentes em <b>PCTD → 👥 Acessos dos docentes</b>: escolha o docente, informe o e-mail e uma senha inicial e clique em <b>Cadastrar</b>. Passe o e-mail e a senha ao docente.`, `O docente clica em <b>Entrar</b>, usa o e-mail e a senha e vê o site em modo consulta, podendo editar só o PCTD (as turmas dele aparecem com ★ e já filtradas pelo nome dele).`, `Em cada UC: <b>Tema gerador</b> e as aulas (data, formato, docente) com os campos do planejamento. Em <b>⚙ Listas da UC</b>, o docente ou a coordenação cadastram as opções de Elementos, Indicadores, Habilidades e Atitudes/valores (uma por linha); depois, em cada aula, escolhe-se uma ou mais.`, `Na coluna <b>Link da aula</b>, o docente cola os links dos materiais no Teams (slides, vídeos etc.), um por linha. <b>⬇ Baixar planilha</b> gera o PCTD em Excel.`)}
+${dica('Mudanças no cronograma aparecem no PCTD automaticamente (o planejamento acompanha a 1ª, 2ª, 3ª… aula da UC); o PCTD não altera o cronograma. Depois do início das aulas, aulas já iniciadas sem planejamento e UCs sem tema gerador geram o alerta <b>PCTD</b>. Para tirar o acesso de um docente, use Remover em Acessos dos docentes.')}` },
 
   { id: 'cad-salamapa', t: 'Incluir ou editar salas pelo Mapa de salas', h: `
 ${P(`Em ${caminho('Mapa de salas')} → <b>Ocupação</b> (semana ou mês), clique em <b>+ Sala</b> para incluir: informe nome, tipo, capacidade e se aparece no cartaz impresso.`, `Para editar, clique no <b>✎</b> ao lado do nome da sala. Se mudar o nome, as turmas e aulas que usam a sala passam a usar o nome novo.`, `Para excluir, use <b>Excluir sala</b> na mesma janela; as aulas que estavam nela ficam como “sem sala”.`)}` },
@@ -6200,13 +6200,22 @@ ACT.salaEd = el => {
 MACT.salaDel = () => MCTX.del();
 
 // ---------- PCTD: planejamento docente gerado a partir do cronograma da turma ----------
-const PCTD_F = [['sit', 'Situação de aprendizagem', 't'], ['elem', 'Elementos', 'm'], ['ind', 'Indicadores', 't'], ['hab', 'Habilidades', 'm'], ['att', 'Atitudes/valores', 'm'], ['ativ', 'Atividade', 't'], ['aval', 'Atividade avaliativa', 't'], ['rec', 'Recursos utilizados', 't'], ['rdd', 'Link do RDD', 'u'], ['pi', 'Contribuição para o PI', 't']];
-const PCTD_L = [['elem', 'Elementos'], ['hab', 'Habilidades'], ['att', 'Atitudes/valores']];
+const PCTD_F = [['sit', 'Situação de aprendizagem', 't'], ['elem', 'Elementos', 'm'], ['ind', 'Indicadores', 'm'], ['hab', 'Habilidades', 'm'], ['att', 'Atitudes/valores', 'm'], ['ativ', 'Atividade', 't'], ['aval', 'Atividade avaliativa', 't'], ['rec', 'Recursos utilizados', 't'], ['link', 'Link da aula (materiais no Teams)', 'l'], ['rdd', 'Link do RDD', 'u'], ['pi', 'Contribuição para o PI', 't']];
+const PCTD_L = [['elem', 'Elementos'], ['ind', 'Indicadores'], ['hab', 'Habilidades'], ['att', 'Atitudes/valores']];
+const ehDoc = () => typeof DOCENTE !== 'undefined' && !!DOCENTE;
+// listas da UC (elementos, indicadores, habilidades, atitudes): do PCTD da turma; se vazias, de outra turma com a mesma UC
+function listasUC(t, u) {
+  const D = pctdOf(t); if (D['lst:' + u.id]) return D['lst:' + u.id]; if (u.pctdL) return u.pctdL;
+  const nm = String(u.nome || '').trim().toLowerCase(); if (!nm) return {};
+  for (const o of Object.values(S.turmas)) { if (o.id === t.id) continue; const ou = (o.ucs || []).find(x => String(x.nome || '').trim().toLowerCase() === nm); if (!ou) continue; const L = pctdOf(o)['lst:' + ou.id] || ou.pctdL; if (L && Object.keys(L).length) return L; }
+  return {};
+}
+const linksHtml = v => String(v || '').split(/\s*\n\s*|\s+(?=https?:)/).filter(Boolean).map(x => `<a href="${esc(/^https?:/i.test(x) ? x : 'https://' + x)}" target="_blank" rel="noopener">${esc(x.replace(/^https?:\/\//, '').slice(0, 40))}${x.length > 48 ? '…' : ''}</a>`).join('<br>');
 let PCTD = {}, PCTD_TOK = '';
 { const h0 = new URLSearchParams(location.hash.slice(1)); if (h0.get('pctd')) { V.view = 'pctd'; V.pctdT = h0.get('pctd'); PCTD_TOK = h0.get('k') || ''; } }
 const pctdOn = t => !!(t && t.pctd && t.pctd.on);
 const pctdOf = t => (typeof MODE !== 'undefined' && MODE === 'sb') ? (PCTD[t.id] || {}) : (t.pctdD || {});
-const pctdPodeEditar = t => canWrite() || (!!PCTD_TOK && V.pctdT === t.id);
+const pctdPodeEditar = t => canWrite() || ehDoc() || (!!PCTD_TOK && V.pctdT === t.id);
 const pctdVazio = o => !o || !PCTD_F.some(([k]) => Array.isArray(o[k]) ? o[k].length : String(o[k] || '').trim());
 async function pctdLoad() {
   if (MODE !== 'sb') return;
@@ -6245,24 +6254,26 @@ function pctdPendencias(t) {
 }
 // ---- tela PCTD ----
 function viewPctd() {
-  const lista = Object.values(S.turmas).filter(pctdOn).sort((a, b) => String((R[a.id] || {}).inicio || '').localeCompare(String((R[b.id] || {}).inicio || '')) || a.nome.localeCompare(b.nome));
+  const minha = t => ehDoc() && DOCNOME && R[t.id] && R[t.id].aulas.some(a => (a.docs || []).includes(DOCNOME)) ? 0 : 1;
+  const lista = Object.values(S.turmas).filter(pctdOn).sort((a, b) => minha(a) - minha(b) || String((R[a.id] || {}).inicio || '').localeCompare(String((R[b.id] || {}).inicio || '')) || a.nome.localeCompare(b.nome));
   const travada = !!PCTD_TOK && S.turmas[V.pctdT];
   let t = S.turmas[V.pctdT]; if (!pctdOn(t)) t = null;
   let h = `<div class="pagehead"><h1>PCTD — planejamento docente</h1><p class="muted">Planejamento de cada aula, gerado a partir do cronograma da turma. ${t && pctdPodeEditar(t) ? 'Os campos em branco podem ser preenchidos aqui; tudo salva sozinho.' : 'Consulta.'}</p></div>`;
-  if (!travada) h += `<div class="bar filters"><select data-in="pctdT" style="min-width:320px"><option value="">Escolha a turma…</option>${lista.map(x => `<option value="${esc(x.id)}" ${t && x.id === t.id ? 'selected' : ''}>${esc(x.nome)} · ${esc(x.per)}${R[x.id] && R[x.id].inicio ? ' · início ' + brs(R[x.id].inicio) + '/' + R[x.id].inicio.slice(2, 4) : ''}</option>`).join('')}</select>${lista.length ? '' : '<span class="small muted">Nenhum PCTD gerado ainda. Gere pelo botão “📝 Gerar PCTD” na turma (Turmas e UCs).</span>'}</div>`;
+  if (!travada) h += `<div class="bar filters"><select data-in="pctdT" style="min-width:320px"><option value="">Escolha a turma…</option>${lista.map(x => `<option value="${esc(x.id)}" ${t && x.id === t.id ? 'selected' : ''}>${minha(x) === 0 ? '★ ' : ''}${esc(x.nome)} · ${esc(x.per)}${R[x.id] && R[x.id].inicio ? ' · início ' + brs(R[x.id].inicio) + '/' + R[x.id].inicio.slice(2, 4) : ''}</option>`).join('')}</select>${lista.length ? '' : '<span class="small muted">Nenhum PCTD gerado ainda. Gere pelo botão “📝 Gerar PCTD” na turma (Turmas e UCs).</span>'}</div>`;
   if (!t) return h + (travada === false && PCTD_TOK ? '<div class="card empty">PCTD não encontrado. Confira o link.</div>' : '');
   const r = R[t.id]; const G = pctdAulas(t); const D = pctdOf(t); const ed = pctdPodeEditar(t);
   const pend = pctdPendencias(t);
   const docs = [...new Set(r.aulas.flatMap(a => a.docs || []))].sort((a, b) => a.localeCompare(b));
+  if (V.pctdDoc == null && typeof DOCNOME !== 'undefined' && DOCNOME && docs.includes(DOCNOME)) V.pctdDoc = DOCNOME;
   const fd = V.pctdDoc && docs.includes(V.pctdDoc) ? V.pctdDoc : '';
   h += `<div class="card"><div class="bar" style="margin:0;flex-wrap:wrap"><div class="grow"><h2 style="margin:0">${esc(t.nome)}</h2><div class="small muted">${esc(t.per)} · ${esc(t.area || '')} · ${r.inicio ? br(r.inicio) + ' a ' + br(r.fim) : ''} · ${r.total} aulas${t.pctd.em ? ' · PCTD gerado em ' + br(t.pctd.em) : ''}</div></div>
    ${pend && (pend.aulas || pend.temas) && r.inicio <= HOJE ? `<span class="pill bad">${pend.aulas} aula(s) já iniciadas sem planejamento${pend.temas ? ` · ${pend.temas} UC(s) sem tema gerador` : ''}</span>` : '<span class="pill ok">planejamento em dia</span>'}
    <select data-in="pctdDoc"><option value="">Todos os docentes</option>${docs.map(n => `<option ${n === fd ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
-   <button data-act="pctdXls">⬇ Baixar planilha</button>${canWrite() ? '<button data-act="pctdLink">🔗 Link de edição</button>' : ''}</div></div>`;
+   <button data-act="pctdXls">⬇ Baixar planilha</button>${canWrite() ? '<button data-act="pctdAcessos">👥 Acessos dos docentes</button>' : ''}</div></div>`;
   for (const g of G) {
     const u = g.u, tu = (t.ucs || []).find(x => x.id === u.id) || {}; const L = g.aulas.filter(x => !fd || (x.a.docs || []).includes(fd)); if (!L.length) continue;
     const kT = 'tema:' + u.id; const tema = String(D[kT] || '');
-    h += `<div class="card pctduc" style="border-left:5px solid ${ucColor(g.ui)}"><div class="bar" style="margin:0 0 6px"><h3 class="grow" style="margin:0">${esc(u.num ? 'UC ' + u.num + ' · ' : '')}${esc(u.nome || '')}</h3><span class="small muted">${fmtH(+u.ch || 0)} h · ${g.aulas.length} aula(s) · ${br(g.aulas[0].a.ds)} a ${br(g.aulas[g.aulas.length - 1].a.ds)}</span>${canWrite() ? `<button class="sm" data-act="pctdListas" data-u="${esc(u.id)}" title="Opções das listas de Elementos, Habilidades e Atitudes/valores desta UC">⚙ Listas da UC</button>` : ''}</div>
+    h += `<div class="card pctduc" style="border-left:5px solid ${ucColor(g.ui)}"><div class="bar" style="margin:0 0 6px"><h3 class="grow" style="margin:0">${esc(u.num ? 'UC ' + u.num + ' · ' : '')}${esc(u.nome || '')}</h3><span class="small muted">${fmtH(+u.ch || 0)} h · ${g.aulas.length} aula(s) · ${br(g.aulas[0].a.ds)} a ${br(g.aulas[g.aulas.length - 1].a.ds)}</span>${ed ? `<button class="sm" data-act="pctdListas" data-u="${esc(u.id)}" title="Opções das listas de Elementos, Indicadores, Habilidades e Atitudes/valores desta UC">⚙ Listas da UC</button>` : ''}</div>
      <label class="f"><b>Tema gerador</b>${ed ? `<textarea rows="2" data-pk="${esc(kT)}" data-pf="__tema" placeholder="Tema gerador da UC">${esc(tema)}</textarea>` : `<div class="pctdro">${esc(tema) || '<span class="muted">—</span>'}</div>`}</label>
      <div class="tw"><table class="pctd"><tr><th>Data</th><th>Formato</th><th>Docente</th>${PCTD_F.map(([, l]) => `<th>${l}</th>`).join('')}</tr>`;
     for (const x of L) {
@@ -6270,8 +6281,9 @@ function viewPctd() {
       h += `<tr class="${late ? 'pctdlate' : ''}"><td class="nowrap"><b>${br(a.ds)}</b><div class="small muted">${WD[wd(a.ds)]} · aula ${x.n}${x.parte ? ` · ${fmtH(x.h)} h` : ''}</div></td><td><span class="pill ${a.ead ? 'eadtag' : ''}">${a.ead ? 'EAD' : 'Presencial'}</span></td><td class="small">${(a.docs || []).map(esc).join('<br>') || '<span class="muted">—</span>'}</td>`;
       for (const [k, , tp] of PCTD_F) {
         const v = o[k];
-        if (!ed) { h += `<td class="small">${tp === 'm' ? (Array.isArray(v) ? v.map(esc).join('<br>') : esc(v || '')) : tp === 'u' && v ? `<a href="${esc(/^https?:/i.test(v) ? v : 'https://' + v)}" target="_blank" rel="noopener">abrir</a>` : esc(v || '').replace(/\n/g, '<br>')}</td>`; continue; }
-        if (tp === 'm') { const ops = (tu.pctdL || {})[k] || []; const arr = Array.isArray(v) ? v : (v ? [v] : []);
+        if (!ed) { h += `<td class="small">${tp === 'm' ? (Array.isArray(v) ? v.map(esc).join('<br>') : esc(v || '')) : tp === 'l' ? linksHtml(v) : tp === 'u' && v ? `<a href="${esc(/^https?:/i.test(v) ? v : 'https://' + v)}" target="_blank" rel="noopener">abrir</a>` : esc(v || '').replace(/\n/g, '<br>')}</td>`; continue; }
+        if (tp === 'l') { h += `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}" placeholder="Cole os links (Teams, slides, vídeos), um por linha">${esc(v || '')}</textarea>${v ? `<div class="small" style="margin-top:3px">${linksHtml(v)}</div>` : ''}</td>`; continue; }
+        if (tp === 'm') { const ops = listasUC(t, tu)[k] || []; const arr = Array.isArray(v) ? v : (v ? [v] : []);
           h += ops.length ? `<td><button class="sm pctdm" data-act="pctdMulti" data-pk="${esc(x.key)}" data-pf="${k}" data-u="${esc(u.id)}">${arr.length ? arr.map(esc).join('<br>') : '<span class="muted">escolher…</span>'} ▾</button></td>` : `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}" placeholder="(sem lista cadastrada)">${esc(arr.join('\n'))}</textarea></td>`; continue; }
         h += tp === 'u' ? `<td><input data-pk="${esc(x.key)}" data-pf="${k}" value="${esc(v || '')}" placeholder="https://…"></td>` : `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}">${esc(v || '')}</textarea></td>`;
       }
@@ -6304,7 +6316,7 @@ Object.assign(ACT, {
     else t.pctd.on = true;
     saveT(t);
     if (MODE === 'sb') { try { const r = await sbFetch('/rest/v1/pctd_keys', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ tid: t.id, token: t.pctd.k }) }); if (!r.ok) throw new Error('erro ' + r.status); } catch (e) { toast('PCTD gerado, mas o link de edição ainda não foi ativado no servidor (' + e.message + '). Rode o arquivo pctd.sql no Supabase.'); } }
-    refresh(); ACT.pctdLink(null, t);
+    refresh(); toast('PCTD gerado. Os docentes cadastrados já podem preencher.'); go('pctd', { pctdT: t.id });
   },
   pctdLink: (el, tt) => {
     const t = tt || S.turmas[V.pctdT] || curT(); if (!t || !t.pctd) return;
@@ -6320,15 +6332,16 @@ Object.assign(ACT, {
     MCTX.t = t;
   },
   pctdListas: el => {
-    const t = S.turmas[V.pctdT]; const u = (t.ucs || []).find(x => x.id === el.dataset.u); if (!u) return;
-    MCTX = { ok: () => { u.pctdL = {}; for (const [k] of PCTD_L) { const L = $(`#modal [data-pl="${k}"]`).value.split(/\n+/).map(x => x.trim()).filter(Boolean); if (L.length) u.pctdL[k] = [...new Set(L)]; } if (!Object.keys(u.pctdL).length) delete u.pctdL; saveT(t); closeModal(); refresh(); toast('Listas da UC salvas'); } };
-    modal(`<h2>Listas da UC — ${esc(u.nome)}</h2><p class="small muted" style="margin-top:-4px">Uma opção por linha (pode colar do plano de curso). Os docentes escolhem uma ou mais opções em cada aula.</p>
-     ${PCTD_L.map(([k, l]) => `<label class="f">${l}<textarea rows="6" data-pl="${k}">${esc(((u.pctdL || {})[k] || []).join('\n'))}</textarea></label>`).join('')}
+    const t = S.turmas[V.pctdT]; const u = (t.ucs || []).find(x => x.id === el.dataset.u); if (!u || !pctdPodeEditar(t)) return;
+    const cur = listasUC(t, u);
+    MCTX = { ok: () => { const o = {}; for (const [k] of PCTD_L) { const L = $(`#modal [data-pl="${k}"]`).value.split(/\n+/).map(x => x.trim()).filter(Boolean); if (L.length) o[k] = [...new Set(L)]; } closeModal(); pctdSet(t, 'lst:' + u.id, Object.keys(o).length ? o : null).then(() => { refresh(); toast('Listas da UC salvas'); }); if (MODE === 'sb') refresh(); } };
+    modal(`<h2>Listas da UC — ${esc(u.nome)}</h2><p class="small muted" style="margin-top:-4px">Uma opção por linha (pode colar do plano de curso). Depois, em cada aula, escolhe-se uma ou mais opções. Vale para todas as aulas desta UC nesta turma (e serve de base para outras turmas com a mesma UC).</p>
+     ${PCTD_L.map(([k, l]) => `<label class="f">${l}<textarea rows="6" data-pl="${k}">${esc((cur[k] || []).join('\n'))}</textarea></label>`).join('')}
      <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`, true);
   },
   pctdMulti: el => {
     const t = S.turmas[V.pctdT]; if (!t || !pctdPodeEditar(t)) return; const key = el.dataset.pk, f = el.dataset.pf;
-    const u = (t.ucs || []).find(x => x.id === el.dataset.u) || {}; const ops = (u.pctdL || {})[f] || []; const cur = new Set([].concat((pctdOf(t)[key] || {})[f] || []));
+    const u = (t.ucs || []).find(x => x.id === el.dataset.u) || {}; const ops = listasUC(t, u)[f] || []; const cur = new Set([].concat((pctdOf(t)[key] || {})[f] || []));
     const lbl = (PCTD_L.find(x => x[0] === f) || [])[1];
     MCTX = { ok: () => { const v = [...document.querySelectorAll('#modal [data-pmo]:checked')].map(c => c.value); const o = clone(pctdOf(t)[key] || {}); if (v.length) o[f] = v; else delete o[f]; closeModal(); pctdSet(t, key, Object.keys(o).length ? o : null).then(() => refresh()); if (MODE === 'sb') refresh(); } };
     modal(`<h2>${esc(lbl)}</h2><p class="small muted" style="margin-top:-4px">${esc(u.nome || '')} · aula ${esc(key.split('#')[1])}. Marque uma ou mais opções.</p>
@@ -6361,6 +6374,42 @@ VIEWER_OK.add('pctd');
 // alerta: PCTD sem preenchimento depois do início das aulas
 Object.assign(ALT, { pctd: 'PCTD' }); Object.assign(ALTL, { pctd: 'PCTD com aulas já iniciadas sem planejamento' });
 { const ca = confAlerts; confAlerts = function () { ca(); for (const t of Object.values(S.turmas)) { const p = pctdPendencias(t); if (!p || !(p.aulas || p.temas)) continue; ALERTS.push({ tp: 'pctd', t, row: null, msg: `PCTD: ${p.aulas} aula(s) já iniciadas sem planejamento${p.temas ? ` e ${p.temas} UC(s) sem tema gerador` : ''}` }); } }; }
+// ---------- Acessos dos docentes (e-mail e senha): consulta + edição só do PCTD ----------
+ACT.pctdAcessos = async () => {
+  if (MODE !== 'sb') { modal(`<h2>Acessos dos docentes</h2><p>Os acessos com e-mail e senha funcionam no site hospedado. Abra o site, entre como coordenação e cadastre os docentes por lá.</p><div class="mact"><button class="pri" data-m="close">Fechar</button></div>`); return; }
+  let L = []; try { const r = await sbFetch('/rest/v1/pctd_docentes?select=email,nome&order=nome'); if (!r.ok) throw new Error(r.status === 404 ? 'rode o arquivo pctd.sql no Supabase' : 'erro ' + r.status); L = await r.json(); } catch (e) { return toast('Não foi possível abrir os acessos: ' + e.message); }
+  const nomes = S.docentes.map(d => d.nome).sort((a, b) => a.localeCompare(b));
+  MCTX = { ok: async () => {
+    const nome = $('#modal [data-pa=nome]').value, email = $('#modal [data-pa=email]').value.trim().toLowerCase(), pw = $('#modal [data-pa=pw]').value;
+    if (!nome || !/^\S+@\S+\.\S+$/.test(email)) return toast('Escolha o docente e informe um e-mail válido');
+    if (pw && pw.length < 8) return toast('A senha precisa ter pelo menos 8 caracteres');
+    const b = $('#modal [data-m=ok]'); b.disabled = true; b.textContent = 'Cadastrando…'; let aviso = '';
+    try {
+      if (pw) { const r = await fetch(SBC.url.replace(/\/$/, '') + '/auth/v1/signup', { method: 'POST', headers: { apikey: SBC.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: pw }) }); const j = await r.json().catch(() => ({}));
+        if (!r.ok && !/already|registered|exists/i.test(j.msg || j.error_description || j.message || '')) throw new Error(j.msg || j.error_description || j.message || ('erro ' + r.status));
+        if (!r.ok) aviso = ' Este e-mail já tinha conta: a senha não mudou (use “Esqueci a senha”).'; else if (!j.access_token && !(j.session)) aviso = ' O docente recebe um e-mail para confirmar a conta antes do primeiro acesso.'; }
+      const r2 = await sbFetch('/rest/v1/pctd_docentes', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ email, nome }) }); if (!r2.ok) throw new Error('erro ' + r2.status);
+      closeModal(); toast('Acesso cadastrado para ' + nome + '.' + aviso); ACT.pctdAcessos();
+    } catch (e) { b.disabled = false; b.textContent = 'Cadastrar'; toast('Não foi possível cadastrar: ' + e.message); }
+  } };
+  MCTX.del = async email => { try { const r = await sbFetch('/rest/v1/pctd_docentes?email=eq.' + encodeURIComponent(email), { method: 'DELETE' }); if (!r.ok) throw new Error('erro ' + r.status); toast('Acesso removido'); closeModal(); ACT.pctdAcessos(); } catch (e) { toast('Não foi possível remover: ' + e.message); } };
+  modal(`<h2>Acessos dos docentes</h2><p class="small muted" style="margin-top:-4px">O docente entra no site com e-mail e senha: vê tudo em modo consulta e edita só o PCTD.</p>
+   <div class="tw" style="max-height:34vh"><table class="plain"><tr><th>Docente</th><th>E-mail</th><th></th></tr>${L.length ? L.map(x => `<tr><td>${esc(x.nome || '')}</td><td>${esc(x.email)}</td><td><button class="sm dng" data-m="paDel" data-v="${esc(x.email)}">Remover</button></td></tr>`).join('') : '<tr><td colspan="3" class="muted">Nenhum docente cadastrado.</td></tr>'}</table></div>
+   <h3 style="margin:12px 0 4px">Cadastrar docente</h3>
+   <div class="grid"><label class="f w2">Docente<select data-pa="nome"><option value="">—</option>${nomes.map(n => `<option>${esc(n)}</option>`).join('')}</select></label><label class="f w2">E-mail<input type="email" data-pa="email" placeholder="nome@sp.senac.br"></label><label class="f w2">Senha inicial<input type="text" data-pa="pw" placeholder="mínimo 8 caracteres"></label></div>
+   <p class="small muted">Passe o e-mail e a senha ao docente. Ele pode trocar a senha em “Entrar → Esqueci a senha”. Se o e-mail já tiver conta, deixe a senha em branco.</p>
+   <div class="mact"><button data-m="close">Fechar</button><button class="pri" data-m="ok">Cadastrar</button></div>`, true);
+};
+MACT.paDel = el => { const e = el.dataset.v; askConfirm(`Remover o acesso de <b>${esc(e)}</b>? Ele volta a só consultar.`, () => MCTX.del(e), 'Remover'); };
+// menu e cabeçalho do docente logado
+{ const rs = renderShell; renderShell = function () {
+  const r = rs.apply(this, arguments);
+  if (typeof MODE !== 'undefined' && MODE === 'sb' && ehDoc()) {
+    const f = document.querySelector('#side .sidefoot'); if (f) f.innerHTML = `<div class="small"><b>${esc(DOCNOME || DOCENTE)}</b> · Docente</div><div class="small muted">Consulta + preenchimento do PCTD</div><div class="bar" style="margin:8px 0 0"><button class="sm" data-act="logout">Sair</button></div>`;
+    const ro = document.getElementById('role'); if (ro) ro.innerHTML = `<span class="rolepill ed" data-act="logout" title="Sair">PCTD · ${esc((DOCNOME || DOCENTE).split(/[ @]/)[0])}</span>`;
+  }
+  return r;
+}; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
@@ -6520,11 +6569,28 @@ async function sbLoadAll() {
   S = { cfg: null, docentes: [], turmas: {}, eventos: [], esp: { espacos: [], reservas: [] }, mats: { itens: [] } };
   for (const d of L) { sbApplyDoc(d.path, d.data); SBV[d.path] = d.updated_at; }
 }
+// papel de quem entrou: administrador (edita tudo) ou docente cadastrado (consulta + PCTD)
+let DOCENTE = '', DOCNOME = '';
+async function sbPapel() {
+  try { const r1 = await sbFetch('/rest/v1/rpc/is_admin', { method: 'POST', body: '{}' }); if (!r1.ok) return 'admin'; if ((await r1.json()) === true) return 'admin'; } catch (e) { return 'admin'; }
+  try { const r2 = await sbFetch('/rest/v1/rpc/is_docente', { method: 'POST', body: '{}' }); if (r2.ok && (await r2.json()) === true) return 'docente'; } catch (e) { }
+  return '';
+}
+async function sbEntrar() {
+  const p = await sbPapel();
+  if (p === 'admin') { await sbLoadAll(); EDIT = true; DOCENTE = ''; return p; }
+  if (p === 'docente') {
+    await sbLoadPub(); EDIT = false; DOCENTE = (SBS && SBS.email) || '';
+    try { const r = await sbFetch('/rest/v1/pctd_docentes?select=nome'); const L = r.ok ? await r.json() : []; DOCNOME = (L[0] && L[0].nome) || ''; } catch (e) { }
+    return p;
+  }
+  throw new Error('SEMACESSO');
+}
 async function sbBoot() {
   MODE = 'sb'; EDIT = false; setSync('Carregando…');
   try { const s = JSON.parse(localStorage.getItem('cronoSB') || 'null'); if (s && s.refresh_token) SBS = s; } catch (e) { }
-  if (SBS) { try { await sbRefresh(); if (SBS) { await sbLoadAll(); EDIT = true; } } catch (e) { EDIT = false; } }
-  if (!EDIT) { try { await sbLoadPub(); } catch (e) { LOADED = true; render(); $('#main').innerHTML = `<div class="card empty"><h1>Não foi possível carregar</h1><p class="muted">Verifique a conexão e recarregue a página.</p></div>`; return; } }
+  if (SBS) { try { await sbRefresh(); if (SBS) await sbEntrar(); } catch (e) { EDIT = false; DOCENTE = ''; if (e.message === 'SEMACESSO') sbSaveSess(null); } }
+  if (!EDIT && !DOCENTE) { try { await sbLoadPub(); } catch (e) { LOADED = true; render(); $('#main').innerHTML = `<div class="card empty"><h1>Não foi possível carregar</h1><p class="muted">Verifique a conexão e recarregue a página.</p></div>`; return; } }
   LOADED = true; setSync(EDIT ? '✓ Sincronizado' : ''); refresh();
   setInterval(sbPoll, 60000);
 }
@@ -6571,7 +6637,7 @@ async function sbPoll() {
 }
 async function sbLogout(msg) {
   try { if (SBS) await sbFetch('/auth/v1/logout', { method: 'POST' }); } catch (e) { }
-  sbSaveSess(null); EDIT = false; V.preview = false;
+  sbSaveSess(null); EDIT = false; V.preview = false; DOCENTE = ''; DOCNOME = '';
   try { await sbLoadPub(); } catch (e) { }
   if (!VIEWER_OK.has(V.view)) V.view = 'cronograma';
   refresh(); if (msg) toast(msg);
@@ -6581,10 +6647,10 @@ function sbLoginModal() {
     const email = $('#modal [data-lg=email]').value.trim(), pw = $('#modal [data-lg=pw]').value;
     if (!email || !pw) return toast('Informe e-mail e senha');
     const b = $('#modal [data-m=ok]'); b.disabled = true; b.textContent = 'Entrando…';
-    try { sbSaveSess(await sbAuth({ email, password: pw }, 'password')); await sbLoadAll(); EDIT = true; closeModal(); setSync('✓ Sincronizado'); refresh(); toast('Modo edição ativado'); }
-    catch (e) { b.disabled = false; b.textContent = 'Entrar'; toast(/invalid/i.test(String(e.message)) ? 'E-mail ou senha incorretos' : 'Não foi possível entrar: ' + e.message); }
+    try { sbSaveSess(await sbAuth({ email, password: pw }, 'password')); const p = await sbEntrar(); closeModal(); setSync(p === 'admin' ? '✓ Sincronizado' : ''); if (p === 'docente') { V.view = 'pctd'; if (typeof pctdLoad === 'function') await pctdLoad(); } refresh(); toast(p === 'docente' ? 'Bem-vindo(a)! Você pode preencher o PCTD das turmas.' : 'Modo edição ativado'); }
+    catch (e) { if (e.message === 'SEMACESSO') { sbSaveSess(null); b.disabled = false; b.textContent = 'Entrar'; return toast('Este e-mail ainda não tem acesso. Fale com a coordenação.'); } b.disabled = false; b.textContent = 'Entrar'; toast(/invalid/i.test(String(e.message)) ? 'E-mail ou senha incorretos' : /confirm/i.test(String(e.message)) ? 'Confirme o seu e-mail pelo link que chegou na caixa de entrada' : 'Não foi possível entrar: ' + e.message); }
   } };
-  modal(`<h2>Entrar para editar</h2><p class="small muted">Acesso dos administradores. Quem só consulta não precisa entrar.</p>
+  modal(`<h2>Entrar</h2><p class="small muted">Coordenação (edição) e docentes cadastrados (preenchimento do PCTD). Quem só consulta não precisa entrar.</p>
    <label class="f">E-mail<input type="email" data-lg="email" autocomplete="username"></label><label class="f" style="margin-top:8px">Senha<input type="password" data-lg="pw" autocomplete="current-password"></label>
    <p class="small muted"><a class="link" data-m="sbReset">Esqueci a senha</a></p>
    <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Entrar</button></div>`);
@@ -6601,13 +6667,13 @@ async function sbRecovery() {
   history.replaceState(null, '', location.pathname);
   MCTX = { ok: async () => { const pw = $('#modal [data-lg=pw]').value; if (pw.length < 8) return toast('Use pelo menos 8 caracteres');
     const r = await sbFetch('/auth/v1/user', { method: 'PUT', body: JSON.stringify({ password: pw }) }); if (!r.ok) return toast('Não foi possível trocar a senha');
-    sbSaveSess(SBS); closeModal(); toast('Senha alterada. Entrando…'); await sbLoadAll(); EDIT = true; refresh(); } };
+    sbSaveSess(SBS); closeModal(); toast('Senha alterada. Entrando…'); try { const p = await sbEntrar(); if (p === 'docente') V.view = 'pctd'; } catch (e) { sbSaveSess(null); toast('Este e-mail ainda não tem acesso. Fale com a coordenação.'); } refresh(); } };
   modal(`<h2>Criar nova senha</h2><label class="f">Nova senha<input type="password" data-lg="pw" autocomplete="new-password"></label><div class="mact"><button class="pri" data-m="ok">Salvar senha</button></div>`);
   return true;
 }
 
 // login/sair: na versão hospedada usam e-mail e senha
-{ const gl = ACT.login, go2 = ACT.logout; ACT.login = () => MODE === 'sb' ? sbLoginModal() : gl(); ACT.logout = () => MODE === 'sb' ? sbLogout('Você saiu do modo edição.') : go2(); }
+{ const gl = ACT.login, go2 = ACT.logout; ACT.login = () => MODE === 'sb' ? sbLoginModal() : gl(); ACT.logout = () => MODE === 'sb' ? sbLogout(DOCENTE ? 'Você saiu.' : 'Você saiu do modo edição.') : go2(); }
 
 boot();
 
