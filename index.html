@@ -1363,6 +1363,7 @@ function editDoc(id) {
     modal(`<h2>Docente</h2><div class="grid"><label class="f w2">Nome<input data-dk="nome" value="${esc(w.nome)}"></label><label class="f w2">Função<input data-dk="funcao" value="${esc(w.funcao)}"></label><label class="f">Carga contratual (h/semana)<input type="number" data-dk="carga" value="${esc(w.carga ?? '')}"></label></div>
     <div class="escver" style="margin-top:8px"><label class="chk"><input type="checkbox" data-dconv ${w.convite ? 'checked' : ''}><span><b>Carta convite</b> — não entra no rateio</span></label>
      <div class="bar" style="margin-top:6px;gap:8px"><span class="small"><b>Desligamento:</b> a partir de</span><input type="date" data-ddesl value="${esc(w.desl || '')}" style="width:auto"><span class="small muted">Deixa de contar carga, sai das escolhas e aulas depois dessa data geram alerta. Tudo antes continua registrado.</span>${w.desl ? '<button class="sm" data-m="deslLimpa">Reativar</button>' : ''}</div></div>
+    ${typeof docAcessoHtml === 'function' ? docAcessoHtml(w) : ''}
     <h3>Escala (horário de trabalho)</h3><p class="small muted">Ex.: 08:00–12:00 · dois turnos: 13:00–17:00 / 17:15–18:00 · “Compensado” = sem trabalho.</p>
     <div class="tw" style="max-height:none"><table class="esc"><tr><th></th><th>Manhã</th><th>Tarde</th><th>Noite</th><th class="num">h</th></tr>${[1, 2, 3, 4, 5, 6].map(x => `<tr><td>${WD[x]}</td>${'MTN'.split('').map(p => `<td><input data-esc="${x}${p}" value="${esc((w.esc || {})[x + p] || '')}"></td>`).join('')}<td class="num">${r2(escHorasDia(w, x))}</td></tr>`).join('')}</table></div>${escVerBlock(w)}
     <h3>Férias e afastamentos</h3>${(w.fer || []).map((f, i) => `<div class="bar"><select data-fk="tipo" data-i="${i}">${opt(['Férias', 'Afastamento', 'Licença', 'Outro'], f.tipo)}</select><input type="date" data-fk="ini" data-i="${i}" value="${esc(f.ini)}"><input type="date" data-fk="fim" data-i="${i}" value="${esc(f.fim)}"><button class="sm dng" data-m="ferDel" data-i="${i}">✕</button></div>`).join('')}
@@ -4434,7 +4435,7 @@ ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de a
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
   { id: 'cad-pctd', t: 'PCTD — planejamento docente', h: `
-${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. O PCTD da turma aparece no menu <b>PCTD</b>.`, `Cadastre os docentes em <b>PCTD → 👥 Acessos dos docentes</b>: escolha o docente, informe o e-mail e uma senha inicial e clique em <b>Cadastrar</b>. Passe o e-mail e a senha ao docente.`, `O docente clica em <b>Entrar</b>, usa o e-mail e a senha e vê o site em modo consulta, podendo editar só o PCTD (as turmas dele aparecem com ★ e já filtradas pelo nome dele).`, `No alto ficam os <b>Temas geradores</b>: primeiro o do Projeto Integrador, depois o de cada UC na ordem do cronograma. Abaixo, as <b>aulas na sequência do cronograma</b> (data, UC, formato, docente), separadas por mês, com os campos do planejamento. Em <b>⚙ Listas</b> (ao lado do tema de cada UC), o docente ou a coordenação cadastram as opções de Elementos, Indicadores, Habilidades e Atitudes/valores (uma por linha); depois, em cada aula, escolhe-se uma ou mais.`, `As aulas de <b>Projeto Integrador</b> entram na sequência, na data em que acontecem, com a etiqueta “PI”. Em <b>👥 Grupos do projeto</b>, o docente clica em <b>+ Grupo</b> e lança o nome do grupo, os alunos (um por linha), o tema do projeto e o link do projeto de cada grupo. Na coluna <b>Link da aula</b>, o docente cola os links dos materiais no Teams (slides, vídeos etc.), um por linha. <b>⬇ Baixar planilha</b> gera o PCTD em Excel.`)}
+${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. O PCTD da turma aparece no menu <b>PCTD</b>.`, `Em <b>Docentes e escalas</b>, clique em <b>Editar</b> no docente e preencha <b>E-mail</b> e <b>Senha de acesso</b> no quadro <b>Acesso ao PCTD</b>. Ao salvar, o acesso é criado ou atualizado. Passe o e-mail e a senha ao docente.`, `O docente clica em <b>Entrar</b>, usa o e-mail e a senha e vê o site em modo consulta, podendo editar só o PCTD (as turmas dele aparecem com ★ e já filtradas pelo nome dele).`, `No alto ficam os <b>Temas geradores</b>: primeiro o do Projeto Integrador, depois o de cada UC na ordem do cronograma. Abaixo, as <b>aulas na sequência do cronograma</b> (data, UC, formato, docente), separadas por mês, com os campos do planejamento. Em <b>⚙ Listas</b> (ao lado do tema de cada UC), o docente ou a coordenação cadastram as opções de Elementos, Indicadores, Habilidades e Atitudes/valores (uma por linha); depois, em cada aula, escolhe-se uma ou mais.`, `As aulas de <b>Projeto Integrador</b> entram na sequência, na data em que acontecem, com a etiqueta “PI”. Em <b>👥 Grupos do projeto</b>, o docente clica em <b>+ Grupo</b> e lança o nome do grupo, os alunos (um por linha), o tema do projeto e o link do projeto de cada grupo. Na coluna <b>Link da aula</b>, o docente cola os links dos materiais no Teams (slides, vídeos etc.), um por linha. <b>⬇ Baixar planilha</b> gera o PCTD em Excel.`)}
 ${dica('Mudanças no cronograma aparecem no PCTD automaticamente (o planejamento acompanha a 1ª, 2ª, 3ª… aula da UC); o PCTD não altera o cronograma. Uma aula só conta como planejada quando todos os campos estão preenchidos (os links e os grupos do projeto não contam). No campo <b>Atividade avaliativa</b>, escreva <b>Não</b> quando a atividade não for avaliativa e <b>Sim</b> quando for — o campo não pode ficar em branco. O planejamento de cada UC (todas as aulas e o tema gerador) deve estar pronto <b>antes da primeira aula da UC</b>: a partir de 7 dias antes do início, a UC com aulas sem planejamento ou sem tema gera o alerta <b>PCTD</b> (“começa em…”), que continua depois do início (“começou em…”) até tudo ser preenchido. Para tirar o acesso de um docente, use Remover em Acessos dos docentes.')}` },
 
   { id: 'cad-salamapa', t: 'Incluir ou editar salas pelo Mapa de salas', h: `
@@ -6307,7 +6308,7 @@ function viewPctd() {
   h += `<div class="card"><div class="bar" style="margin:0;flex-wrap:wrap"><div class="grow"><h2 style="margin:0">${esc(t.nome)}</h2><div class="small muted">${esc(t.per)} · ${esc(t.area || '')} · ${r.inicio ? br(r.inicio) + ' a ' + br(r.fim) : ''} · ${r.total} aulas${t.pctd.em ? ' · PCTD gerado em ' + br(t.pctd.em) : ''}</div></div>
    ${pctdStatusPill(t, pend)}
    <select data-in="pctdDoc"><option value="">Todos os docentes</option>${docs.map(n => `<option ${n === fd ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
-   <button data-act="pctdXls">⬇ Baixar planilha</button>${canWrite() ? '<button data-act="pctdAcessos">👥 Acessos dos docentes</button>' : ''}</div></div>`;
+   <button data-act="pctdXls">⬇ Baixar planilha</button></div></div>`;
   // temas geradores: Projeto Integrador primeiro, depois as UCs na ordem do cronograma
   const ordem = pctdOrdemUCs(t);
   h += `<div class="card"><h3 style="margin:0 0 8px">Temas geradores</h3><div class="pctdtemas">${ordem.map(({ u, ui, n }) => { const kT = 'tema:' + u.id; const tema = String(D[kT] || ''); const tu = (t.ucs || []).find(x => x.id === u.id) || {};
@@ -6856,6 +6857,61 @@ MANUAL.splice(Math.max(0, MANUAL.findIndex(s => s.id === 'meta') + 1), 0, { id: 
 <li>Na transferência, o quadro <b>Para qual turma transferir</b> compara as turmas de destino: UCs a começar, em andamento, aulas perdidas e UCs indisponíveis. <b>Usar esta turma</b> monta o plano com ela.</li>
 <li>Confira o <b>Plano do estudante</b> (UCs na ordem, datas, término previsto e avisos) e mude a <b>Situação</b> quando fizer a matrícula.</li></ol>
 <div class="mbox tip"><b>Dica</b>As datas do plano acompanham o cronograma. Se uma turma mudar, a lista mostra ⚠ quando surgir conflito ou a UC deixar de existir na turma. Na própria turma (Turmas e UCs) aparece o quadro dos estudantes planejados nela. Os nomes não aparecem na consulta pública.</div>` });
+
+// ===== Acesso ao PCTD no cadastro do docente (Docentes e escalas): e-mail + senha =====
+// A senha fica guardada no cadastro (visível só para administradores) para ajudar o docente; não vai para a consulta pública.
+function docAcessoHtml(w) {
+  return `<h3>Acesso ao PCTD</h3><p class="small muted" style="margin:-4px 0 6px">Com e-mail e senha, o docente entra no site, vê tudo em modo consulta e edita só o PCTD. A senha fica visível apenas para os administradores. Deixe o e-mail em branco para tirar o acesso.</p>
+  <div class="grid"><label class="f w2">E-mail do docente<input type="email" data-dk="email" value="${esc(w.email || '')}" placeholder="nome@exemplo.com" autocomplete="off"></label>
+  <label class="f w2">Senha de acesso<span style="display:flex;gap:4px"><input type="password" data-dk="senha" value="${esc(w.senha || '')}" placeholder="mínimo 6 caracteres" autocomplete="new-password" style="flex:1"><button type="button" class="sm" data-m="docVerSenha" title="Mostrar ou esconder a senha">👁</button></span></label></div>
+  ${w.email ? `<div class="small" style="margin-top:4px">${w.acessoOk ? `<span class="pill ok">✓ acesso ativo</span> <span class="muted">atualizado em ${br(w.acessoOk)}</span>` : w.acessoErro ? `<span class="pill bad">⚠ ${esc(w.acessoErro)}</span>` : '<span class="pill warn">acesso ainda não criado — salve no site hospedado</span>'}</div>` : ''}`;
+}
+MACT.docVerSenha = () => { const i = document.querySelector('#modal [data-dk=senha]'); if (i) i.type = i.type === 'password' ? 'text' : 'password'; };
+async function docAcessoSync(d, antes) {
+  const email = String(d.email || '').trim().toLowerCase(), senha = d.senha || '';
+  if (email !== (d.email || '')) d.email = email;
+  if (MODE !== 'sb') return;
+  const base = SBC.url.replace(/\/$/, '');
+  try {
+    if (antes.email && antes.email !== email) { await sbFetch('/rest/v1/pctd_docentes?email=eq.' + encodeURIComponent(antes.email), { method: 'DELETE' }); }
+    if (!email) { delete d.acessoOk; delete d.acessoErro; saveDocs(); if (antes.email) toast('Acesso ao PCTD removido de ' + d.nome); return; }
+    if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('e-mail inválido');
+    const mudouConta = email !== antes.email || senha !== antes.senha || !antes.acessoOk;
+    if (mudouConta) {
+      if (senha.length < 6) throw new Error('a senha precisa ter pelo menos 6 caracteres');
+      const r = await fetch(base + '/auth/v1/signup', { method: 'POST', headers: { apikey: SBC.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: senha }) });
+      const j = await r.json().catch(() => ({})); const msg = j.msg || j.error_description || j.message || '';
+      const existe = !r.ok ? /already|registered|exists/i.test(msg) : !(j.identities || (j.user || {}).identities || [1]).length;
+      if (!r.ok && !existe) throw new Error(msg || 'erro ' + r.status);
+      // conta já existente (ou criada antes com confirmação por e-mail): grava a senha e libera a conta
+      const r3 = await sbFetch('/rest/v1/rpc/docente_senha', { method: 'POST', body: JSON.stringify({ p_email: email, p_senha: senha }) });
+      if (!r3.ok) { if (existe) throw new Error(r3.status === 404 ? 'rode o script docente_senha.sql no Supabase para trocar senhas' : 'não foi possível trocar a senha (' + r3.status + ')'); }
+    }
+    const r2 = await sbFetch('/rest/v1/pctd_docentes', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ email, nome: d.nome }) });
+    if (!r2.ok) throw new Error('não foi possível liberar o PCTD (' + r2.status + ')');
+    d.acessoOk = HOJE; delete d.acessoErro; saveDocs(); if (mudouConta) toast('Acesso ao PCTD pronto para ' + d.nome + '.');
+  } catch (e) { d.acessoErro = e.message; delete d.acessoOk; saveDocs(); toast('Acesso ao PCTD: ' + e.message); }
+  refresh();
+}
+{ const ed0 = editDoc; editDoc = function (id) {
+    const d = S.docentes.find(x => x.id === id); const antes = d ? { email: d.email || '', senha: d.senha || '', nome: d.nome, acessoOk: d.acessoOk } : null;
+    ed0(id); if (!d || !MCTX || !MCTX.ok) return; const ok0 = MCTX.ok;
+    MCTX.ok = (...a) => { const em = document.querySelector('#modal [data-dk=email]'); const sn = document.querySelector('#modal [data-dk=senha]');
+      if (em && em.value.trim() && !/^\S+@\S+\.\S+$/.test(em.value.trim())) return toast('Informe um e-mail válido');
+      if (em && em.value.trim() && sn && sn.value.length < 6) return toast('A senha de acesso precisa ter pelo menos 6 caracteres');
+      const r = ok0(...a); const mud = (d.email || '') !== antes.email || (d.senha || '') !== antes.senha || (d.email && (d.nome !== antes.nome || !d.acessoOk));
+      if (!d.email) { delete d.senha; }
+      if (mud) docAcessoSync(d, antes); return r; };
+    // excluir docente: tira o acesso ao PCTD
+    const dl0 = MACT.docDel; MACT.docDel = (...a) => { const r = dl0(...a); const c = MCTX; if (c && c.ok) { const o = c.ok; c.ok = (...b) => { const em = d.email; const x = o(...b); if (em && MODE === 'sb' && !S.docentes.includes(d)) sbFetch('/rest/v1/pctd_docentes?email=eq.' + encodeURIComponent(em), { method: 'DELETE' }); return x; }; } return r; };
+  }; }
+// coluna na lista de docentes
+{ const vd = viewDocentes; viewDocentes = function () { let h = vd();
+    h = h.replace('<th>Férias / afastamentos</th>', '<th>Férias / afastamentos</th><th>PCTD</th>');
+    for (const d of S.docentes) { const re = `data-act="editD" data-id="${d.id}"`; const i = h.indexOf(re); if (i < 0) continue; const td = h.lastIndexOf('<td class="nowrap">', i);
+      const cel = `<td class="small">${d.email ? (d.acessoErro ? `<span class="pill bad" title="${esc(d.acessoErro)}">⚠ acesso</span>` : d.acessoOk ? '<span class="pill ok" title="' + esc(d.email) + '">✓ acesso</span>' : '<span class="pill warn">pendente</span>') : '<span class="muted">—</span>'}</td>`;
+      h = h.slice(0, td) + cel + h.slice(td); }
+    return h; }; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
