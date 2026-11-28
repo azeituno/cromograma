@@ -422,7 +422,7 @@ function situacao(t) {
 
 const knN = x => { const v = Math.round(x * 100) / 100; return Number.isInteger(v) ? String(v) : String(v.toFixed(2)).replace(/0$/, '').replace('.', ','); };
 const knFr = (k, n) => !Number.isInteger(Math.round(k * 1e4) / 1e4) || !Number.isInteger(Math.round(n * 1e4) / 1e4);
-const knTxt = row => { const k = row.mod ? row.kM : row.k, n = row.mod ? row.nM : row.n, p = row.mod ? (row.mod === 'EAD' ? 'EAD ' : 'Pres. ') : ''; return p + (knFr(k, n) && row.hU ? knN(k * row.hU) + '/' + knN(n * row.hU) + ' h' : knN(k) + '/' + knN(n)); };
+const knTxt = row => { if (row.fin) return '💰 Financeiro'; if (row.rep) return '🔁 Reposição'; const k = row.mod ? row.kM : row.k, n = row.mod ? row.nM : row.n, p = row.mod ? (row.mod === 'EAD' ? 'EAD ' : 'Pres. ') : ''; return p + (knFr(k, n) && row.hU ? knN(k * row.hU) + '/' + knN(n * row.hU) + ' h' : knN(k) + '/' + knN(n)); };
 // dias de aula da turma numa data: períodos com dias diferentes (t.diasPer) substituem os dias normais
 function diasTurma(t, ds) { for (const p of t.diasPer || []) if (isDate(p.de) && ds >= p.de && (!isDate(p.ate) || ds <= p.ate)) return (p.dias || []).map(Number); return (t.dias || []).map(Number); }
 // recesso próprio da turma e dias não letivos que a turma desconsidera
@@ -1050,7 +1050,7 @@ function viewTurma() {
     const als = [...new Set(row.al.map(a => a.tp))].map(tp => { const okT = row.al.filter(a => a.tp === tp).every(a => a.ok); return `<span class="at ${okT ? 'okv' : tp}" title="${esc(row.al.filter(a => a.tp === tp).map(a => (a.ok ? '✓ ' : '') + a.msg).join('\n'))}">${okT ? '✓ ' : ''}${ALT[tp]}</span>`; }).join('');
     h += `<div class="row" id="r-${row.ds}" data-dgt="aula" data-ds="${row.ds}">${canWrite() ? `<span class="dragh" data-dg="aula" data-ds="${row.ds}" title="Arraste até outra aula para trocar as UCs">⠿</span>` : ''}${dt}<span class="no">${row.num == null ? '—' : '#' + row.num}</span>
      <select class="uc" style="border-left-color:${ucColor(row.ui)}" data-act="rUC" data-ds="${row.ds}">${ucOpts(row.ui, row.locked)}</select>
-     ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${row.rep ? 'reposição' : knTxt(row)}</span>
+     ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${knTxt(row)}</span>
      <button class="ead ${row.ead ? 'on' : ''}" data-act="rEad" data-ds="${row.ds}">${row.ead ? (row.sinc ? 'EAD síncr.' : 'EAD') : 'Presencial'}</button>${salaSel}${row.est && naSala(row) ? `<span class="pill ${row.estSala === 'manter' ? '' : 'estl'}" title="UC de estágio — ${row.estSala === 'manter' ? 'a sala continua reservada' : 'a sala fica livre para outras turmas (como EAD)'}">${row.estDia ? 'Estágio · em sala neste dia' : row.estSala === 'manter' ? 'Estágio · mantém sala' : 'Estágio · sala livre'}</span>` : ''}
      <div class="docs" data-act="rDocs" data-ds="${row.ds}">${docs}</div>
      ${row.rep ? '<span class="pill rep" title="Dia para os estudantes reporem aulas perdidas: tem docente, não conta carga horária do curso">🔁 Reposição · não conta carga</span>' : ''}${row.extra ? '<span class="pill">extra</span>' : ''}${row.parts ? `<span class="pill" style="background:#eef4ff;color:#3538cd" title="Aula dividida entre UCs">${row.parts.map(p => { const u = r.units[p.ui] || {}; return (u.num ? 'UC ' + u.num : short2(u.nome || '')) + ' ' + fmtH(p.h) + ' h'; }).join(' + ')}</span>` : ''}${!row.parts && row.hAula != null && Math.abs(row.hAula - (row.ead && +t.hEad > 0 ? +t.hEad : ((r.units[row.ui] || {}).hA || r.H))) > 1e-6 ? `<span class="pill" style="background:#fff4e5;color:#b54708" title="${row.hAj ? 'Carga desta aula alterada à mão' : 'Última aula da UC com só as horas que faltam (carga exata)'}">⏱ ${fmtH(row.hAula)} h</span>` : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
@@ -1802,7 +1802,7 @@ function viewTurmaRO() {
     if (row.type === 'off') { h += `<tr id="r-${row.ds}"><td class="offd nowrap">${brs(row.ds)} ${WD[row.w]}</td><td class="offd small" colspan="5">${esc(row.mot)}</td></tr>`; continue; }
     if (row.type !== 'aula' || row.ui < 0) continue;
     const u = r.units[row.ui];
-    h += `<tr id="r-${row.ds}"><td class="nowrap">${brs(row.ds)} ${WD[row.w]}</td><td>${row.num}</td><td class="small"><span class="dot" style="background:${ucColor(row.ui)}"></span> ${esc(u.num ? 'UC ' + u.num + ' · ' : '')}${esc(u.nome)} · ${knTxt(row)} ${infoBadge(row.o, true)}</td><td>${row.ead ? '<span class="ead on">EAD</span>' : 'Presencial'}</td><td class="small">${row.ead ? '' : esc(row.sala)}</td><td class="small">${row.docs.map(esc).join(', ')}</td></tr>`;
+    h += `<tr id="r-${row.ds}"><td class="nowrap">${brs(row.ds)} ${WD[row.w]}</td><td>${row.num ?? '—'}</td><td class="small"><span class="dot" style="background:${ucColor(row.ui)}"></span> ${esc(u.num ? 'UC ' + u.num + ' · ' : '')}${esc(u.nome)} · ${knTxt(row)} ${infoBadge(row.o, true)}</td><td>${row.ead ? '<span class="ead on">EAD</span>' : 'Presencial'}</td><td class="small">${row.ead ? '' : esc(row.sala)}</td><td class="small">${row.docs.map(esc).join(', ')}</td></tr>`;
   }
   return h + '</table></div></div>';
 }
@@ -2063,7 +2063,7 @@ function viewSemana() {
     return `<div class="wcard ${row.ead ? 'isead' : ''} ${bad ? 'hasal' : ''}" style="border-left-color:${areaColor(t.area)}" data-open="${t.id}" data-ds="${row.ds}" title="${esc(t.nome + '\n' + (u.nome || ''))}">
       <div class="wt">${esc(tName(t))}</div>
       <div class="wu"><span class="dot" style="background:${ucColor(row.ui)}"></span>${esc(u.num ? 'UC ' + u.num : short2(u.nome))} · ${knTxt(row)}</div>
-      <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.ead ? '<b class="eadtag">EAD' + (row.sinc ? ' síncrona' : '') + '</b>' + (row.sinc ? ' · ' + esc(row.sala || 'sem sala') : '') : esc(row.sala || 'sem sala')}</div>
+      <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.rep || row.fin ? 'sem sala' : row.ead ? '<b class="eadtag">EAD' + (row.sinc ? ' síncrona' : '') + '</b>' + (row.sinc ? ' · ' + esc(row.sala || 'sem sala') : '') : esc(row.sala || 'sem sala')}</div>
       ${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : '<div class="wd muted">sem docente</div>'}
       ${infoTxt(row.o) ? `<div style="margin-top:3px">${infoBadge(row.o, true)}</div>` : ''}${canWrite() && temMat(row.o) ? `<div style="margin-top:3px">${matBadge(row.o)}</div>` : ''}
       ${canWrite() && naSala(row) ? `<span class="wedit" data-tid="${t.id}" data-ds="${row.ds}" title="Informação do dia, liberar a sala, materiais">✎ dia / sala</span>` : ''}
@@ -5534,7 +5534,7 @@ function miniCard(t, row) {
   const u = R[t.id].units[row.ui] || {}; const bad = canWrite() && row.al.length;
   return `<div class="wcard mini ${row.ead ? 'isead' : ''} ${bad ? 'hasal' : ''}" style="border-left-color:${areaColor(t.area)}" data-open="${t.id}" data-ds="${row.ds}" title="${esc(t.nome + '\n' + (u.nome || '') + '\n' + hm(row.a) + '–' + hm(row.b) + ' · ' + (row.ead ? 'EAD' : row.sala || 'sem sala') + '\n' + (row.docs.join(', ') || 'sem docente'))}">
    <div class="wt">${esc(tName(t))}</div><div class="wu"><span class="dot" style="background:${ucColor(row.ui)}"></span>${esc(u.num ? 'UC ' + u.num : short2(u.nome || ''))} · ${knTxt(row)}</div>
-   <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.rep ? 'Reposição · sem sala' : row.ead ? '<b class="eadtag">EAD</b>' : esc(row.sala || 'sem sala')}</div>${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : ''}</div>`;
+   <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.rep || row.fin ? 'sem sala' : row.ead ? '<b class="eadtag">EAD</b>' : esc(row.sala || 'sem sala')}</div>${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : ''}</div>`;
 }
 function cronItens(d) { return (IDX[d] || []).filter(({ t, row }) => passT(t) && passDoc(row)).sort((a, b) => a.row.a - b.row.a || a.t.nome.localeCompare(b.t.nome)); }
 function mesGrid(ym, cont) {
