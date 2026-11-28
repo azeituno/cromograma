@@ -335,7 +335,7 @@ function escOn(d, ds) { if (!ds || !(d.escH && d.escH.length) && !d.escDe) retur
 function escIvs(d, w, ds) { const E = escOn(d, ds); return [].concat(ivs(E && E[w + 'M']), ivs(E && E[w + 'T']), ivs(E && E[w + 'N'])); }
 function escHorasDia(d, w, ds) { return escIvs(d, w, ds).reduce((s, [a, b]) => s + (b - a), 0) / 60; }
 // aula que ocupa sala: presencial ou EAD síncrona (docente na sala)
-function naSala(row) { return !row.ead || !!row.sinc; }
+function naSala(row) { return !row.rep && !row.fin && (!row.ead || !!row.sinc); }
 function overlap(a1, b1, a2, b2) { return Math.max(0, Math.min(b1, b2) - Math.max(a1, a2)); }
 // sala liberada no dia (visita técnica, estágio...): 'sala' = fica na sala, 'tudo' = sala livre a aula toda, 'parcial' = livre de libHi a libHf
 const LIB_FORA = ['Visita técnica', 'Estágio', 'Aula externa'];
@@ -494,7 +494,7 @@ function buildTurma(t) {
         if (ui < 0) ui = units.findIndex((u, i) => dP[i] + lkP[i] < nP[i] - EPS); if (ui < 0) ui = units.length - 1;
         const uu = units[ui], hU = uu.hA || H, hh = +o.h > 0 ? +o.h : hU;
         const row = { ds, w, type: 'aula', ui, locked: !!o.uc, extra: !!o.extra, o, al: [], fin: !!o.fin, rep: !o.fin && !!o.rep, k: done(ui), n: n[ui], num: null, hAula: hh, hAj: +o.h > 0, hU, hCont: 0, ead: false, sinc: false };
-        row.sala = o.fin ? '' : o.semSala ? '' : (o.sala || t.sala || VSALA[t.id] || '');
+        row.sala = ''; // financeiro e reposição não ocupam sala
         row.docs = o.fin ? [] : (o.doc || uu.doc || []).filter(Boolean);
         row.h = hh; row.a = tm(t.hi); row.b = +o.h > 0 ? row.a + Math.round(hh * 60) : Math.min(tm(t.hf), row.a + Math.round(hh * 60));
         res.aulas.push(row); res.rows.push(row); vazios = 0;
@@ -1079,7 +1079,7 @@ function viewArea() {
       if (!a) { h += `<td class="${ci ? 'offd' : ''}"></td>`; continue; }
       const u = R[t.id].units[a.ui];
       const bad = a.al.length ? `<div>${[...new Set(a.al.map(x => x.tp))].map(tp => `<span class="at ${tp}">${ALT[tp]}</span>`).join(' ')}</div>` : '';
-      h += `<td class="c has ${a.ead || (a.est && a.estSala !== 'manter') ? 'eadc' : ''}" data-open="${t.id}" data-ds="${d}" style="border-left:4px solid ${ucColor(a.ui)}"><div class="l1">${a.fin ? '💰 Dia financeiro' : a.rep ? '🔁 Reposição' : `Aula ${a.num} · ${esc(u.num ? 'UC ' + u.num : (u.nome || '').slice(0, 22))} · ${a.k}/${a.n}`}</div><div class="l2">${a.ead ? 'EAD' : a.est ? (a.estSala === 'manter' ? 'Estágio · ' + esc(a.sala || 'sem sala') : 'Estágio · sala livre') : esc(a.sala || 'sem sala')}</div><div>${a.docs.map(n => esc(short(n))).join(', ') || '<span class="muted">sem docente</span>'}</div>${bad}</td>`;
+      h += `<td class="c has ${a.ead || (a.est && a.estSala !== 'manter') ? 'eadc' : ''}" data-open="${t.id}" data-ds="${d}" style="border-left:4px solid ${ucColor(a.ui)}"><div class="l1">${a.fin ? '💰 Dia financeiro' : a.rep ? '🔁 Reposição' : `Aula ${a.num} · ${esc(u.num ? 'UC ' + u.num : (u.nome || '').slice(0, 22))} · ${a.k}/${a.n}`}</div><div class="l2">${a.rep ? 'Reposição · sem sala' : a.ead ? 'EAD' : a.est ? (a.estSala === 'manter' ? 'Estágio · ' + esc(a.sala || 'sem sala') : 'Estágio · sala livre') : esc(a.sala || 'sem sala')}</div><div>${a.docs.map(n => esc(short(n))).join(', ') || '<span class="muted">sem docente</span>'}</div>${bad}</td>`;
     }
     h += '</tr>';
   }
@@ -2116,7 +2116,7 @@ function viewMapa() {
 function avItems(d) { return AVS().filter(v => v.data === d && v.sala).map(v => ({ t: { id: 'av:' + v.id, nome: v.titulo || 'Atividade', sigla: (v.titulo || 'Atividade').slice(0, 14), area: '__av' }, row: { a: tm(v.hi), b: tm(v.hf), sala: v.sala, ead: false, docs: v.quem ? [v.quem] : [], o: { matItens: v.itens, mat: v.mat } } })); }
 function ocupIndex(days) {
   const occ = {}; // sala|ds|slot -> [{t,row}]
-  for (const d of days) for (const it of (IDX[d] || []).concat(avItems(d))) { if (naSala(it.row) && it.row.sala && it.row.sala !== EAD_SALA && !salaSpans(it.row).length) continue; const s = !naSala(it.row) ? EAD_SALA : (it.row.sala || '—'); const k = s + '|' + d + '|' + slotOf(it.row.a); (occ[k] = occ[k] || []).push(it); }
+  for (const d of days) for (const it of (IDX[d] || []).concat(avItems(d))) { if (it.row.fin) continue; if (naSala(it.row) && it.row.sala && it.row.sala !== EAD_SALA && !salaSpans(it.row).length) continue; const s = !naSala(it.row) ? EAD_SALA : (it.row.sala || '—'); const k = s + '|' + d + '|' + slotOf(it.row.a); (occ[k] = occ[k] || []).push(it); }
   return occ;
 }
 function viewOcupacao() {
@@ -2801,6 +2801,7 @@ function ocupDia(d) {
   // lista de atividades presenciais do dia: {sala, k, a, b, nome, docs, mat, info, area}
   const out = [];
   for (const { t, row } of (IDX[d] || []).concat(avItems(d))) {
+    if (row.fin) continue;
     if (!naSala(row) || row.sala === EAD_SALA) continue;
     out.push({ sala: row.sala || '—', k: slotOf(row.a), a: row.a, b: row.b, nome: nomeAtv(t), curso: t.nome || '', area: t.area, docs: row.docs || [], mat: temMat(row.o) ? matTxt(row.o) : '', info: infoTxt(row.o) || '' });
   }
@@ -2963,10 +2964,11 @@ const salaNoCartaz = c => c.cartaz === undefined ? /^(aud|sala\s*\d)/i.test(c.no
 function cartazDia(d) {
   const out = [];
   for (const { t, row } of (IDX[d] || []).concat(avItems(d))) {
+    if (row.fin) continue;
     const o = row.o || {}; const u = R[t.id] && R[t.id].units ? R[t.id].units[row.ui] : null; const uc = u ? u.nome : '';
     const ead = !naSala(row) || row.sala === EAD_SALA; const l = ead ? 'sala' : libOf(row);
     let fora = null, saida = null;
-    if (ead) fora = 'EAD';
+    if (ead) fora = row.rep ? 'Reposição (sem sala)' : 'EAD';
     else if (!row.sala) fora = 'Sala a definir';
     else if (l === 'tudo') fora = o.itp || (row.est ? 'Estágio' : 'Fora da sala');
     else if (l === 'parcial' && o.libHi && o.libHf) saida = { a: tm(o.libHi), b: tm(o.libHf), tipo: o.itp || 'Atividade fora da sala' };
@@ -5532,7 +5534,7 @@ function miniCard(t, row) {
   const u = R[t.id].units[row.ui] || {}; const bad = canWrite() && row.al.length;
   return `<div class="wcard mini ${row.ead ? 'isead' : ''} ${bad ? 'hasal' : ''}" style="border-left-color:${areaColor(t.area)}" data-open="${t.id}" data-ds="${row.ds}" title="${esc(t.nome + '\n' + (u.nome || '') + '\n' + hm(row.a) + '–' + hm(row.b) + ' · ' + (row.ead ? 'EAD' : row.sala || 'sem sala') + '\n' + (row.docs.join(', ') || 'sem docente'))}">
    <div class="wt">${esc(tName(t))}</div><div class="wu"><span class="dot" style="background:${ucColor(row.ui)}"></span>${esc(u.num ? 'UC ' + u.num : short2(u.nome || ''))} · ${knTxt(row)}</div>
-   <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.ead ? '<b class="eadtag">EAD</b>' : esc(row.sala || 'sem sala')}</div>${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : ''}</div>`;
+   <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.rep ? 'Reposição · sem sala' : row.ead ? '<b class="eadtag">EAD</b>' : esc(row.sala || 'sem sala')}</div>${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : ''}</div>`;
 }
 function cronItens(d) { return (IDX[d] || []).filter(({ t, row }) => passT(t) && passDoc(row)).sort((a, b) => a.row.a - b.row.a || a.t.nome.localeCompare(b.t.nome)); }
 function mesGrid(ym, cont) {
