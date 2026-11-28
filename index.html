@@ -4432,7 +4432,7 @@ ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de a
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
   { id: 'cad-pctd', t: 'PCTD — planejamento docente', h: `
-${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. O PCTD da turma aparece no menu <b>PCTD</b>.`, `Cadastre os docentes em <b>PCTD → 👥 Acessos dos docentes</b>: escolha o docente, informe o e-mail e uma senha inicial e clique em <b>Cadastrar</b>. Passe o e-mail e a senha ao docente.`, `O docente clica em <b>Entrar</b>, usa o e-mail e a senha e vê o site em modo consulta, podendo editar só o PCTD (as turmas dele aparecem com ★ e já filtradas pelo nome dele).`, `Em cada UC: <b>Tema gerador</b> e as aulas (data, formato, docente) com os campos do planejamento. Em <b>⚙ Listas da UC</b>, o docente ou a coordenação cadastram as opções de Elementos, Indicadores, Habilidades e Atitudes/valores (uma por linha); depois, em cada aula, escolhe-se uma ou mais.`, `Na coluna <b>Link da aula</b>, o docente cola os links dos materiais no Teams (slides, vídeos etc.), um por linha. <b>⬇ Baixar planilha</b> gera o PCTD em Excel.`)}
+${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. O PCTD da turma aparece no menu <b>PCTD</b>.`, `Cadastre os docentes em <b>PCTD → 👥 Acessos dos docentes</b>: escolha o docente, informe o e-mail e uma senha inicial e clique em <b>Cadastrar</b>. Passe o e-mail e a senha ao docente.`, `O docente clica em <b>Entrar</b>, usa o e-mail e a senha e vê o site em modo consulta, podendo editar só o PCTD (as turmas dele aparecem com ★ e já filtradas pelo nome dele).`, `Em cada UC: <b>Tema gerador</b> e as aulas (data, formato, docente) com os campos do planejamento. Em <b>⚙ Listas da UC</b>, o docente ou a coordenação cadastram as opções de Elementos, Indicadores, Habilidades e Atitudes/valores (uma por linha); depois, em cada aula, escolhe-se uma ou mais.`, `As aulas de <b>Projeto Integrador</b> aparecem dentro da UC que está acontecendo, na ordem das datas (com a etiqueta “Projeto Integrador”); o quadro do PI fica no fim, com o tema gerador dele. Na coluna <b>Link da aula</b>, o docente cola os links dos materiais no Teams (slides, vídeos etc.), um por linha. <b>⬇ Baixar planilha</b> gera o PCTD em Excel.`)}
 ${dica('Mudanças no cronograma aparecem no PCTD automaticamente (o planejamento acompanha a 1ª, 2ª, 3ª… aula da UC); o PCTD não altera o cronograma. Depois do início das aulas, aulas já iniciadas sem planejamento e UCs sem tema gerador geram o alerta <b>PCTD</b>. Para tirar o acesso de um docente, use Remover em Acessos dos docentes.')}` },
 
   { id: 'cad-salamapa', t: 'Incluir ou editar salas pelo Mapa de salas', h: `
@@ -6242,10 +6242,28 @@ function pctdAulas(t) {
       const u = r.units[p.ui]; if (!u) continue;
       if (!by[u.id]) { by[u.id] = { u, ui: p.ui, aulas: [] }; G.push(by[u.id]); }
       cnt[u.id] = (cnt[u.id] || 0) + 1;
-      by[u.id].aulas.push({ a, key: u.id + '#' + cnt[u.id], n: cnt[u.id], h: p.h, parte: p.parte });
+      by[u.id].aulas.push({ a, u, ui: p.ui, key: u.id + '#' + cnt[u.id], n: cnt[u.id], h: p.h, parte: p.parte });
     }
   }
   return G;
+}
+// para a tela e a planilha: aulas de Projeto Integrador entram dentro da UC que está acontecendo, em ordem de data
+function pctdGrupos(t) {
+  const G = pctdAulas(t).map(g => Object.assign({}, g, { aulas: g.aulas.slice() }));
+  const pi = G.filter(g => isPI(g.u)), outras = G.filter(g => !isPI(g.u));
+  if (!pi.length || !outras.length) return G;
+  const faixa = g => [g.aulas[0].a.ds, g.aulas[g.aulas.length - 1].a.ds];
+  for (const g of pi) {
+    const fica = [];
+    for (const x of g.aulas) {
+      const ds = x.a.ds; let host = null, melhor = '';
+      for (const o of outras) { const [i0, i1] = faixa(o); if (ds < i0 || ds > i1) continue; const ant = o.aulas.filter(y => y.a.ds <= ds && !y.pi).map(y => y.a.ds).pop() || ''; if (!host || ant > melhor) { host = o; melhor = ant; } }
+      if (host) host.aulas.push(Object.assign({}, x, { pi: true })); else fica.push(x);
+    }
+    g.aulas = fica; g.soTema = true;
+  }
+  for (const o of outras) o.aulas.sort((a, b) => a.a.ds.localeCompare(b.a.ds) || (a.pi ? 1 : 0) - (b.pi ? 1 : 0));
+  return outras.concat(pi);
 }
 function pctdPendencias(t) {
   const r = R[t.id]; if (!r || !pctdOn(t)) return null; const D = pctdOf(t); let aulas = 0, temas = 0;
@@ -6261,7 +6279,7 @@ function viewPctd() {
   let h = `<div class="pagehead"><h1>PCTD — planejamento docente</h1><p class="muted">Planejamento de cada aula, gerado a partir do cronograma da turma. ${t && pctdPodeEditar(t) ? 'Os campos em branco podem ser preenchidos aqui; tudo salva sozinho.' : 'Consulta.'}</p></div>`;
   if (!travada) h += `<div class="bar filters"><select data-in="pctdT" style="min-width:320px"><option value="">Escolha a turma…</option>${lista.map(x => `<option value="${esc(x.id)}" ${t && x.id === t.id ? 'selected' : ''}>${minha(x) === 0 ? '★ ' : ''}${esc(x.nome)} · ${esc(x.per)}${R[x.id] && R[x.id].inicio ? ' · início ' + brs(R[x.id].inicio) + '/' + R[x.id].inicio.slice(2, 4) : ''}</option>`).join('')}</select>${lista.length ? '' : '<span class="small muted">Nenhum PCTD gerado ainda. Gere pelo botão “📝 Gerar PCTD” na turma (Turmas e UCs).</span>'}</div>`;
   if (!t) return h + (travada === false && PCTD_TOK ? '<div class="card empty">PCTD não encontrado. Confira o link.</div>' : '');
-  const r = R[t.id]; const G = pctdAulas(t); const D = pctdOf(t); const ed = pctdPodeEditar(t);
+  const r = R[t.id]; const G = pctdGrupos(t); const D = pctdOf(t); const ed = pctdPodeEditar(t);
   const pend = pctdPendencias(t);
   const docs = [...new Set(r.aulas.flatMap(a => a.docs || []))].sort((a, b) => a.localeCompare(b));
   if (V.pctdDoc == null && typeof DOCNOME !== 'undefined' && DOCNOME && docs.includes(DOCNOME)) V.pctdDoc = DOCNOME;
@@ -6271,20 +6289,24 @@ function viewPctd() {
    <select data-in="pctdDoc"><option value="">Todos os docentes</option>${docs.map(n => `<option ${n === fd ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
    <button data-act="pctdXls">⬇ Baixar planilha</button>${canWrite() ? '<button data-act="pctdAcessos">👥 Acessos dos docentes</button>' : ''}</div></div>`;
   for (const g of G) {
-    const u = g.u, tu = (t.ucs || []).find(x => x.id === u.id) || {}; const L = g.aulas.filter(x => !fd || (x.a.docs || []).includes(fd)); if (!L.length) continue;
+    const u = g.u, tu = (t.ucs || []).find(x => x.id === u.id) || {}; const L = g.aulas.filter(x => !fd || (x.a.docs || []).includes(fd)); if (!L.length && !g.soTema) continue;
+    const nPI = g.soTema ? pctdAulas(t).find(z => z.u.id === u.id).aulas.length : 0;
     const kT = 'tema:' + u.id; const tema = String(D[kT] || '');
-    h += `<div class="card pctduc" style="border-left:5px solid ${ucColor(g.ui)}"><div class="bar" style="margin:0 0 6px"><h3 class="grow" style="margin:0">${esc(u.num ? 'UC ' + u.num + ' · ' : '')}${esc(u.nome || '')}</h3><span class="small muted">${fmtH(+u.ch || 0)} h · ${g.aulas.length} aula(s) · ${br(g.aulas[0].a.ds)} a ${br(g.aulas[g.aulas.length - 1].a.ds)}</span>${ed ? `<button class="sm" data-act="pctdListas" data-u="${esc(u.id)}" title="Opções das listas de Elementos, Indicadores, Habilidades e Atitudes/valores desta UC">⚙ Listas da UC</button>` : ''}</div>
+    h += `<div class="card pctduc" style="border-left:5px solid ${ucColor(g.ui)}"><div class="bar" style="margin:0 0 6px"><h3 class="grow" style="margin:0">${esc(u.num ? 'UC ' + u.num + ' · ' : '')}${esc(u.nome || '')}</h3><span class="small muted">${fmtH(+u.ch || 0)} h · ${g.soTema ? nPI + ' aula(s), mostradas dentro das UCs em que acontecem' + (L.length ? ` (${L.length} fora de UC aqui)` : '') : g.aulas.filter(y => !y.pi).length + ' aula(s)' + (g.aulas.some(y => y.pi) ? ' + ' + g.aulas.filter(y => y.pi).length + ' de Projeto Integrador' : '') + ' · ' + br(g.aulas[0].a.ds) + ' a ' + br(g.aulas[g.aulas.length - 1].a.ds)}</span>${ed ? `<button class="sm" data-act="pctdListas" data-u="${esc(u.id)}" title="Opções das listas de Elementos, Indicadores, Habilidades e Atitudes/valores desta UC">⚙ Listas da UC</button>` : ''}</div>
      <label class="f"><b>Tema gerador</b>${ed ? `<textarea rows="2" data-pk="${esc(kT)}" data-pf="__tema" placeholder="Tema gerador da UC">${esc(tema)}</textarea>` : `<div class="pctdro">${esc(tema) || '<span class="muted">—</span>'}</div>`}</label>
-     <div class="tw"><table class="pctd"><tr><th>Data</th><th>Formato</th><th>Docente</th>${PCTD_F.map(([, l]) => `<th>${l}</th>`).join('')}</tr>`;
+     `;
+    if (g.soTema && !L.length) { h += '</div>'; continue; }
+    h += `<div class="tw"><table class="pctd"><tr><th>Data</th><th>Formato</th><th>Docente</th>${PCTD_F.map(([, l]) => `<th>${l}</th>`).join('')}</tr>`;
     for (const x of L) {
       const o = D[x.key] || {}; const a = x.a; const late = a.ds <= HOJE && pctdVazio(o);
-      h += `<tr class="${late ? 'pctdlate' : ''}"><td class="nowrap"><b>${br(a.ds)}</b><div class="small muted">${WD[wd(a.ds)]} · aula ${x.n}${x.parte ? ` · ${fmtH(x.h)} h` : ''}</div></td><td><span class="pill ${a.ead ? 'eadtag' : ''}">${a.ead ? 'EAD' : 'Presencial'}</span></td><td class="small">${(a.docs || []).map(esc).join('<br>') || '<span class="muted">—</span>'}</td>`;
+      const xu = x.u || u, xtu = (t.ucs || []).find(z => z.id === xu.id) || {};
+      h += `<tr class="${late ? 'pctdlate' : ''} ${x.pi ? 'pctdpi' : ''}"><td class="nowrap"><b>${br(a.ds)}</b><div class="small muted">${WD[wd(a.ds)]} · aula ${x.n}${x.parte ? ` · ${fmtH(x.h)} h` : ''}</div>${x.pi ? `<span class="pill" style="background:#eef4ff;color:#3538cd;margin-top:3px" title="${esc(xu.nome || '')}">Projeto Integrador${xu.num ? ' · UC ' + xu.num : ''}</span>` : ''}</td><td><span class="pill ${a.ead ? 'eadtag' : ''}">${a.ead ? 'EAD' : 'Presencial'}</span></td><td class="small">${(a.docs || []).map(esc).join('<br>') || '<span class="muted">—</span>'}</td>`;
       for (const [k, , tp] of PCTD_F) {
         const v = o[k];
         if (!ed) { h += `<td class="small">${tp === 'm' ? (Array.isArray(v) ? v.map(esc).join('<br>') : esc(v || '')) : tp === 'l' ? linksHtml(v) : tp === 'u' && v ? `<a href="${esc(/^https?:/i.test(v) ? v : 'https://' + v)}" target="_blank" rel="noopener">abrir</a>` : esc(v || '').replace(/\n/g, '<br>')}</td>`; continue; }
         if (tp === 'l') { h += `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}" placeholder="Cole os links (Teams, slides, vídeos), um por linha">${esc(v || '')}</textarea>${v ? `<div class="small" style="margin-top:3px">${linksHtml(v)}</div>` : ''}</td>`; continue; }
-        if (tp === 'm') { const ops = listasUC(t, tu)[k] || []; const arr = Array.isArray(v) ? v : (v ? [v] : []);
-          h += ops.length ? `<td><button class="sm pctdm" data-act="pctdMulti" data-pk="${esc(x.key)}" data-pf="${k}" data-u="${esc(u.id)}">${arr.length ? arr.map(esc).join('<br>') : '<span class="muted">escolher…</span>'} ▾</button></td>` : `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}" placeholder="(sem lista cadastrada)">${esc(arr.join('\n'))}</textarea></td>`; continue; }
+        if (tp === 'm') { const ops = listasUC(t, xtu)[k] || []; const arr = Array.isArray(v) ? v : (v ? [v] : []);
+          h += ops.length ? `<td><button class="sm pctdm" data-act="pctdMulti" data-pk="${esc(x.key)}" data-pf="${k}" data-u="${esc(xu.id)}">${arr.length ? arr.map(esc).join('<br>') : '<span class="muted">escolher…</span>'} ▾</button></td>` : `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}" placeholder="(sem lista cadastrada)">${esc(arr.join('\n'))}</textarea></td>`; continue; }
         h += tp === 'u' ? `<td><input data-pk="${esc(x.key)}" data-pf="${k}" value="${esc(v || '')}" placeholder="https://…"></td>` : `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}">${esc(v || '')}</textarea></td>`;
       }
       h += '</tr>';
@@ -6298,7 +6320,7 @@ function viewPctd() {
   return h;
 }
 (function () { const st = document.createElement('style'); st.textContent = `table.pctd{min-width:1700px}table.pctd th{white-space:nowrap;font-size:12px;position:sticky;top:0;background:#f7f9fa}table.pctd td{vertical-align:top;min-width:120px}table.pctd td:nth-child(-n+3){min-width:0}
-table.pctd textarea,table.pctd input{width:100%;min-width:150px;font-size:12.5px}table.pctd tr.pctdlate td:first-child{box-shadow:inset 4px 0 0 #d92d20}.pctdm{text-align:left;white-space:normal;min-width:150px;font-size:12px}.pctdro{padding:6px 0}`; document.head.appendChild(st); })();
+table.pctd textarea,table.pctd input{width:100%;min-width:150px;font-size:12.5px}table.pctd tr.pctdlate td:first-child{box-shadow:inset 4px 0 0 #d92d20}.pctdpi td{background:#f5f7ff}.pctdm{text-align:left;white-space:normal;min-width:150px;font-size:12px}.pctdro{padding:6px 0}`; document.head.appendChild(st); })();
 document.addEventListener('change', e => {
   const el = e.target; if (!el.dataset || el.dataset.pk == null || el.closest('#modal')) return;
   const t = S.turmas[V.pctdT]; if (!t || !pctdPodeEditar(t)) return;
@@ -6351,10 +6373,11 @@ Object.assign(ACT, {
   pctdXls: () => {
     const t = S.turmas[V.pctdT]; if (!t) return; const D = pctdOf(t); const r = R[t.id];
     const rows = [['PCTD — ' + t.nome], [t.per + ' · ' + (t.area || '') + (r.inicio ? ' · ' + br(r.inicio) + ' a ' + br(r.fim) : '')], []];
-    for (const g of pctdAulas(t)) {
+    for (const g of pctdGrupos(t)) {
       const u = g.u; rows.push([(u.num ? 'UC ' + u.num + ' · ' : '') + u.nome + ' (' + fmtH(+u.ch || 0) + ' h)']); rows.push(['Tema gerador', String(D['tema:' + u.id] || '')]);
+      if (g.soTema && !g.aulas.length) { rows.push(['(aulas dentro das UCs em que acontecem)']); rows.push([]); continue; }
       rows.push(['Data', 'Formato', 'Docente'].concat(PCTD_F.map(x => x[1])));
-      for (const x of g.aulas) { const o = D[x.key] || {}; rows.push([br(x.a.ds), x.a.ead ? 'EAD' : 'Presencial', (x.a.docs || []).join(', ')].concat(PCTD_F.map(([k]) => Array.isArray(o[k]) ? o[k].join('; ') : (o[k] || '')))); }
+      for (const x of g.aulas) { const o = D[x.key] || {}; rows.push([br(x.a.ds) + (x.pi ? ' (PI' + (x.u.num ? ' · UC ' + x.u.num : '') + ')' : ''), x.a.ead ? 'EAD' : 'Presencial', (x.a.docs || []).join(', ')].concat(PCTD_F.map(([k]) => Array.isArray(o[k]) ? o[k].join('; ') : (o[k] || '')))); }
       rows.push([]);
     }
     xlsSave('PCTD - ' + t.nome.replace(/[\\/:*?"<>|]/g, ' ').slice(0, 80) + '.xlsx', [{ name: 'PCTD', rows, widths: [12, 11, 26, 34, 30, 30, 30, 30, 34, 34, 30, 30, 34] }]);
