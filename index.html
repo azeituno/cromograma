@@ -235,7 +235,7 @@ ul.leit{margin:0;padding-left:18px;line-height:1.5}ul.leit li{margin-bottom:6px}
 .manidx a{display:block;padding:5px 8px;border-radius:7px;cursor:pointer;font-size:13px;color:inherit}.manidx a:hover{background:var(--gray)}
 .mg{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:10px 8px 4px;font-weight:600}.mans .mg{margin:0 0 2px}
 .mans{margin-bottom:14px;line-height:1.55}.mans h2{margin:0 0 8px}.mans h4{margin:14px 0 4px}.mans ol,.mans ul{padding-left:20px}.mans li{margin-bottom:4px}
-.mbox{border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}.mbox>b{display:block;margin-bottom:4px}.mbox ul,.mbox p{margin:0}
+.mbox{border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}.mbox>b:first-child{display:block;margin-bottom:4px}.mbox ul,.mbox p{margin:0}
 .mbox.ref{background:#eef6ff;border-left:4px solid #2b6cb0}.mbox.read{background:#f0f8f2;border-left:4px solid #2f855a}.mbox.tip{background:#fff7e6;border-left:4px solid #d69e2e}
 .mpath{background:var(--gray);border-radius:6px;padding:1px 7px;font-size:13px;font-weight:600;white-space:nowrap}
 @media(max-width:800px){.manw{grid-template-columns:1fr}.manidx{position:static;max-height:none}}
@@ -3709,7 +3709,7 @@ ACT.manGo = el => { const s = document.getElementById('man-' + el.dataset.id); i
 // Manual de consulta: só como visualizar
 const MANUAL_C = [
   { id: 'c-inicio', g: 'Começo', t: 'O que você encontra aqui', h: `
-<p>Este site mostra a programação de aulas da unidade. No menu à esquerda (no celular, no botão de menu) há quatro áreas:</p>
+<p>Este site mostra a programação de aulas da unidade. No menu à esquerda (no celular, no botão de menu) estão as áreas abaixo (e também <b>Mapa de salas</b> e <b>PCTD</b> — o planejamento docente de cada turma, que os docentes cadastrados preenchem):</p>
 <ul><li><b>Cronograma</b> — as aulas de todos os cursos: dia, horário, unidade curricular, docente e sala.</li>
 <li><b>Agenda do docente</b> — a programação de um docente no mês.</li>
 <li><b>Eventos</b> — calendário institucional, avisos importantes, feriados e dias sem aula.</li>
@@ -6494,6 +6494,43 @@ function pctdStatusPill(t, pend) {
   const prox = G.filter(g => g.aulas.some(x => pctdIncompleto(D[x.key])) || !String(D['tema:' + g.u.id] || '').trim()).map(g => g.aulas[0].a.ds).sort()[0];
   return `<span class="pill warn" title="O planejamento de cada UC deve estar pronto antes da primeira aula dela">⏳ planejamento incompleto · ${det}${prox ? ' · próximo prazo: ' + br(prox) : ''}</span>`;
 }
+
+// --- Manual de consulta: PCTD (para quem consulta e também preenche) ---
+{ const L = (...l) => `<ol class="msteps">${l.map(x => `<li>${x}</li>`).join('')}</ol>`; const D = h => `<div class="mbox tip"><b>Dica</b>${h}</div>`;
+  const S2 = [
+  { id: 'c-pctd-entrar', g: 'PCTD', t: 'PCTD: entrar e abrir a turma', h: `
+<p>Qualquer pessoa pode <b>consultar</b> o PCTD. Para <b>preencher</b>, é preciso entrar com o e-mail e a senha cadastrados pela coordenação.</p>
+${L(`Clique em <b>Entrar</b> (no menu) e informe seu <b>e-mail</b> e <b>senha</b>.`, `Abra <span class="mpath">PCTD</span> no menu.`, `Em <b>Escolha a turma…</b>, selecione o curso. As turmas em que você dá aula aparecem primeiro, com <b>★</b>.`, `Use o filtro <b>Todos os docentes</b> para ver só as suas aulas (ao entrar, ele já vem com o seu nome).`)}
+${D('Sem e-mail e senha? Peça o acesso à coordenação. Sem entrar, a tela fica só para consulta.')}` },
+  { id: 'c-pctd-preencher', g: 'PCTD', t: 'PCTD: passo a passo do preenchimento', h: `
+${L(`<b>Tema gerador</b> — no quadro <b>Temas geradores</b>, escreva o tema de cada UC. O primeiro é o do <b>Projeto Integrador</b>; depois vêm as UCs na ordem do cronograma.`,
+ `<b>Listas da UC</b> — clique em <b>⚙ Listas</b> ao lado do tema e cadastre, uma por linha, as opções de <b>Elementos</b>, <b>Indicadores</b>, <b>Habilidades</b> e <b>Atitudes/valores</b> da UC. Clique em <b>Salvar</b>.`,
+ `<b>Aulas</b> — na tabela <b>Aulas na sequência do cronograma</b> (separada por mês), localize a sua aula pela data e pela UC. As aulas do Projeto Integrador aparecem no meio, na data em que acontecem.`,
+ `Preencha <b>Situação de aprendizagem</b>.`,
+ `Em <b>Elementos</b>, <b>Indicadores</b>, <b>Habilidades</b> e <b>Atitudes/valores</b>, clique em <b>escolher… ▾</b> e marque uma ou mais opções da lista.`,
+ `Preencha <b>Atividade</b>, <b>Atividade avaliativa</b> e <b>Recursos utilizados</b>. Em <b>Atividade avaliativa</b>, escreva <b>Sim</b> quando a atividade for avaliativa e <b>Não</b> quando não for — o campo não pode ficar em branco.`,
+ `Preencha <b>Contribuição para o PI</b>.`,
+ `Se tiver, cole o <b>Link da aula</b> (material no Teams, slides, vídeos — um por linha) e o <b>Link do RDD</b>.`,
+ `Não há botão de salvar: <b>tudo salva sozinho</b> ao sair do campo (aparece “✓ PCTD salvo” no topo).`)}
+${D('A aula só conta como <b>planejada</b> quando todos os campos estão preenchidos. Os links (aula e RDD) e os grupos do projeto são opcionais. Passe o mouse sobre a linha para ver o que falta.')}
+${D('Se a coordenação mudar o cronograma (data, docente, troca de aula), o PCTD acompanha automaticamente: o planejamento fica preso à 1ª, 2ª, 3ª… aula da UC. O que você escreve no PCTD não altera o cronograma.')}` },
+  { id: 'c-pctd-grupos', g: 'PCTD', t: 'PCTD: grupos do projeto', h: `
+${L(`No quadro <b>Grupos do projeto</b>, clique em <b>+ Grupo</b>.`, `Informe o <b>nome do grupo</b>, os <b>alunos</b>, o <b>tema do projeto</b> e o <b>link</b> do projeto.`, `Para tirar um grupo, use o <b>✕</b> da linha. Também salva sozinho.`)}` },
+  { id: 'c-pctd-baixar', g: 'PCTD', t: 'PCTD: baixar a planilha', h: `
+${L(`Abra a turma em <span class="mpath">PCTD</span>.`, `Clique em <b>⬇ Baixar planilha</b>.`, `O arquivo Excel traz os temas geradores, os grupos do projeto e todas as aulas na sequência do cronograma, separadas por mês e coloridas por UC.`)}
+${D('A planilha mostra o que está preenchido no momento do download. Depois de alterar algo, baixe de novo.')}` },
+  { id: 'c-pctd-alertas', g: 'PCTD', t: 'PCTD: alertas e prazos', h: `
+<p>O planejamento de cada UC (tema gerador e todas as aulas) precisa estar pronto <b>antes da primeira aula da UC</b>.</p>
+<ul><li><b>Selo no topo</b> do PCTD:
+ <ul><li><b>⚠ vermelho</b> — há UC começando em até 7 dias, ou que já começou, com planejamento incompleto.</li>
+ <li><b>⏳ amarelo</b> — ainda falta preencher, mas nenhum prazo está vencendo; mostra o <b>próximo prazo</b>.</li>
+ <li><b>✓ verde</b> — tudo preenchido.</li></ul>
+ O selo mostra também quantas aulas e temas já estão prontos (ex.: “8 de 20 aula(s) planejada(s)”).</li>
+<li><b>Tema destacado em vermelho</b> — a UC com prazo vencendo mostra “Começa em…” ou “Começou em…”.</li>
+<li><b>Linha destacada</b> na tabela — aula de UC com prazo vencendo que ainda está incompleta. Passe o mouse para ver os campos que faltam.</li></ul>
+${D('O alerta some sozinho quando o tema e todos os campos obrigatórios das aulas da UC são preenchidos. Links e grupos não contam.')}` }];
+  const i = MANUAL_C.findIndex(s => s.id === 'c-cel'); MANUAL_C.splice(i < 0 ? MANUAL_C.length : i, 0, ...S2);
+  for (const s of S2) MICON[s.id] = '📝'; }
 
 // ---------- Planilha .xlsx com formatação (cores, grade, quebra de linha), sem biblioteca externa ----------
 const XLX = (() => {
