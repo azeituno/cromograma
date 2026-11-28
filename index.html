@@ -907,7 +907,7 @@ function render() {
   if (!V.mes) V.mes = (new Date().getFullYear() === +S.cfg.ano ? new Date().toISOString().slice(0, 7) : S.cfg.ano + '-02');
   if (!V.area) { const ts = Object.values(S.turmas); V.area = S.cfg.areas.find(a => ts.some(t => t.area === a)) || S.cfg.areas[0] || ''; }
   V.ano = V.ano || S.cfg.ano;
-  const f = { edu: viewEdu, livros: viewLivros, cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
+  const f = { pctd: viewPctd, edu: viewEdu, livros: viewLivros, cursos: viewCursos, comites: viewComites, espacos: viewEspacos, eventos: viewEventos, acessos: viewAcessos, manual: viewManual, ajuda: viewManualC, rateio: viewRateio, meta: viewMeta, alunos: viewAlunos, conferencia: viewConferencia, cc: viewCC, inicio: viewInicio, cronograma: viewCronograma, agenda: viewAgenda, letivo: viewLetivo, mapa: viewMapa, turmas: viewTurmas, turma: canWrite() ? viewTurma : viewTurmaRO, area: viewCronograma, docentes: viewDocentes, calendario: viewCal, salas: viewSalas, horas: viewHoras, alertas: viewAlertas, dados: viewDados }[V.view] || viewInicio;
   try { m.innerHTML = f(); } catch (e) { console.error(e); m.innerHTML = '<div class="card empty">Não foi possível mostrar esta tela.</div>'; }
   document.documentElement.style.setProperty('--hh', document.querySelector('header').offsetHeight + 'px');
   if (V.hl) { const el = document.getElementById('r-' + V.hl); if (el) { el.classList.add('hl'); el.scrollIntoView({ block: 'center' }); } V.hl = ''; }
@@ -1007,7 +1007,7 @@ function viewTurma() {
   h += '</div>';
   // Cronograma
   h += `<div class="card"><div class="bar"><h2 class="grow" style="margin:0">Cronograma de aulas</h2>${tVisBtns()}${tDocSel(t)}
-   <button data-act="tLote">✎ Alterar várias aulas</button><button data-act="addExtra">+ Aula extra</button><button data-act="cancelRange">Cancelar período</button><button data-act="resetOv">Limpar ajustes</button></div>${tFilBar(t)}
+   <button data-act="tLote">✎ Alterar várias aulas</button><button data-act="pctdGerar" title="Cria o planejamento docente (PCTD) desta turma">📝 ${t.pctd && t.pctd.on ? 'PCTD' : 'Gerar PCTD'}</button><button data-act="addExtra">+ Aula extra</button><button data-act="cancelRange">Cancelar período</button><button data-act="resetOv">Limpar ajustes</button></div>${tFilBar(t)}
    <div class="legend"><span>📌 UC escolhida à mão</span><span><span class="ead on">EAD</span> aula a distância</span><span class="at conf">Conflito</span><span class="at fer">Férias</span><span class="at esc">Fora da escala</span><span class="at sala">Sala ocupada</span></div></div>`;
   if (r.sit !== 'OK') return h + `<div class="card empty">${esc(r.sit)} para gerar o cronograma.</div>`;
   const ucOpts = (sel, locked) => (locked ? `<option value="">↺ voltar à sequência automática</option>` : sel < 0 ? '<option value="">— escolher UC —</option>' : '') + r.units.map((u, i) => `<option value="${esc(u.id)}" ${sel === i ? 'selected' : ''}>${esc((u.num ? 'UC ' + u.num + ' · ' : '') + u.nome)}</option>`).join('');
@@ -1178,7 +1178,7 @@ function viewHoras() {
 
 // ---------- Alertas ----------
 function viewAlertas() {
-  const tps = ['ucc', 'enc', 'exc', 'conf', 'inter', 'fer', 'comp', 'desl', 'esc', 'sala', 'cad', 'uc', 'desm', 'liv', 'cc', 'sit'];
+  const tps = ['ucc', 'enc', 'exc', 'conf', 'inter', 'fer', 'comp', 'desl', 'esc', 'sala', 'cad', 'uc', 'desm', 'liv', 'pctd', 'cc', 'sit'];
   const nOk = ALERTS.filter(a => a.ok).length, nPe = ALERTS.length - nOk;
   const AL = ALERTS.filter(a => V.alOk === 'ok' ? a.ok : V.alOk === 'all' ? true : !a.ok);
   const cnt = {}; for (const a of AL) cnt[a.tp] = (cnt[a.tp] || 0) + 1;
@@ -4431,6 +4431,10 @@ ${ref('<p>O cronograma é recalculado na hora: as UCs entram na ordem da lista; 
 ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de aulas</b>, clique em <b>+ Aula extra</b>.`, `Escolha a <b>data</b> e marque <b>Aula a distância (EAD)</b> se for o caso.`, `Clique em <b>Inserir</b>. A UC entra na sequência automaticamente; troque depois pelo cronograma, se precisar.`)}
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
+  { id: 'cad-pctd', t: 'PCTD — planejamento docente', h: `
+${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. Aparecem o <b>link de edição</b> (para os docentes) e o <b>link de consulta</b>; use <b>Copiar</b> e envie.`, `O PCTD fica no menu <b>PCTD</b> (consulta). Cada UC é um quadro com o <b>Tema gerador</b> e as aulas: data, formato (presencial/EAD) e docente, seguidos dos campos do planejamento.`, `Quem abre pelo link de edição preenche só os campos do planejamento (situação de aprendizagem, elementos, indicadores, habilidades, atitudes/valores, atividade, atividade avaliativa, recursos, link do RDD e contribuição para o PI). Tudo salva sozinho.`, `Em <b>⚙ Listas da UC</b> (coordenação), cole as opções de Elementos, Habilidades e Atitudes/valores, uma por linha: o docente escolhe uma ou mais em cada aula.`, `<b>⬇ Baixar planilha</b> gera o PCTD da turma em Excel.`)}
+${dica('Mudanças no cronograma (datas, UCs, docentes, EAD) aparecem no PCTD automaticamente: o planejamento acompanha a aula da UC (1ª, 2ª, 3ª…). O PCTD não altera o cronograma. Depois do início das aulas, aulas já iniciadas sem planejamento e UCs sem tema gerador geram o alerta <b>PCTD</b>.')}` },
+
   { id: 'cad-salamapa', t: 'Incluir ou editar salas pelo Mapa de salas', h: `
 ${P(`Em ${caminho('Mapa de salas')} → <b>Ocupação</b> (semana ou mês), clique em <b>+ Sala</b> para incluir: informe nome, tipo, capacidade e se aparece no cartaz impresso.`, `Para editar, clique no <b>✎</b> ao lado do nome da sala. Se mudar o nome, as turmas e aulas que usam a sala passam a usar o nome novo.`, `Para excluir, use <b>Excluir sala</b> na mesma janela; as aulas que estavam nela ficam como “sem sala”.`)}` },
 
@@ -6194,6 +6198,169 @@ ACT.salaEd = el => {
   setTimeout(() => { const n = $('#modal [data-se=nome]'); if (n) { n.focus(); n.select(); } }, 50);
 };
 MACT.salaDel = () => MCTX.del();
+
+// ---------- PCTD: planejamento docente gerado a partir do cronograma da turma ----------
+const PCTD_F = [['sit', 'Situação de aprendizagem', 't'], ['elem', 'Elementos', 'm'], ['ind', 'Indicadores', 't'], ['hab', 'Habilidades', 'm'], ['att', 'Atitudes/valores', 'm'], ['ativ', 'Atividade', 't'], ['aval', 'Atividade avaliativa', 't'], ['rec', 'Recursos utilizados', 't'], ['rdd', 'Link do RDD', 'u'], ['pi', 'Contribuição para o PI', 't']];
+const PCTD_L = [['elem', 'Elementos'], ['hab', 'Habilidades'], ['att', 'Atitudes/valores']];
+let PCTD = {}, PCTD_TOK = '';
+{ const h0 = new URLSearchParams(location.hash.slice(1)); if (h0.get('pctd')) { V.view = 'pctd'; V.pctdT = h0.get('pctd'); PCTD_TOK = h0.get('k') || ''; } }
+const pctdOn = t => !!(t && t.pctd && t.pctd.on);
+const pctdOf = t => (typeof MODE !== 'undefined' && MODE === 'sb') ? (PCTD[t.id] || {}) : (t.pctdD || {});
+const pctdPodeEditar = t => canWrite() || (!!PCTD_TOK && V.pctdT === t.id);
+const pctdVazio = o => !o || !PCTD_F.some(([k]) => Array.isArray(o[k]) ? o[k].length : String(o[k] || '').trim());
+async function pctdLoad() {
+  if (MODE !== 'sb') return;
+  try { const r = await sbFetch('/rest/v1/pctd?select=tid,data', {}, !!SBS); if (r.ok) { const L = await r.json(); PCTD = {}; for (const x of L) PCTD[x.tid] = x.data || {}; if (!document.querySelector('#main textarea:focus,#main input:focus')) refresh(); } } catch (e) { }
+}
+{ const b0 = sbBoot; sbBoot = async function () { await b0.apply(this, arguments); await pctdLoad(); setInterval(pctdLoad, 60000); }; }
+async function pctdSet(t, key, val) {
+  if (MODE !== 'sb') { t.pctdD = t.pctdD || {}; if (val == null) delete t.pctdD[key]; else t.pctdD[key] = val; saveT(t); return true; }
+  PCTD[t.id] = PCTD[t.id] || {}; if (val == null) delete PCTD[t.id][key]; else PCTD[t.id][key] = val;
+  setSync('Salvando PCTD…');
+  try {
+    const r = await sbFetch('/rest/v1/rpc/pctd_set', { method: 'POST', body: JSON.stringify({ p_tid: t.id, p_token: PCTD_TOK || '', p_key: key, p_val: val }) }, !!SBS);
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.message || ('erro ' + r.status)); }
+    setSync('✓ PCTD salvo'); return true;
+  } catch (e) { setSync('PCTD não salvo'); toast('Não foi possível salvar o PCTD: ' + e.message); return false; }
+}
+// aulas do PCTD por UC: chave = idUC#n (n-ésima aula da UC), assim o planejamento acompanha as mudanças de data do cronograma
+function pctdAulas(t) {
+  const r = R[t.id]; if (!r) return [];
+  const G = []; const by = {}; const cnt = {};
+  for (const a of r.aulas) {
+    const L = a.parts ? a.parts.map(p => ({ ui: p.ui, h: p.h, parte: true })) : [{ ui: a.ui, h: a.h }];
+    for (const p of L) {
+      const u = r.units[p.ui]; if (!u) continue;
+      if (!by[u.id]) { by[u.id] = { u, ui: p.ui, aulas: [] }; G.push(by[u.id]); }
+      cnt[u.id] = (cnt[u.id] || 0) + 1;
+      by[u.id].aulas.push({ a, key: u.id + '#' + cnt[u.id], n: cnt[u.id], h: p.h, parte: p.parte });
+    }
+  }
+  return G;
+}
+function pctdPendencias(t) {
+  const r = R[t.id]; if (!r || !pctdOn(t)) return null; const D = pctdOf(t); let aulas = 0, temas = 0;
+  for (const g of pctdAulas(t)) { let ini = false; for (const x of g.aulas) if (x.a.ds <= HOJE) { ini = true; if (pctdVazio(D[x.key])) aulas++; } if (ini && !String(D['tema:' + g.u.id] || '').trim()) temas++; }
+  return { aulas, temas };
+}
+// ---- tela PCTD ----
+function viewPctd() {
+  const lista = Object.values(S.turmas).filter(pctdOn).sort((a, b) => String((R[a.id] || {}).inicio || '').localeCompare(String((R[b.id] || {}).inicio || '')) || a.nome.localeCompare(b.nome));
+  const travada = !!PCTD_TOK && S.turmas[V.pctdT];
+  let t = S.turmas[V.pctdT]; if (!pctdOn(t)) t = null;
+  let h = `<div class="pagehead"><h1>PCTD — planejamento docente</h1><p class="muted">Planejamento de cada aula, gerado a partir do cronograma da turma. ${t && pctdPodeEditar(t) ? 'Os campos em branco podem ser preenchidos aqui; tudo salva sozinho.' : 'Consulta.'}</p></div>`;
+  if (!travada) h += `<div class="bar filters"><select data-in="pctdT" style="min-width:320px"><option value="">Escolha a turma…</option>${lista.map(x => `<option value="${esc(x.id)}" ${t && x.id === t.id ? 'selected' : ''}>${esc(x.nome)} · ${esc(x.per)}${R[x.id] && R[x.id].inicio ? ' · início ' + brs(R[x.id].inicio) + '/' + R[x.id].inicio.slice(2, 4) : ''}</option>`).join('')}</select>${lista.length ? '' : '<span class="small muted">Nenhum PCTD gerado ainda. Gere pelo botão “📝 Gerar PCTD” na turma (Turmas e UCs).</span>'}</div>`;
+  if (!t) return h + (travada === false && PCTD_TOK ? '<div class="card empty">PCTD não encontrado. Confira o link.</div>' : '');
+  const r = R[t.id]; const G = pctdAulas(t); const D = pctdOf(t); const ed = pctdPodeEditar(t);
+  const pend = pctdPendencias(t);
+  const docs = [...new Set(r.aulas.flatMap(a => a.docs || []))].sort((a, b) => a.localeCompare(b));
+  const fd = V.pctdDoc && docs.includes(V.pctdDoc) ? V.pctdDoc : '';
+  h += `<div class="card"><div class="bar" style="margin:0;flex-wrap:wrap"><div class="grow"><h2 style="margin:0">${esc(t.nome)}</h2><div class="small muted">${esc(t.per)} · ${esc(t.area || '')} · ${r.inicio ? br(r.inicio) + ' a ' + br(r.fim) : ''} · ${r.total} aulas${t.pctd.em ? ' · PCTD gerado em ' + br(t.pctd.em) : ''}</div></div>
+   ${pend && (pend.aulas || pend.temas) && r.inicio <= HOJE ? `<span class="pill bad">${pend.aulas} aula(s) já iniciadas sem planejamento${pend.temas ? ` · ${pend.temas} UC(s) sem tema gerador` : ''}</span>` : '<span class="pill ok">planejamento em dia</span>'}
+   <select data-in="pctdDoc"><option value="">Todos os docentes</option>${docs.map(n => `<option ${n === fd ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+   <button data-act="pctdXls">⬇ Baixar planilha</button>${canWrite() ? '<button data-act="pctdLink">🔗 Link de edição</button>' : ''}</div></div>`;
+  for (const g of G) {
+    const u = g.u, tu = (t.ucs || []).find(x => x.id === u.id) || {}; const L = g.aulas.filter(x => !fd || (x.a.docs || []).includes(fd)); if (!L.length) continue;
+    const kT = 'tema:' + u.id; const tema = String(D[kT] || '');
+    h += `<div class="card pctduc" style="border-left:5px solid ${ucColor(g.ui)}"><div class="bar" style="margin:0 0 6px"><h3 class="grow" style="margin:0">${esc(u.num ? 'UC ' + u.num + ' · ' : '')}${esc(u.nome || '')}</h3><span class="small muted">${fmtH(+u.ch || 0)} h · ${g.aulas.length} aula(s) · ${br(g.aulas[0].a.ds)} a ${br(g.aulas[g.aulas.length - 1].a.ds)}</span>${canWrite() ? `<button class="sm" data-act="pctdListas" data-u="${esc(u.id)}" title="Opções das listas de Elementos, Habilidades e Atitudes/valores desta UC">⚙ Listas da UC</button>` : ''}</div>
+     <label class="f"><b>Tema gerador</b>${ed ? `<textarea rows="2" data-pk="${esc(kT)}" data-pf="__tema" placeholder="Tema gerador da UC">${esc(tema)}</textarea>` : `<div class="pctdro">${esc(tema) || '<span class="muted">—</span>'}</div>`}</label>
+     <div class="tw"><table class="pctd"><tr><th>Data</th><th>Formato</th><th>Docente</th>${PCTD_F.map(([, l]) => `<th>${l}</th>`).join('')}</tr>`;
+    for (const x of L) {
+      const o = D[x.key] || {}; const a = x.a; const late = a.ds <= HOJE && pctdVazio(o);
+      h += `<tr class="${late ? 'pctdlate' : ''}"><td class="nowrap"><b>${br(a.ds)}</b><div class="small muted">${WD[wd(a.ds)]} · aula ${x.n}${x.parte ? ` · ${fmtH(x.h)} h` : ''}</div></td><td><span class="pill ${a.ead ? 'eadtag' : ''}">${a.ead ? 'EAD' : 'Presencial'}</span></td><td class="small">${(a.docs || []).map(esc).join('<br>') || '<span class="muted">—</span>'}</td>`;
+      for (const [k, , tp] of PCTD_F) {
+        const v = o[k];
+        if (!ed) { h += `<td class="small">${tp === 'm' ? (Array.isArray(v) ? v.map(esc).join('<br>') : esc(v || '')) : tp === 'u' && v ? `<a href="${esc(/^https?:/i.test(v) ? v : 'https://' + v)}" target="_blank" rel="noopener">abrir</a>` : esc(v || '').replace(/\n/g, '<br>')}</td>`; continue; }
+        if (tp === 'm') { const ops = (tu.pctdL || {})[k] || []; const arr = Array.isArray(v) ? v : (v ? [v] : []);
+          h += ops.length ? `<td><button class="sm pctdm" data-act="pctdMulti" data-pk="${esc(x.key)}" data-pf="${k}" data-u="${esc(u.id)}">${arr.length ? arr.map(esc).join('<br>') : '<span class="muted">escolher…</span>'} ▾</button></td>` : `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}" placeholder="(sem lista cadastrada)">${esc(arr.join('\n'))}</textarea></td>`; continue; }
+        h += tp === 'u' ? `<td><input data-pk="${esc(x.key)}" data-pf="${k}" value="${esc(v || '')}" placeholder="https://…"></td>` : `<td><textarea rows="2" data-pk="${esc(x.key)}" data-pf="${k}">${esc(v || '')}</textarea></td>`;
+      }
+      h += '</tr>';
+    }
+    h += '</table></div></div>';
+  }
+  // planejamentos que ficaram sem aula (o cronograma diminuiu)
+  const vivas = new Set(G.flatMap(g => g.aulas.map(x => x.key)));
+  const orf = Object.keys(D).filter(k => k.includes('#') && !vivas.has(k) && !pctdVazio(D[k]));
+  if (orf.length) h += `<div class="card"><details><summary><b>${orf.length} planejamento(s) sem aula correspondente</b> <span class="small muted">— o cronograma mudou e essas aulas deixaram de existir</span></summary>${orf.map(k => { const [uid, n] = k.split('#'); const u = (t.ucs || []).find(x => x.id === uid) || {}; return `<div class="small" style="margin:6px 0"><b>${esc(u.num ? 'UC ' + u.num : u.nome || uid)} · aula ${n}</b>: ${esc(D[k].sit || D[k].ativ || '')}</div>`; }).join('')}</details></div>`;
+  return h;
+}
+(function () { const st = document.createElement('style'); st.textContent = `table.pctd{min-width:1700px}table.pctd th{white-space:nowrap;font-size:12px;position:sticky;top:0;background:#f7f9fa}table.pctd td{vertical-align:top;min-width:120px}table.pctd td:nth-child(-n+3){min-width:0}
+table.pctd textarea,table.pctd input{width:100%;min-width:150px;font-size:12.5px}table.pctd tr.pctdlate td:first-child{box-shadow:inset 4px 0 0 #d92d20}.pctdm{text-align:left;white-space:normal;min-width:150px;font-size:12px}.pctdro{padding:6px 0}`; document.head.appendChild(st); })();
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.dataset || el.dataset.pk == null || el.closest('#modal')) return;
+  const t = S.turmas[V.pctdT]; if (!t || !pctdPodeEditar(t)) return;
+  const key = el.dataset.pk, f = el.dataset.pf;
+  if (f === '__tema') { const v = el.value.trim(); pctdSet(t, key, v || null); return; }
+  const o = clone(pctdOf(t)[key] || {}); const tp = (PCTD_F.find(x => x[0] === f) || [])[2];
+  let v = el.value.trim(); if (tp === 'm') v = v.split(/\n+/).map(x => x.trim()).filter(Boolean);
+  if ((Array.isArray(v) && !v.length) || v === '') delete o[f]; else o[f] = v;
+  pctdSet(t, key, Object.keys(o).length ? o : null).then(ok => { if (ok && MODE !== 'sb') return; const row = el.closest('tr'); if (row) row.classList.toggle('pctdlate', false); });
+});
+Object.assign(ACT, {
+  pctdGerar: async () => {
+    const t = curT(); if (!t) return;
+    if (!t.pctd || !t.pctd.k) { const k = Array.from(crypto.getRandomValues(new Uint8Array(15))).map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 24); t.pctd = { on: true, k, em: HOJE }; }
+    else t.pctd.on = true;
+    saveT(t);
+    if (MODE === 'sb') { try { const r = await sbFetch('/rest/v1/pctd_keys', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ tid: t.id, token: t.pctd.k }) }); if (!r.ok) throw new Error('erro ' + r.status); } catch (e) { toast('PCTD gerado, mas o link de edição ainda não foi ativado no servidor (' + e.message + '). Rode o arquivo pctd.sql no Supabase.'); } }
+    refresh(); ACT.pctdLink(null, t);
+  },
+  pctdLink: (el, tt) => {
+    const t = tt || S.turmas[V.pctdT] || curT(); if (!t || !t.pctd) return;
+    const base = location.href.split('#')[0]; const link = base + '#pctd=' + encodeURIComponent(t.id) + '&k=' + t.pctd.k; const cons = base + '#pctd=' + encodeURIComponent(t.id);
+    MCTX = {};
+    modal(`<h2>PCTD de ${esc(t.nome)}</h2>
+     <p><b>Link de edição</b> (para os docentes preencherem): quem tiver este link edita só os campos do planejamento desta turma, sem login.</p>
+     <div class="bar" style="margin:0 0 10px"><input value="${esc(link)}" readonly style="flex:1" data-plink><button class="pri" data-m="pcCopia" data-v="${esc(link)}">Copiar</button></div>
+     <p><b>Link de consulta</b> (só leitura):</p>
+     <div class="bar" style="margin:0 0 10px"><input value="${esc(cons)}" readonly style="flex:1"><button data-m="pcCopia" data-v="${esc(cons)}">Copiar</button></div>
+     <p class="small muted">O PCTD acompanha o cronograma: mudanças de datas, UCs ou docentes na turma aparecem no PCTD automaticamente. O preenchimento do PCTD não altera o cronograma.${MODE === 'sb' ? '' : ' (Os links funcionam no site hospedado.)'}</p>
+     <div class="mact"><button data-m="pcNovo" class="dng" title="Gera um link novo; o antigo deixa de funcionar">Trocar link de edição</button><button data-m="pcAbrir">Abrir o PCTD</button><button class="pri" data-m="close">Fechar</button></div>`);
+    MCTX.t = t;
+  },
+  pctdListas: el => {
+    const t = S.turmas[V.pctdT]; const u = (t.ucs || []).find(x => x.id === el.dataset.u); if (!u) return;
+    MCTX = { ok: () => { u.pctdL = {}; for (const [k] of PCTD_L) { const L = $(`#modal [data-pl="${k}"]`).value.split(/\n+/).map(x => x.trim()).filter(Boolean); if (L.length) u.pctdL[k] = [...new Set(L)]; } if (!Object.keys(u.pctdL).length) delete u.pctdL; saveT(t); closeModal(); refresh(); toast('Listas da UC salvas'); } };
+    modal(`<h2>Listas da UC — ${esc(u.nome)}</h2><p class="small muted" style="margin-top:-4px">Uma opção por linha (pode colar do plano de curso). Os docentes escolhem uma ou mais opções em cada aula.</p>
+     ${PCTD_L.map(([k, l]) => `<label class="f">${l}<textarea rows="6" data-pl="${k}">${esc(((u.pctdL || {})[k] || []).join('\n'))}</textarea></label>`).join('')}
+     <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`, true);
+  },
+  pctdMulti: el => {
+    const t = S.turmas[V.pctdT]; if (!t || !pctdPodeEditar(t)) return; const key = el.dataset.pk, f = el.dataset.pf;
+    const u = (t.ucs || []).find(x => x.id === el.dataset.u) || {}; const ops = (u.pctdL || {})[f] || []; const cur = new Set([].concat((pctdOf(t)[key] || {})[f] || []));
+    const lbl = (PCTD_L.find(x => x[0] === f) || [])[1];
+    MCTX = { ok: () => { const v = [...document.querySelectorAll('#modal [data-pmo]:checked')].map(c => c.value); const o = clone(pctdOf(t)[key] || {}); if (v.length) o[f] = v; else delete o[f]; closeModal(); pctdSet(t, key, Object.keys(o).length ? o : null).then(() => refresh()); if (MODE === 'sb') refresh(); } };
+    modal(`<h2>${esc(lbl)}</h2><p class="small muted" style="margin-top:-4px">${esc(u.nome || '')} · aula ${esc(key.split('#')[1])}. Marque uma ou mais opções.</p>
+     <div style="max-height:55vh;overflow:auto;display:flex;flex-direction:column;gap:4px">${ops.map(o => `<label class="chk" style="align-items:flex-start"><input type="checkbox" data-pmo value="${esc(o)}" ${cur.has(o) ? 'checked' : ''}><span>${esc(o)}</span></label>`).join('')}</div>
+     <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Salvar</button></div>`, true);
+  },
+  pctdXls: () => {
+    const t = S.turmas[V.pctdT]; if (!t) return; const D = pctdOf(t); const r = R[t.id];
+    const rows = [['PCTD — ' + t.nome], [t.per + ' · ' + (t.area || '') + (r.inicio ? ' · ' + br(r.inicio) + ' a ' + br(r.fim) : '')], []];
+    for (const g of pctdAulas(t)) {
+      const u = g.u; rows.push([(u.num ? 'UC ' + u.num + ' · ' : '') + u.nome + ' (' + fmtH(+u.ch || 0) + ' h)']); rows.push(['Tema gerador', String(D['tema:' + u.id] || '')]);
+      rows.push(['Data', 'Formato', 'Docente'].concat(PCTD_F.map(x => x[1])));
+      for (const x of g.aulas) { const o = D[x.key] || {}; rows.push([br(x.a.ds), x.a.ead ? 'EAD' : 'Presencial', (x.a.docs || []).join(', ')].concat(PCTD_F.map(([k]) => Array.isArray(o[k]) ? o[k].join('; ') : (o[k] || '')))); }
+      rows.push([]);
+    }
+    xlsSave('PCTD - ' + t.nome.replace(/[\\/:*?"<>|]/g, ' ').slice(0, 80) + '.xlsx', [{ name: 'PCTD', rows, widths: [12, 11, 26, 34, 30, 30, 30, 30, 34, 34, 30, 30, 34] }]);
+  },
+});
+Object.assign(MACT, {
+  pcCopia: el => { const v = el.dataset.v; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('Link copiado'), () => { const i = $('#modal [data-plink]'); if (i) { i.select(); document.execCommand('copy'); toast('Link copiado'); } }); },
+  pcAbrir: () => { const t = MCTX.t; closeModal(); go('pctd', { pctdT: t.id }); },
+  pcNovo: () => { const t = MCTX.t; askConfirm('Gerar um link de edição novo? O link antigo deixa de funcionar.', () => { delete t.pctd.k; closeModal(); V.tid = t.id; ACT.pctdGerar(); }, 'Gerar novo'); },
+});
+// menu, rota e acesso de consulta
+NAV_PUB.splice(NAV_PUB.findIndex(x => x[0] === 'agenda') + 1, 0, ['pctd', 'PCTD', '✎']);
+NAV_VIEWER.splice(NAV_VIEWER.findIndex(x => x[0] === 'agenda') + 1, 0, ['pctd', 'PCTD', '✎']);
+VIEWER_OK.add('pctd');
+// publica sem o código do link de edição e sem o conteúdo local
+{ const pd = pubData; pubData = function () { const d = pd.apply(this, arguments); for (const t of Object.values(d.turmas || {})) { if (t.pctd) t.pctd = { on: !!t.pctd.on, em: t.pctd.em }; delete t.pctdD; } return d; }; }
+// alerta: PCTD sem preenchimento depois do início das aulas
+Object.assign(ALT, { pctd: 'PCTD' }); Object.assign(ALTL, { pctd: 'PCTD com aulas já iniciadas sem planejamento' });
+{ const ca = confAlerts; confAlerts = function () { ca(); for (const t of Object.values(S.turmas)) { const p = pctdPendencias(t); if (!p || !(p.aulas || p.temas)) continue; ALERTS.push({ tp: 'pctd', t, row: null, msg: `PCTD: ${p.aulas} aula(s) já iniciadas sem planejamento${p.temas ? ` e ${p.temas} UC(s) sem tema gerador` : ''}` }); } }; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
