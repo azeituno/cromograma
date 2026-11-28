@@ -4432,7 +4432,7 @@ ${P(`Abra a turma em ${caminho('Turmas e UCs')}.`, `No quadro <b>Cronograma de a
 ${dica('Para cancelar uma aula ou mudar de dia, use o menu ⋯ da própria aula (veja “Ajustes de uma aula”).')}` },
 
   { id: 'cad-pctd', t: 'PCTD — planejamento docente', h: `
-${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. O PCTD da turma aparece no menu <b>PCTD</b>.`, `Cadastre os docentes em <b>PCTD → 👥 Acessos dos docentes</b>: escolha o docente, informe o e-mail e uma senha inicial e clique em <b>Cadastrar</b>. Passe o e-mail e a senha ao docente.`, `O docente clica em <b>Entrar</b>, usa o e-mail e a senha e vê o site em modo consulta, podendo editar só o PCTD (as turmas dele aparecem com ★ e já filtradas pelo nome dele).`, `No alto ficam os <b>Temas geradores</b>: primeiro o do Projeto Integrador, depois o de cada UC na ordem do cronograma. Abaixo, as <b>aulas na sequência do cronograma</b> (data, UC, formato, docente), separadas por mês, com os campos do planejamento. Em <b>⚙ Listas</b> (ao lado do tema de cada UC), o docente ou a coordenação cadastram as opções de Elementos, Indicadores, Habilidades e Atitudes/valores (uma por linha); depois, em cada aula, escolhe-se uma ou mais.`, `As aulas de <b>Projeto Integrador</b> entram na sequência, na data em que acontecem, com a etiqueta “PI”. Na coluna <b>Link da aula</b>, o docente cola os links dos materiais no Teams (slides, vídeos etc.), um por linha. <b>⬇ Baixar planilha</b> gera o PCTD em Excel.`)}
+${P(`Na turma (${caminho('Turmas e UCs')}), no Cronograma de aulas, clique em <b>📝 Gerar PCTD</b>. O PCTD da turma aparece no menu <b>PCTD</b>.`, `Cadastre os docentes em <b>PCTD → 👥 Acessos dos docentes</b>: escolha o docente, informe o e-mail e uma senha inicial e clique em <b>Cadastrar</b>. Passe o e-mail e a senha ao docente.`, `O docente clica em <b>Entrar</b>, usa o e-mail e a senha e vê o site em modo consulta, podendo editar só o PCTD (as turmas dele aparecem com ★ e já filtradas pelo nome dele).`, `No alto ficam os <b>Temas geradores</b>: primeiro o do Projeto Integrador, depois o de cada UC na ordem do cronograma. Abaixo, as <b>aulas na sequência do cronograma</b> (data, UC, formato, docente), separadas por mês, com os campos do planejamento. Em <b>⚙ Listas</b> (ao lado do tema de cada UC), o docente ou a coordenação cadastram as opções de Elementos, Indicadores, Habilidades e Atitudes/valores (uma por linha); depois, em cada aula, escolhe-se uma ou mais.`, `As aulas de <b>Projeto Integrador</b> entram na sequência, na data em que acontecem, com a etiqueta “PI”. Em <b>👥 Grupos do projeto</b>, o docente clica em <b>+ Grupo</b> e lança o nome do grupo, os alunos (um por linha), o tema do projeto e o link do projeto de cada grupo. Na coluna <b>Link da aula</b>, o docente cola os links dos materiais no Teams (slides, vídeos etc.), um por linha. <b>⬇ Baixar planilha</b> gera o PCTD em Excel.`)}
 ${dica('Mudanças no cronograma aparecem no PCTD automaticamente (o planejamento acompanha a 1ª, 2ª, 3ª… aula da UC); o PCTD não altera o cronograma. O planejamento de cada UC (todas as aulas e o tema gerador) deve estar pronto <b>antes da primeira aula da UC</b>: a partir de 7 dias antes do início, a UC com aulas sem planejamento ou sem tema gera o alerta <b>PCTD</b> (“começa em…”), que continua depois do início (“começou em…”) até tudo ser preenchido. Para tirar o acesso de um docente, use Remover em Acessos dos docentes.')}` },
 
   { id: 'cad-salamapa', t: 'Incluir ou editar salas pelo Mapa de salas', h: `
@@ -6306,6 +6306,7 @@ function viewPctd() {
   h += `<div class="card"><h3 style="margin:0 0 8px">Temas geradores</h3><div class="pctdtemas">${ordem.map(({ u, ui, n }) => { const kT = 'tema:' + u.id; const tema = String(D[kT] || ''); const tu = (t.ucs || []).find(x => x.id === u.id) || {};
     const pz = (pend.ucs || []).find(z => z.u.id === u.id);
     return `<div class="pctdtema ${pz ? 'pctdtemalate' : ''}" style="border-left:5px solid ${ucColor(ui)}">${pz ? `<div class="small" style="color:#b42318;margin-bottom:4px">⚠ ${pz.iniciada ? 'Começou em ' : 'Começa em '}${br(pz.ini)}: ${pz.vaz} aula(s) sem planejamento${pz.semTema ? ' e sem tema gerador' : ''}</div>` : ''}<div class="bar" style="margin:0 0 4px"><b class="grow">${isPI(u) ? '🧩 ' : ''}${esc(u.num ? 'UC ' + u.num + ' · ' : '')}${esc(u.nome || '')}</b><span class="small muted">${fmtH(+u.ch || 0)} h · ${n} aula(s)</span>${ed ? `<button class="sm" data-act="pctdListas" data-u="${esc(u.id)}" title="Opções de Elementos, Indicadores, Habilidades e Atitudes/valores">⚙ Listas</button>` : ''}</div>${ed ? `<textarea rows="2" data-pk="${esc(kT)}" data-pf="__tema" placeholder="Tema gerador${isPI(u) ? ' do Projeto Integrador' : ' da UC'}">${esc(tema)}</textarea>` : `<div class="pctdro">${esc(tema) || '<span class="muted">—</span>'}</div>`}</div>`; }).join('')}</div></div>`;
+  h += pctdGruposHtml(t, ed);
   // aulas na sequência do cronograma
   const L = pctdSeq(t).filter(x => !fd || (x.a.docs || []).includes(fd));
   h += `<div class="card"><h3 style="margin:0 0 8px">Aulas na sequência do cronograma</h3><div class="tw"><table class="pctd"><tr><th>Data</th><th>UC</th><th>Formato</th><th>Docente</th>${PCTD_F.map(([, l]) => `<th>${l}</th>`).join('')}</tr>`;
@@ -6449,6 +6450,34 @@ MACT.paDel = el => { const e = el.dataset.v; askConfirm(`Remover o acesso de <b>
   return r;
 }; }
 
+// ---------- Grupos do projeto (alunos, tema e link de cada grupo) ----------
+const pctdGruposL = t => { const g = pctdOf(t).grupos; return Array.isArray(g) ? g : []; };
+function pctdGruposHtml(t, ed) {
+  const G = pctdGruposL(t);
+  let h = `<div class="card"><div class="bar" style="margin:0 0 8px"><h3 class="grow" style="margin:0">👥 Grupos do projeto <span class="small muted">${G.length ? G.length + ' grupo(s) · ' + G.reduce((s, g) => s + (g.alunos || []).length, 0) + ' aluno(s)' : ''}</span></h3>${ed ? '<button class="sm pri" data-act="pgAdd">+ Grupo</button>' : ''}</div>`;
+  if (!G.length) return h + `<p class="small muted" style="margin:0">${ed ? 'Nenhum grupo lançado. Clique em “+ Grupo” para cadastrar o nome do grupo, os alunos, o tema do projeto e o link.' : 'Nenhum grupo lançado.'}</p></div>`;
+  h += '<div class="pgrid">';
+  G.forEach((g, i) => {
+    h += `<div class="pgcard"><div class="bar" style="margin:0 0 6px">${ed ? `<input class="grow" data-pg="${i}" data-pgf="nome" value="${esc(g.nome || '')}" placeholder="Nome do grupo" style="font-weight:700">` : `<b class="grow">${esc(g.nome || 'Grupo ' + (i + 1))}</b>`}${ed ? `<button class="sm dng" data-act="pgDel" data-i="${i}" title="Excluir grupo">✕</button>` : ''}</div>
+      <label class="f small">Alunos <span class="muted">(um por linha)</span>${ed ? `<textarea rows="4" data-pg="${i}" data-pgf="alunos" placeholder="Nome do aluno">${esc((g.alunos || []).join('\n'))}</textarea>` : `<div>${(g.alunos || []).map(esc).join('<br>') || '<span class="muted">—</span>'}</div>`}</label>
+      <label class="f small" style="margin-top:6px">Tema do projeto${ed ? `<textarea rows="2" data-pg="${i}" data-pgf="tema">${esc(g.tema || '')}</textarea>` : `<div>${esc(g.tema || '') || '<span class="muted">—</span>'}</div>`}</label>
+      <label class="f small" style="margin-top:6px">Link do projeto${ed ? `<input data-pg="${i}" data-pgf="link" value="${esc(g.link || '')}" placeholder="https://…">` : ''}${g.link ? `<div style="margin-top:3px">${linksHtml(g.link)}</div>` : ed ? '' : '<div class="muted">—</div>'}</label></div>`;
+  });
+  return h + '</div></div>';
+}
+(function () { const st = document.createElement('style'); st.textContent = `.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}.pgcard{background:#fafbff;border:1px solid #dfe3f5;border-left:5px solid #5a32c8;border-radius:10px;padding:10px}.pgcard textarea,.pgcard input{width:100%}`; document.head.appendChild(st); })();
+function pgSalva(t, G) { return pctdSet(t, 'grupos', G.length ? G : null); }
+Object.assign(ACT, {
+  pgAdd: () => { const t = S.turmas[V.pctdT]; if (!t || !pctdPodeEditar(t)) return; const G = clone(pctdGruposL(t)); G.push({ nome: 'Grupo ' + (G.length + 1), alunos: [], tema: '', link: '' }); pgSalva(t, G).then(() => refresh()); if (MODE === 'sb') refresh(); },
+  pgDel: el => { const t = S.turmas[V.pctdT]; if (!t || !pctdPodeEditar(t)) return; const i = +el.dataset.i; const G = clone(pctdGruposL(t)); askConfirm(`Excluir o grupo <b>${esc((G[i] || {}).nome || '')}</b>?`, () => { G.splice(i, 1); closeModal(); pgSalva(t, G).then(() => refresh()); if (MODE === 'sb') refresh(); }, 'Excluir'); },
+});
+document.addEventListener('change', e => {
+  const el = e.target; if (!el.dataset || el.dataset.pg == null) return; const t = S.turmas[V.pctdT]; if (!t || !pctdPodeEditar(t)) return;
+  const G = clone(pctdGruposL(t)); const g = G[+el.dataset.pg]; if (!g) return; const f = el.dataset.pgf;
+  g[f] = f === 'alunos' ? el.value.split(/\n+/).map(x => x.trim()).filter(Boolean) : el.value.trim();
+  pgSalva(t, G).then(() => { if (f === 'link' || f === 'alunos') refresh(); });
+});
+
 // ---------- Planilha .xlsx com formatação (cores, grade, quebra de linha), sem biblioteca externa ----------
 const XLX = (() => {
   const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -6524,6 +6553,20 @@ function pctdXlsBonito(t) {
     if (!tema) rows[n - 1].cells[3].v = '(tema gerador não preenchido)';
   }
   add([]);
+  // grupos do projeto
+  const GR = pctdGruposL(t);
+  if (GR.length) {
+    n = add(fill('Grupos do projeto', { b: 1, sz: 12, color: '#FFFFFF', fill: '#5A32C8', valign: 'center' }), 22); merges.push(`A${n}:${last}${n}`);
+    n = add([{ v: 'Grupo', s: { b: 1, color: '#FFFFFF', fill: '#6E4BD8', border: true, valign: 'center' } }, { v: 'Alunos', s: { b: 1, color: '#FFFFFF', fill: '#6E4BD8', border: true, valign: 'center' } }, { v: '', s: { fill: '#6E4BD8', border: true } }, { v: '', s: { fill: '#6E4BD8', border: true } }, { v: 'Tema do projeto', s: { b: 1, color: '#FFFFFF', fill: '#6E4BD8', border: true, valign: 'center' } }].concat(Array.from({ length: NC - 5 }, (_, i) => ({ v: i === 3 ? 'Link do projeto' : '', s: { b: 1, color: '#FFFFFF', fill: '#6E4BD8', border: true, valign: 'center' } }))), 20);
+    merges.push(`B${n}:D${n}`, `E${n}:H${n}`, `I${n}:${last}${n}`);
+    GR.forEach((g, i) => {
+      const bg = i % 2 ? '#F4F1FD' : '#FFFFFF'; const s0 = { wrap: 1, border: true, fill: bg, valign: 'top' };
+      const al = (g.alunos || []).join('\n'); const lin = Math.max(2, (g.alunos || []).length, Math.ceil(String(g.tema || '').length / 90));
+      n = add([{ v: g.nome || 'Grupo ' + (i + 1), s: Object.assign({}, s0, { b: 1, color: '#5A32C8' }) }, { v: al, s: s0 }, { v: '', s: s0 }, { v: '', s: s0 }, { v: g.tema || '', s: s0 }].concat(Array.from({ length: NC - 5 }, (_, k) => ({ v: k === 3 ? (g.link || '') : '', s: Object.assign({}, s0, k === 3 ? { color: '#1F6FD1', u: !!g.link } : {}) }))), Math.min(300, lin * 13 + 8));
+      merges.push(`B${n}:D${n}`, `E${n}:H${n}`, `I${n}:${last}${n}`);
+    });
+    add([]);
+  }
   // aulas na sequência do cronograma
   n = add(fill('Aulas na sequência do cronograma', { b: 1, sz: 12, color: '#FFFFFF', fill: '#344054', valign: 'center' }), 22); merges.push(`A${n}:${last}${n}`);
   const cab = add(['Data', 'UC', 'Formato', 'Docente'].concat(PCTD_F.map(x => x[1])).map(v => ({ v, s: { b: 1, color: '#FFFFFF', fill: '#475467', wrap: 1, align: 'center', valign: 'center', border: '#667085' } })), 32);
