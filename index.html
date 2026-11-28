@@ -296,6 +296,8 @@ tr.dimrow td{opacity:.6}.livrec{background:#f1f5f9;border-radius:999px;padding:3
 .apucs{display:flex;flex-wrap:wrap;gap:4px 18px}.apucs .chk{display:flex;align-items:center;gap:6px;min-width:260px;font-size:14px}.apuc{border-top:1px solid var(--line,#e5e7eb);padding:10px 0}.apuch{margin-bottom:6px}.apops td,.apops th{vertical-align:top}.apops tr.apsel td{background:#ecfdf3}
 
 .pill.estl{background:#e0f2fe;color:#075985}select.ucest{font-size:12px;padding:2px 4px;height:auto;width:auto;max-width:210px}
+
+.pill.rep{background:#f4ebff;color:#6941c6}.row.fin{background:#fffaeb}
 </style></head>
 <body><header class="top"><button id="menuBtn" aria-label="Menu">☰</button><div class="brand"><div class="logo">📅</div><div>Cronograma de Cursos<small>Coordenação · turmas, docentes e salas</small></div></div><div id="sync"></div><div id="role"></div></header>
 <div class="shell"><aside id="side"></aside><main id="main"></main></div><div id="modal" class="hidden"></div><div id="toast"></div>
@@ -470,7 +472,7 @@ function buildTurma(t) {
     if (!isDate(ds) || ds < t.ini) continue;
     const o = ov[ds];
     if (o.uc && uidx[o.uc] != null && isSlot(ds)) { if (split && isEadDay(ds, o) && !o.eadP) lkE[uidx[o.uc]]++; else lkP[uidx[o.uc]]++; }
-    if ((o.uc || o.extra) && isSlot(ds) && ds > lastFixed) lastFixed = ds;
+    if ((o.uc || o.extra || o.fin || o.rep) && isSlot(ds) && ds > lastFixed) lastFixed = ds;
   }
   const EPS = 1e-6;
   const allDone = () => units.every((u, i) => dP[i] >= nP[i] - EPS && dE[i] >= nE[i] - EPS);
@@ -486,6 +488,17 @@ function buildTurma(t) {
       const ci = calTurma(t, ds, tm(t.hi), tm(t.hf));
       if (ci && !o.extra) { if (!allDone()) res.rows.push({ ds, w, type: 'off', mot: ci.mot, kind: ci.kind }); }
       else if (o.skip) { res.rows.push({ ds, w, type: 'skip', o }); }
+      else if ((o.fin || o.rep) && units.length) {
+        // dia financeiro (sem aula, sem docente) ou reposição (com docente, não conta carga): não consome a UC
+        let ui = o.uc && uidx[o.uc] != null ? uidx[o.uc] : units.findIndex((u, i) => !u.wd.length && dP[i] + lkP[i] < nP[i] - EPS);
+        if (ui < 0) ui = units.findIndex((u, i) => dP[i] + lkP[i] < nP[i] - EPS); if (ui < 0) ui = units.length - 1;
+        const uu = units[ui], hU = uu.hA || H, hh = +o.h > 0 ? +o.h : hU;
+        const row = { ds, w, type: 'aula', ui, locked: !!o.uc, extra: !!o.extra, o, al: [], fin: !!o.fin, rep: !o.fin && !!o.rep, k: done(ui), n: n[ui], num: null, hAula: hh, hAj: +o.h > 0, hU, hCont: 0, ead: false, sinc: false };
+        row.sala = o.fin ? '' : o.semSala ? '' : (o.sala || t.sala || VSALA[t.id] || '');
+        row.docs = o.fin ? [] : (o.doc || uu.doc || []).filter(Boolean);
+        row.h = hh; row.a = tm(t.hi); row.b = +o.h > 0 ? row.a + Math.round(hh * 60) : Math.min(tm(t.hf), row.a + Math.round(hh * 60));
+        res.aulas.push(row); res.rows.push(row); vazios = 0;
+      }
       else {
         const ead = isEadDay(ds, o);
         const cE = split && ead && !o.eadP; // aula EAD que consome a carga EAD da UC (eadP: EAD que conta na presencial)
@@ -1028,18 +1041,19 @@ function viewTurma() {
     const dt = `<div class="dt"><b>${brs(row.ds)}</b><small>${WD[row.w]}</small></div>`;
     if (row.type === 'off') { h += `<div class="row off" id="r-${row.ds}">${dt}<span>${esc(row.mot)}</span></div>`; continue; }
     if (row.type === 'skip') { h += `<div class="row skip" id="r-${row.ds}">${dt}<span class="grow">Aula cancelada neste dia${row.o.moved ? ' (movida para ' + brs(row.o.moved) + ')' : ''}</span><button class="sm" data-act="unskip" data-ds="${row.ds}">Restaurar</button></div>`; continue; }
+    if (row.fin) { h += `<div class="row skip fin" id="r-${row.ds}">${dt}<span class="grow">💰 <b>Dia financeiro</b> — sem aula, sem docente e sem carga horária <span class="small muted">(${esc((r.units[row.ui] || {}).nome || '')})</span></span><button class="sm" data-act="unFin" data-ds="${row.ds}">Desfazer</button></div>`; continue; }
     if (row.ui < 0) { h += `<div class="row livre" id="r-${row.ds}">${dt}<span class="no">—</span><select class="uc" data-act="rUC" data-ds="${row.ds}">${ucOpts(-1, false)}</select><span class="small muted grow">Dia livre: as UCs já fecharam antes de uma aula fixada mais à frente. Escolha uma UC ou cancele o dia.</span><button class="more" data-act="rMenu" data-ds="${row.ds}">⋯</button></div>`; continue; }
     const u = r.units[row.ui];
     const PRI = { conf: 4, desl: 4, fer: 3, comp: 3, esc: 2, cad: 1 }; const dst = {}; for (const n of row.docs) for (const a of row.al) if (a.msg.startsWith(n) && PRI[a.tp] && (!dst[n] || PRI[a.tp] > PRI[dst[n]])) dst[n] = a.tp;
     const docs = row.docs.map(n => `<span class="dchip ${dst[n] || ''}">${esc(short(n))}${row.dj && row.dj[n] ? ` <span class="small">${hm(row.dj[n][0])}–${hm(row.dj[n][1])}</span>` : ''}</span>`).join('') || '<span class="muted small">+ docentes</span>';
     const salaSel = !naSala(row) ? `<span style="width:150px"></span>` : `<select class="sala" data-act="rSala" data-ds="${row.ds}">${opt(salaNames(), row.sala, '— sala —')}</select>`;
     const als = [...new Set(row.al.map(a => a.tp))].map(tp => { const okT = row.al.filter(a => a.tp === tp).every(a => a.ok); return `<span class="at ${okT ? 'okv' : tp}" title="${esc(row.al.filter(a => a.tp === tp).map(a => (a.ok ? '✓ ' : '') + a.msg).join('\n'))}">${okT ? '✓ ' : ''}${ALT[tp]}</span>`; }).join('');
-    h += `<div class="row" id="r-${row.ds}" data-dgt="aula" data-ds="${row.ds}">${canWrite() ? `<span class="dragh" data-dg="aula" data-ds="${row.ds}" title="Arraste até outra aula para trocar as UCs">⠿</span>` : ''}${dt}<span class="no">#${row.num}</span>
+    h += `<div class="row" id="r-${row.ds}" data-dgt="aula" data-ds="${row.ds}">${canWrite() ? `<span class="dragh" data-dg="aula" data-ds="${row.ds}" title="Arraste até outra aula para trocar as UCs">⠿</span>` : ''}${dt}<span class="no">${row.num == null ? '—' : '#' + row.num}</span>
      <select class="uc" style="border-left-color:${ucColor(row.ui)}" data-act="rUC" data-ds="${row.ds}">${ucOpts(row.ui, row.locked)}</select>
-     ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${knTxt(row)}</span>
+     ${row.locked ? '' : ''}<span class="kn">${row.locked ? '📌 ' : ''}${row.rep ? 'reposição' : knTxt(row)}</span>
      <button class="ead ${row.ead ? 'on' : ''}" data-act="rEad" data-ds="${row.ds}">${row.ead ? (row.sinc ? 'EAD síncr.' : 'EAD') : 'Presencial'}</button>${salaSel}${row.est && naSala(row) ? `<span class="pill ${row.estSala === 'manter' ? '' : 'estl'}" title="UC de estágio — ${row.estSala === 'manter' ? 'a sala continua reservada' : 'a sala fica livre para outras turmas (como EAD)'}">${row.estDia ? 'Estágio · em sala neste dia' : row.estSala === 'manter' ? 'Estágio · mantém sala' : 'Estágio · sala livre'}</span>` : ''}
      <div class="docs" data-act="rDocs" data-ds="${row.ds}">${docs}</div>
-     ${row.extra ? '<span class="pill">extra</span>' : ''}${row.parts ? `<span class="pill" style="background:#eef4ff;color:#3538cd" title="Aula dividida entre UCs">${row.parts.map(p => { const u = r.units[p.ui] || {}; return (u.num ? 'UC ' + u.num : short2(u.nome || '')) + ' ' + fmtH(p.h) + ' h'; }).join(' + ')}</span>` : ''}${!row.parts && row.hAula != null && Math.abs(row.hAula - (row.ead && +t.hEad > 0 ? +t.hEad : ((r.units[row.ui] || {}).hA || r.H))) > 1e-6 ? `<span class="pill" style="background:#fff4e5;color:#b54708" title="${row.hAj ? 'Carga desta aula alterada à mão' : 'Última aula da UC com só as horas que faltam (carga exata)'}">⏱ ${fmtH(row.hAula)} h</span>` : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
+     ${row.rep ? '<span class="pill rep" title="Dia para os estudantes reporem aulas perdidas: tem docente, não conta carga horária do curso">🔁 Reposição · não conta carga</span>' : ''}${row.extra ? '<span class="pill">extra</span>' : ''}${row.parts ? `<span class="pill" style="background:#eef4ff;color:#3538cd" title="Aula dividida entre UCs">${row.parts.map(p => { const u = r.units[p.ui] || {}; return (u.num ? 'UC ' + u.num : short2(u.nome || '')) + ' ' + fmtH(p.h) + ' h'; }).join(' + ')}</span>` : ''}${!row.parts && row.hAula != null && Math.abs(row.hAula - (row.ead && +t.hEad > 0 ? +t.hEad : ((r.units[row.ui] || {}).hA || r.H))) > 1e-6 ? `<span class="pill" style="background:#fff4e5;color:#b54708" title="${row.hAj ? 'Carga desta aula alterada à mão' : 'Última aula da UC com só as horas que faltam (carga exata)'}">⏱ ${fmtH(row.hAula)} h</span>` : ''}${row.conv ? `<span class="pill" title="Aula de dia presencial transformada em EAD${row.o && row.o.eadP ? ' — conta na carga presencial' : ' — conta na carga EAD da UC'}">→ EAD${row.o && row.o.eadP ? ' (pres.)' : ''}</span>` : ''}${infoTxt(row.o) || temMat(row.o) ? `<span data-act="aulaInfo" data-ds="${row.ds}" style="cursor:pointer;display:inline-flex;gap:4px">${infoBadge(row.o, true)}${matBadge(row.o)}</span>` : ''}${row.o && row.o.obs ? `<span class="pill" title="${esc(row.o.obs)}">📝</span>` : ''}
      <div class="al">${als}</div><button class="more" data-act="rMenu" data-ds="${row.ds}" title="Mais opções">⋯</button></div>`;
     if (row.al.length) h += `<div class="small almsgs" style="margin:-2px 0 4px 72px;color:var(--mut)">${row.al.map((a, k) => `<span class="${a.ok ? 'alok' : 'alpe'}" title="${esc(a.ok ? alvInfo(a) : '')}">${a.ok ? '✓ ' : ''}${esc(a.msg)}${a.ot && S.turmas[a.ot] ? ` <a class="alv alot" data-act="fixGo" data-t="${a.ot}" data-ds="${a.od || row.ds}" data-f="${a.tp === 'inter' ? '' : a.tp}" title="Abrir a outra turma neste dia">abrir ${esc(S.turmas[a.ot].sigla || 'a outra turma')} ›</a>` : ''} <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="${k}">${a.ok ? '↺ pendente' : '✓ analisado'}</a></span>`).join(' · ')}${row.al.filter(a => !a.ok).length > 1 ? ` <a class="alv" data-act="alOkR" data-ds="${row.ds}" data-k="all">✓ todos analisados</a>` : ''}</div>`;
   }
@@ -1065,7 +1079,7 @@ function viewArea() {
       if (!a) { h += `<td class="${ci ? 'offd' : ''}"></td>`; continue; }
       const u = R[t.id].units[a.ui];
       const bad = a.al.length ? `<div>${[...new Set(a.al.map(x => x.tp))].map(tp => `<span class="at ${tp}">${ALT[tp]}</span>`).join(' ')}</div>` : '';
-      h += `<td class="c has ${a.ead || (a.est && a.estSala !== 'manter') ? 'eadc' : ''}" data-open="${t.id}" data-ds="${d}" style="border-left:4px solid ${ucColor(a.ui)}"><div class="l1">Aula ${a.num} · ${esc(u.num ? 'UC ' + u.num : (u.nome || '').slice(0, 22))} · ${a.k}/${a.n}</div><div class="l2">${a.ead ? 'EAD' : a.est ? (a.estSala === 'manter' ? 'Estágio · ' + esc(a.sala || 'sem sala') : 'Estágio · sala livre') : esc(a.sala || 'sem sala')}</div><div>${a.docs.map(n => esc(short(n))).join(', ') || '<span class="muted">sem docente</span>'}</div>${bad}</td>`;
+      h += `<td class="c has ${a.ead || (a.est && a.estSala !== 'manter') ? 'eadc' : ''}" data-open="${t.id}" data-ds="${d}" style="border-left:4px solid ${ucColor(a.ui)}"><div class="l1">${a.fin ? '💰 Dia financeiro' : a.rep ? '🔁 Reposição' : `Aula ${a.num} · ${esc(u.num ? 'UC ' + u.num : (u.nome || '').slice(0, 22))} · ${a.k}/${a.n}`}</div><div class="l2">${a.ead ? 'EAD' : a.est ? (a.estSala === 'manter' ? 'Estágio · ' + esc(a.sala || 'sem sala') : 'Estágio · sala livre') : esc(a.sala || 'sem sala')}</div><div>${a.docs.map(n => esc(short(n))).join(', ') || '<span class="muted">sem docente</span>'}</div>${bad}</td>`;
     }
     h += '</tr>';
   }
@@ -3583,7 +3597,7 @@ ${ref('<p>O evento aparece no calendário de Eventos e no topo do dia no Cronogr
 <li>Marque <b>“Entra no planejamento (30%)”</b> se a turma for atividade que conta como planejamento (centro de custo terminado em 4060.0 já entra automaticamente).</li></ol>
 <h4>Editar uma turma</h4>
 <p>${caminho('Turmas e UCs', 'clique na turma')}. Campos principais: curso, área, período, código/oferta, sigla, centro de custo, início, horários, aulas já realizadas, sala padrão, <b>técnico responsável</b>, dia fixo EAD, dias de aula, observações.</p>
-<ul><li><b>UCs</b>: ordem (setas), nome, <b>CH presencial</b> e <b>CH EAD</b>, <b>H/aula</b> (vazio = automático; estágio à noite = 3 h), docentes da UC.</li><li><b>Estágio</b> (abaixo do nome da UC): <i>Estágio · libera a sala</i> — as aulas aparecem como estágio e a sala fica livre para outras turmas, como no EAD; <i>Estágio · mantém a sala</i> — a sala continua reservada; <i>Não é estágio</i>. UCs com “estágio” no nome já vêm como “libera a sala”. Em “libera a sala”, o link <b>🏫 dias em sala</b> abre as datas das aulas da UC: marque os dias em que a turma fica na sala (nesses dias a sala continua reservada).</li>
+<ul><li><b>UCs</b>: ordem (setas), nome, <b>CH presencial</b> e <b>CH EAD</b>, <b>H/aula</b> (vazio = automático; estágio à noite = 3 h), docentes da UC.</li><li><b>Estágio</b> (abaixo do nome da UC): <i>Estágio · libera a sala</i> — as aulas aparecem como estágio e a sala fica livre para outras turmas, como no EAD; <i>Estágio · mantém a sala</i> — a sala continua reservada; <i>Não é estágio</i>. UCs com “estágio” no nome já vêm como “libera a sala”. Em “libera a sala”, o link <b>🏫 dias em sala</b> abre as datas das aulas da UC: marque os dias em que a turma fica na sala (nesses dias a sala continua reservada).</li><li><b>Dia financeiro</b> e <b>Dia de reposição</b> (no ⋯ da aula ou em <b>Alterar várias aulas</b>): o <b>dia financeiro</b> aparece no cronograma sem aula, sem docente e sem carga — a aula passa para o próximo dia; o <b>dia de reposição</b> tem docente e sala (conta nas horas do docente), mas não conta carga horária do curso nem avança a UC. Para reposição em dia sem aula, crie antes uma <b>+ Aula extra</b> e marque como reposição.</li>
 <li><b>Vagas e estudantes</b>: ver “Matrículas no curso”.</li>
 <li><b>Aulas junto com (turma vinculada)</b>: para QP ou curso livre que acontece junto com um técnico em andamento (mesma sala e horário). A turma vinculada usa a sala da principal (se não tiver sala própria), não gera alerta de conflito de sala nem de docente, e as horas do docente são <b>divididas igualmente</b> entre as turmas no 70×30 e no rateio (cada centro de custo recebe a sua parte). No cadastro de Nova turma, ao escolher a turma vinculada, período, horário, dias e sala são copiados.</li>
 <li><b>Copiar o cronograma de outra turma</b>: no Nova turma, ao escolher a turma vinculada, em <b>Cronograma</b> escolha “Copiar o cronograma de…” e o período (de / até). Numa turma já cadastrada, use <b>⧉ Copiar o cronograma de outra turma…</b>. As aulas (datas, horários, UCs, docentes e sala) acompanham a turma de origem; ajustes de aula feitos numa turma (docente, sala, cancelar ou mover aula, EAD, informação do dia, liberar sala) são <b>replicados automaticamente nas turmas vinculadas</b> no mesmo dia — dá para desligar na caixa “Replicar ajustes nas turmas vinculadas” do cadastro, ou só naquela troca, desmarcando “Aplicar também em…” na janela do ajuste. O cartão <b>Cronograma copiado</b> permite mudar origem e período ou <b>parar de copiar</b>.</li>
@@ -5784,6 +5798,7 @@ ACT.tLote = () => {
     if (ac === 'h') { const v = $('#modal [data-lth]').value.replace(',', '.'); if (!(+v > 0)) return toast('Informe as horas'); set({ h: +v }); }
     if (ac === 'ead') set({ ead: true }); if (ac === 'pres') set({ ead: false, eadP: undefined });
     if (ac === 'skip') set({ skip: true });
+    if (ac === 'fin') set({ fin: true, rep: undefined }); if (ac === 'rep') set({ rep: true, fin: undefined }); if (ac === 'norm') set({ rep: undefined, fin: undefined });
     if (ac === 'auto') set({ uc: undefined, doc: undefined, sala: undefined, semSala: undefined, ead: undefined, eadP: undefined, h: undefined });
     saveT(t); closeModal(); refresh(); toast(L.length + ' aula(s) alterada(s)');
   } };
@@ -5798,6 +5813,9 @@ ACT.tLote = () => {
    ${rad('h', 'Carga horária de cada aula', `<input data-lth inputmode="decimal" placeholder="h" style="width:70px"> h`)}
    ${rad('ead', 'Transformar em EAD')}${rad('pres', 'Transformar em presencial')}
    ${rad('skip', 'Cancelar as aulas <span class="small muted">(passam para o fim)</span>')}
+   ${rad('fin', '💰 Dia financeiro <span class="small muted">(sem aula e sem docente; a aula passa para o próximo dia)</span>')}
+   ${rad('rep', '🔁 Dia de reposição <span class="small muted">(com docente, não conta carga do curso)</span>')}
+   ${rad('norm', 'Voltar a ser aula normal <span class="small muted">(tira financeiro / reposição)</span>')}
    ${rad('auto', 'Desfazer ajustes <span class="small muted">(volta UC, docentes, sala e EAD ao automático)</span>')}
    <div class="mact"><button data-m="close">Cancelar</button><button class="pri" data-m="ok">Aplicar</button></div>`, true);
   dpRender('lote');
@@ -5892,7 +5910,7 @@ function analisa(t) {
       case 'eadSeq': for (const [ui, L] of Object.entries(porUC)) { if (exclui(g, ui)) continue; let s = 0; for (const a of L) { s = a.ead ? s + 1 : 0; if (s === +g.n + 1) F(`${uN(ui)}: ${s} aulas EAD seguidas até ${br(a.ds)} — máximo ${g.n}`, a.ds); } } break;
       case 'ultPres': for (const [ui, L] of Object.entries(porUC)) { if (exclui(g, ui)) continue; const u = L[L.length - 1]; if (u.ead && L.some(a => !a.ead)) F(`${uN(ui)}: última aula (${br(u.ds)}) é EAD`, u.ds); } break;
       case 'primPres': if (A[0] && A[0].ead) F(`Primeira aula do curso (${br(A[0].ds)}) é EAD`, A[0].ds); break;
-      case 'semDoc': { const L = A.filter(a => !(a.docs || []).length); if (L.length) F(`${L.length} aula(s) sem docente, a primeira em ${br(L[0].ds)}`, L[0].ds); } break;
+      case 'semDoc': { const L = A.filter(a => !a.fin && !(a.docs || []).length); if (L.length) F(`${L.length} aula(s) sem docente, a primeira em ${br(L[0].ds)}`, L[0].ds); } break;
       case 'semSala': { const L = A.filter(a => !a.ead && naSala(a) && !a.sala); if (L.length) F(`${L.length} aula(s) presencial(is) sem sala, a primeira em ${br(L[0].ds)}`, L[0].ds); } break;
       case 'gap': for (let i = 1; i < A.length; i++) { const d = Math.round((new Date(A[i].ds) - new Date(A[i - 1].ds)) / 864e5); if (d > +g.n) F(`${d} dias sem aula entre ${br(A[i - 1].ds)} e ${br(A[i].ds)} — máximo ${g.n}`, A[i].ds); } break;
       case 'diaProib': { const ws = (g.w || []).map(Number); const L = A.filter(a => ws.includes(wd(a.ds))); if (L.length) F(`${L.length} aula(s) em ${[...new Set(L.map(a => WDL[wd(a.ds)].toLowerCase()))].join(', ')}, a primeira em ${br(L[0].ds)}`, L[0].ds); } break;
@@ -6124,7 +6142,7 @@ const piTemUC = t => (t.ucs || []).some(isPI);
 function piContagem(t, u, UP) {
   const r = R[t.id]; const p = (UP || ucPeriodos(t))[u.id]; if (!r || !p || !p.ini) return { p: 0, e: 0 };
   const piIdx = new Set(r.units.map((x, i) => isPI(x) ? i : -1).filter(i => i >= 0)); let np = 0, ne = 0;
-  for (const a of r.aulas) {
+  for (const a of r.aulas) { if (a.fin || a.rep) continue;
     if (a.ds < p.ini || a.ds > p.fim) continue;
     const tem = piIdx.has(a.ui) || (a.parts || []).some(x => piIdx.has(x.ui)); if (!tem) continue;
     if (a.ead) ne++; else np++;
@@ -6248,7 +6266,7 @@ async function pctdSet(t, key, val) {
 function pctdAulas(t) {
   const r = R[t.id]; if (!r) return [];
   const G = []; const by = {}; const cnt = {};
-  for (const a of r.aulas) {
+  for (const a of r.aulas) { if (a.fin || a.rep) continue;
     const L = a.parts ? a.parts.map(p => ({ ui: p.ui, h: p.h, parte: true })) : [{ ui: a.ui, h: a.h }];
     for (const p of L) {
       const u = r.units[p.ui]; if (!u) continue;
@@ -6668,7 +6686,7 @@ const apTurmas = cc => Object.values(S.turmas).filter(t => cc && t.cc === cc && 
 // aulas de cada UC numa turma (inclui aulas divididas entre UCs)
 function apOpcoes(t) {
   const r = R[t.id]; const by = {};
-  for (const a of r.aulas) {
+  for (const a of r.aulas) { if (a.fin || a.rep) continue;
     const L = a.parts ? a.parts.map(p => ({ ui: p.ui, h: p.h })) : [{ ui: a.ui, h: a.h }];
     for (const p of L) { const u = r.units[p.ui]; if (!u || u.solo) continue; const k = apNorm(u.nome); const o = by[k] = by[k] || { t, u, k, ds: [], iv: {}, h: 0 }; if (!o.iv[a.ds]) o.ds.push(a.ds); o.iv[a.ds] = [a.a, a.b]; o.h += +p.h || 0; }
   }
@@ -6933,6 +6951,15 @@ ACT.ucEstDias = el => {
   MACT.estNenhum = () => document.querySelectorAll('#modal [data-estd]').forEach(c => c.checked = false);
   MCTX = { ok: () => { const L = [...document.querySelectorAll('#modal [data-estd]:checked')].map(c => c.dataset.estd); const all = old.concat(L).sort(); if (all.length) u.estDias = all; else delete u.estDias; saveT(t); closeModal(); refresh(); toast(L.length ? L.length + ' dia(s) de estágio em sala' : 'Estágio sem dias em sala'); } };
 };
+// Dia financeiro / reposição pelo menu ⋯ da aula
+ACT.unFin = el => { const t = curT(); setOv(t, el.dataset.ds, { fin: undefined }); saveT(t); refresh(); };
+{ const rm0 = ACT.rMenu; ACT.rMenu = el => { rm0(el); const t = curT(); const ds = el.dataset.ds; const o = (t.ov || {})[ds] || {};
+  const sk = document.querySelector('#modal [data-m=skip]'); if (!sk) return;
+  sk.insertAdjacentHTML('afterend', `<button data-m="fin">💰 ${o.fin ? 'Tirar dia financeiro' : 'Dia financeiro'} <span class="small muted">— sem aula e sem docente; a aula passa para o próximo dia</span></button>
+   <button data-m="rep">🔁 ${o.rep ? 'Tirar reposição (volta a ser aula)' : 'Dia de reposição'} <span class="small muted">— com docente, não conta carga do curso</span></button>`);
+  MACT.fin = () => { setOv(t, ds, { fin: o.fin ? undefined : true, rep: undefined }); saveT(t); closeModal(); refresh(); toast(o.fin ? 'Voltou a ser aula' : 'Dia financeiro marcado'); };
+  MACT.rep = () => { setOv(t, ds, { rep: o.rep ? undefined : true, fin: undefined }); saveT(t); closeModal(); refresh(); toast(o.rep ? 'Voltou a ser aula' : 'Dia de reposição marcado'); };
+}; }
 
 // ===== Versão Google (Apps Script): dados na Planilha Google, login por senha =====
 const GAS = (typeof google !== 'undefined' && google.script && google.script.run) ? true : false;
