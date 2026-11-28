@@ -340,6 +340,9 @@ function overlap(a1, b1, a2, b2) { return Math.max(0, Math.min(b1, b2) - Math.ma
 // sala liberada no dia (visita técnica, estágio...): 'sala' = fica na sala, 'tudo' = sala livre a aula toda, 'parcial' = livre de libHi a libHf
 const LIB_FORA = ['Visita técnica', 'Estágio', 'Aula externa'];
 function libOf(row) { const o = (row && row.o) || {}; return o.lib || (LIB_FORA.includes(o.itp) ? 'tudo' : row && row.est ? (row.estSala === 'manter' ? 'sala' : 'tudo') : 'sala'); }
+// aula presencial com a sala liberada o dia todo (estágio, visita técnica…): o cronograma não mostra a sala
+const salaLivre = row => !!row && !row.ead && !row.rep && !row.fin && !!row.sala && libOf(row) === 'tudo';
+const salaLivreTxt = row => (row.est ? 'Estágio' : ((row.o || {}).itp || 'Fora da sala')) + ' · sala livre';
 function salaSpans(row) {
   if (!row || !naSala(row) || !row.sala || row.sala === EAD_SALA) return [];
   const l = libOf(row), o = row.o || {};
@@ -1046,7 +1049,7 @@ function viewTurma() {
     const u = r.units[row.ui];
     const PRI = { conf: 4, desl: 4, fer: 3, comp: 3, esc: 2, cad: 1 }; const dst = {}; for (const n of row.docs) for (const a of row.al) if (a.msg.startsWith(n) && PRI[a.tp] && (!dst[n] || PRI[a.tp] > PRI[dst[n]])) dst[n] = a.tp;
     const docs = row.docs.map(n => `<span class="dchip ${dst[n] || ''}">${esc(short(n))}${row.dj && row.dj[n] ? ` <span class="small">${hm(row.dj[n][0])}–${hm(row.dj[n][1])}</span>` : ''}</span>`).join('') || '<span class="muted small">+ docentes</span>';
-    const salaSel = !naSala(row) ? `<span style="width:150px"></span>` : `<select class="sala" data-act="rSala" data-ds="${row.ds}">${opt(salaNames(), row.sala, '— sala —')}</select>`;
+    const salaSel = !naSala(row) || salaLivre(row) ? `<span style="width:150px"></span>` : `<select class="sala" data-act="rSala" data-ds="${row.ds}">${opt(salaNames(), row.sala, '— sala —')}</select>`;
     const als = [...new Set(row.al.map(a => a.tp))].map(tp => { const okT = row.al.filter(a => a.tp === tp).every(a => a.ok); return `<span class="at ${okT ? 'okv' : tp}" title="${esc(row.al.filter(a => a.tp === tp).map(a => (a.ok ? '✓ ' : '') + a.msg).join('\n'))}">${okT ? '✓ ' : ''}${ALT[tp]}</span>`; }).join('');
     h += `<div class="row" id="r-${row.ds}" data-dgt="aula" data-ds="${row.ds}">${canWrite() ? `<span class="dragh" data-dg="aula" data-ds="${row.ds}" title="Arraste até outra aula para trocar as UCs">⠿</span>` : ''}${dt}<span class="no">${row.num == null ? '—' : '#' + row.num}</span>
      <select class="uc" style="border-left-color:${ucColor(row.ui)}" data-act="rUC" data-ds="${row.ds}">${ucOpts(row.ui, row.locked)}</select>
@@ -1079,7 +1082,7 @@ function viewArea() {
       if (!a) { h += `<td class="${ci ? 'offd' : ''}"></td>`; continue; }
       const u = R[t.id].units[a.ui];
       const bad = a.al.length ? `<div>${[...new Set(a.al.map(x => x.tp))].map(tp => `<span class="at ${tp}">${ALT[tp]}</span>`).join(' ')}</div>` : '';
-      h += `<td class="c has ${a.ead || (a.est && a.estSala !== 'manter') ? 'eadc' : ''}" data-open="${t.id}" data-ds="${d}" style="border-left:4px solid ${ucColor(a.ui)}"><div class="l1">${a.fin ? '💰 Dia financeiro' : a.rep ? '🔁 Reposição' : `Aula ${a.num} · ${esc(u.num ? 'UC ' + u.num : (u.nome || '').slice(0, 22))} · ${a.k}/${a.n}`}</div><div class="l2">${a.rep ? 'Reposição · sem sala' : a.ead ? 'EAD' : a.est ? (a.estSala === 'manter' ? 'Estágio · ' + esc(a.sala || 'sem sala') : 'Estágio · sala livre') : esc(a.sala || 'sem sala')}</div><div>${a.docs.map(n => esc(short(n))).join(', ') || '<span class="muted">sem docente</span>'}</div>${bad}</td>`;
+      h += `<td class="c has ${a.ead || (a.est && a.estSala !== 'manter') ? 'eadc' : ''}" data-open="${t.id}" data-ds="${d}" style="border-left:4px solid ${ucColor(a.ui)}"><div class="l1">${a.fin ? '💰 Dia financeiro' : a.rep ? '🔁 Reposição' : `Aula ${a.num} · ${esc(u.num ? 'UC ' + u.num : (u.nome || '').slice(0, 22))} · ${a.k}/${a.n}`}</div><div class="l2">${a.rep ? 'Reposição · sem sala' : a.ead ? 'EAD' : salaLivre(a) ? esc(salaLivreTxt(a)) : a.est ? 'Estágio · ' + esc(a.sala || 'sem sala') : esc(a.sala || 'sem sala')}</div><div>${a.docs.map(n => esc(short(n))).join(', ') || '<span class="muted">sem docente</span>'}</div>${bad}</td>`;
     }
     h += '</tr>';
   }
@@ -1638,7 +1641,7 @@ function viewInicio() {
   h += `<div class="cols2"><div class="card"><div class="bar" style="margin:0 0 8px"><h2 class="grow" style="margin:0">${prox === HOJE ? 'Aulas de hoje' : 'Próximo dia com aula'}</h2><span class="pill">${prox ? WDL[wd(prox)] + ', ' + br(prox) : ''}</span></div>`;
   if (prox) {
     const L = (IDX[prox] || []).slice().sort((a, b) => a.row.a - b.row.a);
-    h += `<table class="plain"><tr><th>Horário</th><th>Turma</th><th>UC</th><th>Sala</th><th>Docentes</th></tr>${L.map(({ t, row }) => { const u = R[t.id].units[row.ui]; return `<tr data-open="${t.id}" data-ds="${prox}" style="cursor:pointer"><td class="nowrap">${hm(row.a)}–${hm(row.b)}</td><td><b>${esc(t.nome)}</b><div class="small muted">${esc(t.area)}</div></td><td class="small">${esc(u.num ? 'UC ' + u.num : '')} ${knTxt(row)}</td><td class="small">${row.ead ? 'EAD' : esc(row.sala || '—')}</td><td class="small">${row.docs.map(esc).join('<br>') || '—'}</td></tr>`; }).join('')}</table>`;
+    h += `<table class="plain"><tr><th>Horário</th><th>Turma</th><th>UC</th><th>Sala</th><th>Docentes</th></tr>${L.map(({ t, row }) => { const u = R[t.id].units[row.ui]; return `<tr data-open="${t.id}" data-ds="${prox}" style="cursor:pointer"><td class="nowrap">${hm(row.a)}–${hm(row.b)}</td><td><b>${esc(t.nome)}</b><div class="small muted">${esc(t.area)}</div></td><td class="small">${esc(u.num ? 'UC ' + u.num : '')} ${knTxt(row)}</td><td class="small">${row.ead ? 'EAD' : salaLivre(row) ? salaLivreTxt(row) : esc(row.sala || '—')}</td><td class="small">${row.docs.map(esc).join('<br>') || '—'}</td></tr>`; }).join('')}</table>`;
   } else h += '<p class="muted">Nenhuma aula programada.</p>';
   h += `</div><div class="card"><h2 style="margin-top:0">Próximos dias sem aula</h2>`;
   const nl = []; let d = HOJE > ano + '-01-01' ? HOJE : ano + '-01-01'; let guard = 0;
@@ -2063,7 +2066,7 @@ function viewSemana() {
     return `<div class="wcard ${row.ead ? 'isead' : ''} ${bad ? 'hasal' : ''}" style="border-left-color:${areaColor(t.area)}" data-open="${t.id}" data-ds="${row.ds}" title="${esc(t.nome + '\n' + (u.nome || ''))}">
       <div class="wt">${esc(tName(t))}</div>
       <div class="wu"><span class="dot" style="background:${ucColor(row.ui)}"></span>${esc(u.num ? 'UC ' + u.num : short2(u.nome))} · ${knTxt(row)}</div>
-      <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.rep || row.fin ? 'sem sala' : row.ead ? '<b class="eadtag">EAD' + (row.sinc ? ' síncrona' : '') + '</b>' + (row.sinc ? ' · ' + esc(row.sala || 'sem sala') : '') : esc(row.sala || 'sem sala')}</div>
+      <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.rep || row.fin ? 'sem sala' : salaLivre(row) ? salaLivreTxt(row) : row.ead ? '<b class="eadtag">EAD' + (row.sinc ? ' síncrona' : '') + '</b>' + (row.sinc ? ' · ' + esc(row.sala || 'sem sala') : '') : esc(row.sala || 'sem sala')}</div>
       ${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : '<div class="wd muted">sem docente</div>'}
       ${infoTxt(row.o) ? `<div style="margin-top:3px">${infoBadge(row.o, true)}</div>` : ''}${canWrite() && temMat(row.o) ? `<div style="margin-top:3px">${matBadge(row.o)}</div>` : ''}
       ${canWrite() && naSala(row) ? `<span class="wedit" data-tid="${t.id}" data-ds="${row.ds}" title="Informação do dia, liberar a sala, materiais">✎ dia / sala</span>` : ''}
@@ -2335,7 +2338,7 @@ function viewMateriais() {
   if (!L.length) return h + `<div class="card empty">Nenhum pedido de material nesta semana${fil ? ' com essa situação' : ''}.${canWrite() ? ' Use “+ Pedido de material” ou clique numa turma no mapa de ocupação.' : ''}</div>`;
   h += `<div class="tw"><table><tr><th>Dia</th><th>Horário</th><th>Sala</th><th>Turma</th><th>Docente(s)</th><th>Materiais</th><th>Situação</th><th></th></tr>`;
   for (const { t, row, d } of L) {
-    h += `<tr><td class="nowrap"><b>${brs(d)}</b> ${WD[wd(d)]}</td><td class="nowrap">${hm(row.a)}–${hm(row.b)}</td><td>${row.ead ? 'EAD' : esc(row.sala || '—')}</td><td><span class="dot" style="background:${areaColor(t.area)}"></span> ${esc(short2(t.nome))}${infoBadge(row.o, true)}</td><td class="small">${esc(row.docs.join(', ') || '—')}</td>
+    h += `<tr><td class="nowrap"><b>${brs(d)}</b> ${WD[wd(d)]}</td><td class="nowrap">${hm(row.a)}–${hm(row.b)}</td><td>${row.ead ? 'EAD' : salaLivre(row) ? salaLivreTxt(row) : esc(row.sala || '—')}</td><td><span class="dot" style="background:${areaColor(t.area)}"></span> ${esc(short2(t.nome))}${infoBadge(row.o, true)}</td><td class="small">${esc(row.docs.join(', ') || '—')}</td>
       <td style="white-space:pre-wrap;min-width:200px">${row.o.matItens && row.o.matItens.length ? `<b>${esc(matItensTxt(row.o))}</b>${row.o.mat ? '<br>' : ''}` : ''}${esc(row.o.mat || '')}</td>
       <td>${canWrite() ? `<select data-matst="${t.id}|${d}" class="st-${MAT_CLS[row.o.matSt || 'Pendente']}">${opt(MAT_ST, row.o.matSt || 'Pendente')}</select>` : `<span class="pill ${MAT_CLS[row.o.matSt || 'Pendente']}">${esc(row.o.matSt || 'Pendente')}</span>`}</td>
       <td>${canWrite() ? `<button class="sm" data-act="matEdit" data-tid="${t.id}" data-ds="${d}">Editar</button>` : ''}</td></tr>`;
@@ -5532,9 +5535,9 @@ function visTabs() { const v = V.cVis || 'semana'; return `<span class="segbtn">
 .mtit{margin:14px 0 6px}`; document.head.appendChild(st); })();
 function miniCard(t, row) {
   const u = R[t.id].units[row.ui] || {}; const bad = canWrite() && row.al.length;
-  return `<div class="wcard mini ${row.ead ? 'isead' : ''} ${bad ? 'hasal' : ''}" style="border-left-color:${areaColor(t.area)}" data-open="${t.id}" data-ds="${row.ds}" title="${esc(t.nome + '\n' + (u.nome || '') + '\n' + hm(row.a) + '–' + hm(row.b) + ' · ' + (row.ead ? 'EAD' : row.sala || 'sem sala') + '\n' + (row.docs.join(', ') || 'sem docente'))}">
+  return `<div class="wcard mini ${row.ead ? 'isead' : ''} ${bad ? 'hasal' : ''}" style="border-left-color:${areaColor(t.area)}" data-open="${t.id}" data-ds="${row.ds}" title="${esc(t.nome + '\n' + (u.nome || '') + '\n' + hm(row.a) + '–' + hm(row.b) + ' · ' + (row.ead ? 'EAD' : salaLivre(row) ? salaLivreTxt(row) : row.sala || 'sem sala') + '\n' + (row.docs.join(', ') || 'sem docente'))}">
    <div class="wt">${esc(tName(t))}</div><div class="wu"><span class="dot" style="background:${ucColor(row.ui)}"></span>${esc(u.num ? 'UC ' + u.num : short2(u.nome || ''))} · ${knTxt(row)}</div>
-   <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.rep || row.fin ? 'sem sala' : row.ead ? '<b class="eadtag">EAD</b>' : esc(row.sala || 'sem sala')}</div>${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : ''}</div>`;
+   <div class="wm">${hm(row.a)}–${hm(row.b)} · ${row.rep || row.fin ? 'sem sala' : salaLivre(row) ? salaLivreTxt(row) : row.ead ? '<b class="eadtag">EAD</b>' : esc(row.sala || 'sem sala')}</div>${row.docs.length ? `<div class="wd">${row.docs.map(x => esc(short(x))).join(', ')}</div>` : ''}</div>`;
 }
 function cronItens(d) { return (IDX[d] || []).filter(({ t, row }) => passT(t) && passDoc(row)).sort((a, b) => a.row.a - b.row.a || a.t.nome.localeCompare(b.t.nome)); }
 function mesGrid(ym, cont) {
